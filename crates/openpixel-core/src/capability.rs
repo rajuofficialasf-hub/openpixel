@@ -24,6 +24,7 @@ pub struct FormatCapability {
     pub max_dimension: u32,
 }
 
+#[allow(clippy::too_many_arguments)] // intentional: one row per format in the registry table
 fn cap(
     format: ImageFormat,
     can_decode: bool,
