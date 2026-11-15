@@ -1271,6 +1271,7 @@ dependencies = [
  "image",
  "openpixel-codecs",
  "openpixel-formats",
+ "openpixel-pipeline",
  "serde",
  "tempfile",
  "thiserror",
@@ -1281,6 +1282,17 @@ name = "openpixel-formats"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "openpixel-pipeline"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "openpixel-codecs",
+ "openpixel-formats",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]

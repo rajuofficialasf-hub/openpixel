@@ -1,5 +1,6 @@
 use openpixel_codecs::EncodeParams;
 use openpixel_formats::ImageFormat;
+use openpixel_pipeline::Pipeline;
 use serde::{Deserialize, Serialize};
 
 /// What `info` reports about an image — no pixel data, cheap to obtain.
@@ -72,4 +73,20 @@ pub struct ConvertResult {
     pub input_bytes: u64,
     pub output_bytes: u64,
     pub output_path: String,
+}
+
+/// Options for one processed conversion: the encode options plus the
+/// pipeline to run between decode and encode. `pipeline` is empty by
+/// default, which makes `process` behave exactly like `convert`.
+/// (Not serializable: a pipeline can hold a watermark image.)
+#[derive(Debug, Clone, Default)]
+pub struct ProcessOptions {
+    pub convert: ConvertOptions,
+    pub pipeline: Pipeline,
+}
+
+impl ProcessOptions {
+    pub fn new(convert: ConvertOptions, pipeline: Pipeline) -> Self {
+        Self { convert, pipeline }
+    }
 }

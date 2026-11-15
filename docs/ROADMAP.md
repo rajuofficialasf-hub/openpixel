@@ -24,9 +24,17 @@
   detection-only: blocked because the VM's libheif1 1.23.3-1 has no
   matching `-dev` package (see `docs/CODECS.md`).
   50 tests pass (was 29).
-- [ ] **Phase 4 — Processing Pipeline**: resize, crop, rotate, flip,
-  fit/fill/pad, thumbnail, grayscale, brightness/contrast/saturation,
-  blur, sharpen, watermark, background colour.
+- [x] **Phase 4 — Processing Pipeline** (done 16 Nov 2026, verified
+  by coordinator): `openpixel-pipeline` crate (`Pipeline`,
+  `Operation`, `PipelineSpec`, `PipelineError`), resize / fit /
+  fill / pad / crop / thumbnail, rotate 90/180/270 + arbitrary,
+  flip, grayscale, brightness/contrast/saturation, blur, sharpen,
+  image watermark, background flatten; `Engine::process` /
+  `convert_with_pipeline` / `process_to_path` + `ProcessOptions`;
+  `openpixel process` CLI (canonical-order flags or repeatable
+  `--op` for exact ordering); dependency versions pinned exactly.
+  Text watermark intentionally not included (no bundled font).
+  89 tests pass (was 50).
 - [ ] **Phase 5 — Metadata & Animation**: EXIF/IPTC/XMP/ICC/DPI/
   orientation, metadata policies, colour management (LittleCMS),
   GIF/APNG/animated WebP frames, multi-page TIFF.

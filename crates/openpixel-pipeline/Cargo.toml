@@ -1,0 +1,13 @@
+[package]
+name = "openpixel-pipeline"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OpenPixel processing pipeline — composable resize/crop/rotate/colour/watermark operations over DecodedImage (Phase 4)"
+
+[dependencies]
+openpixel-codecs = { path = "../openpixel-codecs" }
+openpixel-formats = { path = "../openpixel-formats" }
+image.workspace = true
+thiserror.workspace = true
+serde.workspace = true

@@ -27,6 +27,54 @@ cargo test --workspace
   - Corrupted file (valid PNG signature + garbage) errors cleanly.
   - JPEG quality 20 vs 95 changes output size in the expected direction.
 
+## Verified results — Phase 4, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0
+
+Re-run `cargo test --workspace` to reproduce.
+
+- `cargo build --release` — succeeds, binary `target/release/openpixel`.
+- `cargo test --workspace` — **89 passed, 0 failed** (was 50):
+  formats 10 (unchanged), codecs 25 (22 unit + 3 adapter
+  round-trip, unchanged), core 21 (15 unit + 6 integration; new:
+  `process` resize+grayscale+rotate combined with pixel checks,
+  empty-pipeline == convert, `convert_with_pipeline` alias,
+  `process_to_path`, bad pipeline writes no output, `decode_file`;
+  integration: combined pipeline end-to-end with JPEG grey check,
+  watermark + `PipelineSpec` order), pipeline 30 (29 unit + 1
+  doctest — dimensions after every resize/fit/fill/pad/crop/
+  thumbnail/rotate/flip, pixel checks for grayscale, brightness
+  direction, flip mirroring, crop content, watermark presence and
+  50% blending, flatten onto background, operation ordering,
+  metadata survival, and errors for resize-to-0, out-of-bounds
+  crop, oversize result, out-of-range values, oversize watermark),
+  CLI 3 (parse helpers for dimensions/crop/`--op`/watermark
+  position). Phase 3's 50 tests still pass unchanged.
+- `cargo clippy --workspace -- -D warnings` — passes.
+  `cargo fmt --check` — passes.
+- Manual CLI verification on a real 64×48 RGBA Pillow fixture
+  (`/tmp`, not checked in): `process --resize 32x24` → `info`
+  32×24; `--rotate 90` → 48×64; `--grayscale` to JPEG → all 3 072
+  pixels grey (tolerance 2); combined `--resize 32x24 --grayscale
+  --rotate 90` → 24×32 luma_alpha8; `--op crop:0,0,32,24 --op
+  flip-h --op grayscale` → 32×24; `--watermark` logo → bottom-right
+  pixel exactly (255,0,0); `--rotate 45` → 80×80 bounding box;
+  `--thumbnail 16` → 16×12; `--pad 80x60` → 80×60; `--resize-fill
+  32x32` → 32×32; `--flatten` to JPEG → rgb8; combined blur +
+  sharpen + saturation 0 + contrast + brightness -0.1 + flip-v +
+  rotate -45 → 80×80; `--json` output parses. Error cases exit 1
+  with a clean typed message and no output file: crop out of
+  bounds, resize 0, brightness 2.0, mixing `--op` with flags.
+- Bugs found and fixed during Phase 4: image-rs `thumbnail` and
+  `resize` upscale a smaller image, so `ResizeFit`/`Thumbnail`
+  now guard against upscaling (and `output_dimensions` simulates
+  the same rule); a derived `Default` for `Pipeline` set both
+  limits to 0 and rejected every image, so `Default` is now
+  hand-written to delegate to `new()`; clap rejected negative
+  numbers (`--brightness -0.1`), so the `process` subcommand sets
+  `allow_negative_numbers`; clippy's `large_enum_variant` on the
+  `Process` CLI variant is allowed locally with a comment — boxing
+  the `Vec` field is impossible because clap has no value parser
+  for `Box<Vec<String>>`.
+
 ## Verified results — Phase 3, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0
 
 Re-run `cargo test --workspace` to reproduce. System setup first:

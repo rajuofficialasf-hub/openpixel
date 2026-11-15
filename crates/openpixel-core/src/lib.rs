@@ -30,10 +30,13 @@ pub mod security;
 
 pub use engine::{default_output_path, Engine};
 pub use error::{OpenPixelError, Result};
-pub use image::{ConvertOptions, ConvertResult, ImageInfo};
+pub use image::{ConvertOptions, ConvertResult, ImageInfo, ProcessOptions};
 pub use openpixel_codecs::{CodecRegistry, DecodedImage, EncodeParams, PixelFormat};
 pub use openpixel_formats::{
     detect_format, discover, Confidence, DetectionMethod, DiscoveryResult, FormatCapability,
     ImageFormat, MAX_DIMENSION,
+};
+pub use openpixel_pipeline::{
+    Operation, Pipeline, PipelineError, PipelineSpec, WatermarkPosition, WatermarkSpec,
 };
 pub use security::EngineConfig;

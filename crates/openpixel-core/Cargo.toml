@@ -8,9 +8,10 @@ description = "OpenPixel Core — unified engine over the dynamic codec registry
 [dependencies]
 openpixel-formats = { path = "../openpixel-formats" }
 openpixel-codecs = { path = "../openpixel-codecs" }
+openpixel-pipeline = { path = "../openpixel-pipeline" }
 thiserror.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
 image.workspace = true
-tempfile = "3.10"
+tempfile = "=3.27.0"

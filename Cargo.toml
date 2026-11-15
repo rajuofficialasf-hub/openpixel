@@ -3,6 +3,7 @@ members = [
     "crates/openpixel-formats",
     "crates/openpixel-codecs",
     "crates/openpixel-core",
+    "crates/openpixel-pipeline",
     "apps/cli",
 ]
 resolver = "2"
@@ -16,11 +17,14 @@ license = "MIT OR Apache-2.0"
 # Phase 3: avif (ravif encode) + avif-native (dav1d decode, needs
 # system libdav1d-dev — see scripts/setup/ubuntu-24.04.sh),
 # hdr + exr (pure Rust, built into image-rs).
-image = { version = "0.25.10", default-features = false, features = ["jpeg", "png", "bmp", "gif", "tiff", "webp", "tga", "ico", "pnm", "qoi", "avif", "avif-native", "hdr", "exr"] }
-thiserror = "2.0"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-clap = { version = "4.5", features = ["derive"] }
+# Phase 4: versions pinned exactly (=) — see docs/CODECS.md and
+# docs/ARCHITECTURE.md. `cargo update` must stay explicit; a caret
+# range silently moving a codec is not acceptable for this engine.
+image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png", "bmp", "gif", "tiff", "webp", "tga", "ico", "pnm", "qoi", "avif", "avif-native", "hdr", "exr"] }
+thiserror = "=2.0.21"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+clap = { version = "=4.6.7", features = ["derive"] }
 # Phase 3 native codecs (pinned exact — see docs/CODECS.md):
 # SVG rasterisation (pure Rust), JPEG XL (pure Rust decode + encode),
 # JPEG 2000 (pure-Rust OpenJPEG port, no C library).

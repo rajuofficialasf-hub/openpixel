@@ -41,6 +41,9 @@ pub enum OpenPixelError {
 
     #[error("codec error: {0}")]
     Codec(openpixel_codecs::CodecError),
+
+    #[error("pipeline error: {0}")]
+    Pipeline(openpixel_pipeline::PipelineError),
 }
 
 pub type Result<T> = std::result::Result<T, OpenPixelError>;
@@ -52,6 +55,19 @@ impl From<openpixel_codecs::CodecError> for OpenPixelError {
             openpixel_codecs::CodecError::Encode(msg) => OpenPixelError::Encode(msg),
             openpixel_codecs::CodecError::Unsupported(msg) => OpenPixelError::NotImplemented(msg),
             openpixel_codecs::CodecError::InvalidInput(msg) => OpenPixelError::InvalidArgument(msg),
+        }
+    }
+}
+
+impl From<openpixel_pipeline::PipelineError> for OpenPixelError {
+    fn from(e: openpixel_pipeline::PipelineError) -> Self {
+        match e {
+            openpixel_pipeline::PipelineError::InvalidArgument(msg) => {
+                OpenPixelError::InvalidArgument(msg)
+            }
+            openpixel_pipeline::PipelineError::LimitExceeded(msg) => {
+                OpenPixelError::LimitExceeded(msg)
+            }
         }
     }
 }
