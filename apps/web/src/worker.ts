@@ -1,0 +1,68 @@
+/**
+ * Conversion worker — runs off the main thread so the UI stays
+ * responsive while pixels are decoded/encoded.
+ *
+ * Protocol (postMessage):
+ *   in:  { buffer: ArrayBuffer, mimeType: string, targetMime: string,
+ *          quality: number, flattenBackground: string | null }
+ *   out: { buffer: ArrayBuffer, width: number, height: number }
+ *        or { error: string }
+ *
+ * Decoding is `createImageBitmap` (browser-native: PNG/JPEG/WebP/GIF
+ * first frame/BMP/SVG/AVIF where the browser supports it). Encoding
+ * is `OffscreenCanvas.convertToBlob` (PNG/JPEG/WebP/BMP). Metadata is
+ * always stripped by a canvas round-trip — the UI says so.
+ */
+
+export interface WorkerConvertRequest {
+  buffer: ArrayBuffer
+  mimeType: string
+  targetMime: string
+  quality: number
+  flattenBackground: string | null
+}
+
+export interface WorkerConvertSuccess {
+  buffer: ArrayBuffer
+  width: number
+  height: number
+}
+
+export interface WorkerConvertFailure {
+  error: string
+}
+
+type WorkerMessage = WorkerConvertRequest
+
+self.onmessage = async (event: MessageEvent<WorkerMessage>) => {
+  const { buffer, mimeType, targetMime, quality, flattenBackground } = event.data
+  try {
+    const blob = new Blob([buffer], { type: mimeType })
+    const bitmap = await createImageBitmap(blob)
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Could not get a 2D canvas context in the worker.')
+    if (flattenBackground) {
+      ctx.fillStyle = flattenBackground
+      ctx.fillRect(0, 0, bitmap.width, bitmap.height)
+    }
+    ctx.drawImage(bitmap, 0, 0)
+    bitmap.close()
+    const out = await canvas.convertToBlob({ type: targetMime, quality: quality / 100 })
+    if (!out) {
+      throw new Error(`This browser cannot encode ${targetMime}. Try PNG or JPEG instead.`)
+    }
+    const outBuffer = await out.arrayBuffer()
+    const response: WorkerConvertSuccess = {
+      buffer: outBuffer,
+      width: canvas.width,
+      height: canvas.height,
+    }
+    self.postMessage(response, { transfer: [outBuffer] })
+  } catch (err) {
+    const response: WorkerConvertFailure = {
+      error: err instanceof Error ? err.message : 'Conversion failed in the worker.',
+    }
+    self.postMessage(response)
+  }
+}

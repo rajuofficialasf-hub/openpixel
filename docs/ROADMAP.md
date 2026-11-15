@@ -65,8 +65,22 @@
   `--pause-after N` was deliberately not added: in a
   non-interactive CLI run there is nothing useful to do with a
   paused queue except resume it immediately.
-- [ ] **Phase 7 — Web Application**: React + TypeScript + Vite +
-  Tailwind, WASM worker processing, conversion + batch UI, settings.
+- [x] **Phase 7 — Web Application** (done 16 Nov 2026, verified by
+  coordinator): React +
+  TypeScript + Vite + Tailwind, conversion + batch UI, settings,
+  capability dashboard generated from the engine registry
+  (`openpixel --json formats`); real local canvas conversion in a
+  Web Worker for PNG/JPEG/WebP/BMP (GIF first frame, SVG, AVIF
+  sources where the browser decodes them); WASM **not** available in
+  this build — the full engine does not compile to wasm32 here
+  (`dav1d-sys` needs a wasm32 libdav1d sysroot that does not exist;
+  only `openpixel-formats` builds to wasm32), so no WASM module is
+  shipped and the UI says so (see `docs/WEB.md`). Full conversion
+  (TIFF, AVIF, JXL, SVG, EXR, …) still needs the native CLI /
+  desktop app. `npm test` 17 passed; `npm run build` passes;
+  Rust workspace unchanged at 171 tests. See `docs/TESTING.md` for
+  the verification results and the manual browser checklist that
+  still needs a real browser run.
 - [ ] **Phase 8 — Desktop Application**: Tauri 2, native file picker,
   drag-and-drop, offline mode, installers (Windows/macOS/Linux).
 - [ ] **Phase 9 — Production QA**: security audit, fuzz tests,

@@ -26,6 +26,48 @@ Application Layer
                             (evaluated in CODECS.md, wired in Phase 3)
 ```
 
+## Phase 7 — what changed (draft — coordinator verifies and commits)
+
+- `apps/web/` is now a real app (was an empty placeholder): React 19
+  + TypeScript + Vite 8 + Tailwind CSS 3, single-page, no server —
+  static files only, all processing local in the browser. Four tabs:
+  Convert (drag-and-drop + picker, preview, magic-byte detection,
+  output selector, quality/background/metadata controls, download),
+  Batch (thumbnails, per-file status/errors, up-to-4 concurrent via
+  a promise pool, individual downloads + client-side zip via jszip),
+  Formats (capability dashboard), Settings (theme, defaults, batch
+  concurrency, reset/clear). Light + dark theme, responsive,
+  labelled controls, keyboard-operable drop zone, live regions.
+- Capability data is generated, never hand-written:
+  `apps/web/src/data/capabilities.json` (21 formats) comes from
+  `openpixel --json formats` via
+  `apps/web/scripts/generate-capabilities.mjs` (`npm run
+  generate:capabilities`), which refuses to write on a missing
+  binary, bad JSON, or a short/malformed list. Regeneration was
+  verified byte-identical on 16 Nov 2026.
+- Conversion is canvas-based in a Web Worker (`src/worker.ts` —
+  `createImageBitmap` decode, `OffscreenCanvas.convertToBlob`
+  encode, bundled as its own chunk) with a main-thread fallback if
+  the worker cannot start. Honest scope: sources PNG/JPEG/WebP/GIF
+  (first frame)/BMP/SVG/AVIF (browser-dependent), targets
+  PNG/JPEG/WebP/BMP only. Metadata is always stripped by a canvas
+  round-trip and the UI says so; PNG compression is accepted but
+  has no effect in the browser (no canvas knob) and the UI says so.
+  Detection in the browser (`src/lib/detect.ts`) is a 1:1 port of
+  the Rust `detect_format` signature table.
+- WASM: **not available in this build.** The `wasm32` target is
+  installed and `openpixel-formats` builds to wasm32, but the full
+  engine does not — `dav1d-sys` (AVIF decode) fails its build
+  script: pkg-config is not configured for wasm32
+  cross-compilation and there is no wasm32 libdav1d sysroot here;
+  `wasm-pack` is not installed. No WASM module is shipped and the
+  UI states this plainly (see `docs/WEB.md` for the evidence).
+- Tests: `npm test` — 17 Vitest tests (magic-byte detection +
+  capability filtering / format-option generation). `npm run build`
+  (tsc + Vite) passes; the production build serves over plain HTTP.
+  The Rust workspace is unchanged: 171 tests pass (was 171).
+  Dependency versions are pinned exactly in `apps/web/package.json`.
+
 ## Phase 6 — what changed (draft — coordinator verifies and commits)
 
 - `openpixel-jobs` is now a real workspace member (was a stub):

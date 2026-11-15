@@ -3,3 +3,6 @@
 .DS_Store
 *.log
 openpixel-out/
+apps/web/node_modules/
+apps/web/dist/
+apps/desktop/src-tauri/target/

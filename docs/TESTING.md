@@ -27,6 +27,65 @@ cargo test --workspace
   - Corrupted file (valid PNG signature + garbage) errors cleanly.
   - JPEG quality 20 vs 95 changes output size in the expected direction.
 
+## Verified results — Phase 7, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0, Node v24.22.1 / npm 10.9.4
+
+Web app in `apps/web/` (React 19.3.1 + TypeScript 7.0.2 + Vite 8.3.8
++ Tailwind CSS 3.4.17, all versions pinned exactly in
+`package.json`; Vitest 3.2.4, jszip 3.10.1). No server anywhere.
+
+- `npm run generate:capabilities` — writes 21 formats from
+  `target/release/openpixel --json formats`; re-running it
+  reproduces the checked-in `src/data/capabilities.json`
+  byte-for-byte (`diff` clean). A first version of the script
+  computed the repo root one level short (`apps/` instead of the
+  repo root) and failed loudly with the missing-binary message —
+  fixed to three levels up and re-verified.
+- `npm test` — **17 passed, 0 failed** (2 files): `detect.test.ts`
+  7 (JPEG/PNG/BMP/GIF/TIFF/WebP, AVIF/HEIC/HEIF/QOI/ICO/JXL,
+  JPEG 2000/PNM/EXR/HDR, TGA header validation, SVG start-only
+  sniff incl. HTML rejection, unknown/empty/truncated input),
+  `capabilities.test.ts` 10 (21 formats, planned formats
+  undecodable/unencodable, SVG decode-only, 16 implemented
+  decodable, encodable/browser-encodable/CLI-only partitioning,
+  alpha flattening, filenames/labels).
+- `npm run build` — passes (`tsc -b && vite build`, 1.25 s):
+  `dist/index.html` 0.63 kB, `dist/assets/index-*.css` 14.46 kB,
+  `dist/assets/index-*.js` 362.26 kB (gzip 107.98 kB),
+  `dist/assets/worker-*.js` 0.73 kB (the conversion worker is its
+  own chunk). Two real build failures found and fixed on the way:
+  a missing `bytes` field on the Convert result state, and the
+  worker URL/import resolved against `src/lib/` instead of `src/`
+  (`../worker.ts`, in both the type import and the `new Worker`
+  URL). `npm run dev` starts (Vite ready in 255 ms) and serves
+  the page at `http://localhost:5173/` (HTTP 200, correct title).
+- Production build served locally (`python3 -m http.server` in
+  `dist/`): `/` 200 (635 B), JS asset 200 (contains "OpenPixel"),
+  worker asset 200.
+- WASM attempt (evidence in `docs/WEB.md`): `rustup target add
+  wasm32-unknown-unknown` installed; `cargo build -p
+  openpixel-formats --target wasm32-unknown-unknown` succeeds
+  (10.95 s, `libopenpixel_formats.rlib`); `cargo build -p
+  openpixel-core --target wasm32-unknown-unknown` fails, exit 101
+  — `dav1d-sys` 0.8.3 build script panics (pkg-config not
+  configured for wasm32 cross-compilation, no wasm32 libdav1d
+  sysroot). `wasm-pack` is not installed. No WASM module is
+  shipped; the UI states this.
+- Rust workspace unchanged and green: `cargo fmt --all` +
+  `cargo fmt --check` pass, `cargo clippy --workspace
+  --all-targets -- -D warnings` passes, `cargo test --workspace`
+  **171 passed, 0 failed** (same as the Phase 6 baseline),
+  `cargo build --release` succeeds.
+- Manual browser checklist — NOT yet run in a real browser (no
+  live-browser tooling in this subagent session); confirm before
+  release: (1) drop a PNG, convert to JPEG/WebP/BMP and download —
+  output re-detects as the target; (2) drop a JPEG, check the
+  detected format ignores a lying extension (rename to `.png`);
+  (3) batch of 3+ files incl. one unsupported (e.g. TIFF) — TIFF
+  is skipped with a reason, the rest convert, zip downloads;
+  (4) theme toggle light/dark/system persists across reload;
+  (5) keyboard-only: tab to the drop zone, Enter opens the picker;
+  (6) GIF converts as first frame only, with the note shown.
+
 ## Verified results — Phase 6, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0
 
 Re-run `cargo test --workspace` to reproduce. System setup first:

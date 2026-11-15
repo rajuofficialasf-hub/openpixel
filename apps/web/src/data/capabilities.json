@@ -1,0 +1,434 @@
+[
+  {
+    "format_id": "jpeg",
+    "extensions": [
+      "jpg",
+      "jpeg"
+    ],
+    "mime_types": [
+      "image/jpeg"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": false,
+    "supports_animation": false,
+    "supports_metadata": true,
+    "supports_icc": true,
+    "supports_multiple_frames": false,
+    "native_dependency": "image-rs 0.25 (pure Rust)",
+    "license": "MIT OR Apache-2.0",
+    "status": "implemented",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "png",
+    "extensions": [
+      "png"
+    ],
+    "mime_types": [
+      "image/png"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": true,
+    "supports_animation": false,
+    "supports_metadata": true,
+    "supports_icc": true,
+    "supports_multiple_frames": true,
+    "native_dependency": "image-rs 0.25 (pure Rust)",
+    "license": "MIT OR Apache-2.0",
+    "status": "implemented — APNG: frame info in Phase 5; plain decode is the first frame only",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "bmp",
+    "extensions": [
+      "bmp"
+    ],
+    "mime_types": [
+      "image/bmp"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": false,
+    "supports_animation": false,
+    "supports_metadata": false,
+    "supports_icc": false,
+    "supports_multiple_frames": false,
+    "native_dependency": "image-rs 0.25 (pure Rust)",
+    "license": "MIT OR Apache-2.0",
+    "status": "implemented",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "gif",
+    "extensions": [
+      "gif"
+    ],
+    "mime_types": [
+      "image/gif"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": true,
+    "supports_animation": true,
+    "supports_metadata": false,
+    "supports_icc": false,
+    "supports_multiple_frames": true,
+    "native_dependency": "image-rs 0.25 (pure Rust)",
+    "license": "MIT OR Apache-2.0",
+    "status": "implemented — animation: frame enumeration + extraction in Phase 5; plain decode is the first frame only",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "tiff",
+    "extensions": [
+      "tif",
+      "tiff"
+    ],
+    "mime_types": [
+      "image/tiff"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": true,
+    "supports_animation": false,
+    "supports_metadata": true,
+    "supports_icc": true,
+    "supports_multiple_frames": true,
+    "native_dependency": "image-rs 0.25 (pure Rust)",
+    "license": "MIT OR Apache-2.0",
+    "status": "implemented — multi-page: page count + extraction in Phase 5; plain decode is the first page only",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "webp",
+    "extensions": [
+      "webp"
+    ],
+    "mime_types": [
+      "image/webp"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": true,
+    "supports_animation": true,
+    "supports_metadata": false,
+    "supports_icc": false,
+    "supports_multiple_frames": true,
+    "native_dependency": "image-rs 0.25 (pure Rust)",
+    "license": "MIT OR Apache-2.0",
+    "status": "implemented — animated WebP: frame info in Phase 5; plain decode is the first frame only",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "tga",
+    "extensions": [
+      "tga"
+    ],
+    "mime_types": [
+      "image/x-tga"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": true,
+    "supports_animation": false,
+    "supports_metadata": false,
+    "supports_icc": false,
+    "supports_multiple_frames": false,
+    "native_dependency": "image-rs 0.25 (pure Rust)",
+    "license": "MIT OR Apache-2.0",
+    "status": "implemented",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "ico",
+    "extensions": [
+      "ico"
+    ],
+    "mime_types": [
+      "image/vnd.microsoft.icon",
+      "image/x-icon"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": true,
+    "supports_animation": false,
+    "supports_metadata": false,
+    "supports_icc": false,
+    "supports_multiple_frames": false,
+    "native_dependency": "image-rs 0.25 (pure Rust)",
+    "license": "MIT OR Apache-2.0",
+    "status": "implemented",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "pnm",
+    "extensions": [
+      "pnm",
+      "pbm",
+      "pgm",
+      "ppm"
+    ],
+    "mime_types": [
+      "image/x-portable-anymap"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": true,
+    "supports_animation": false,
+    "supports_metadata": false,
+    "supports_icc": false,
+    "supports_multiple_frames": false,
+    "native_dependency": "image-rs 0.25 (pure Rust)",
+    "license": "MIT OR Apache-2.0",
+    "status": "implemented",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "qoi",
+    "extensions": [
+      "qoi"
+    ],
+    "mime_types": [
+      "image/qoi"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": true,
+    "supports_animation": false,
+    "supports_metadata": false,
+    "supports_icc": false,
+    "supports_multiple_frames": false,
+    "native_dependency": "image-rs 0.25 (pure Rust)",
+    "license": "MIT OR Apache-2.0",
+    "status": "implemented",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "svg",
+    "extensions": [
+      "svg"
+    ],
+    "mime_types": [
+      "image/svg+xml"
+    ],
+    "can_decode": true,
+    "can_encode": false,
+    "supports_alpha": true,
+    "supports_animation": false,
+    "supports_metadata": false,
+    "supports_icc": false,
+    "supports_multiple_frames": false,
+    "native_dependency": "resvg 0.48.1 / usvg 0.48.1 (pure Rust)",
+    "license": "MIT OR Apache-2.0 (resvg/usvg)",
+    "status": "implemented — decode (rasterise) only; scripts, external resources and network disabled",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "avif",
+    "extensions": [
+      "avif"
+    ],
+    "mime_types": [
+      "image/avif"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": true,
+    "supports_animation": false,
+    "supports_metadata": false,
+    "supports_icc": false,
+    "supports_multiple_frames": false,
+    "native_dependency": "ravif 0.13 (encode) + system dav1d 1.4.1 (decode)",
+    "license": "BSD-3-Clause (ravif) + BSD-2-Clause (rav1e, dav1d) + MPL-2.0 (mp4parse)",
+    "status": "implemented — still images only; 8-bit encode, speed 4",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "jxl",
+    "extensions": [
+      "jxl"
+    ],
+    "mime_types": [
+      "image/jxl"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": true,
+    "supports_animation": true,
+    "supports_metadata": false,
+    "supports_icc": true,
+    "supports_multiple_frames": false,
+    "native_dependency": "jxl-oxide 0.12 (decode) + zune-jpegxl 0.5 (encode, pure Rust)",
+    "license": "MIT OR Apache-2.0",
+    "status": "implemented — encode is lossless-only; animation: first frame on decode",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "hdr",
+    "extensions": [
+      "hdr"
+    ],
+    "mime_types": [
+      "image/vnd.radiance"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": false,
+    "supports_animation": false,
+    "supports_metadata": false,
+    "supports_icc": false,
+    "supports_multiple_frames": false,
+    "native_dependency": "image-rs 0.25 hdr (pure Rust)",
+    "license": "MIT OR Apache-2.0",
+    "status": "implemented — float values clamped to 8-bit SDR in Phase 3",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "exr",
+    "extensions": [
+      "exr"
+    ],
+    "mime_types": [
+      "image/x-exr"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": true,
+    "supports_animation": false,
+    "supports_metadata": false,
+    "supports_icc": false,
+    "supports_multiple_frames": false,
+    "native_dependency": "image-rs 0.25 + exr 1.74 (pure Rust)",
+    "license": "BSD-3-Clause (exr crate)",
+    "status": "implemented — float values clamped to 8-bit SDR in Phase 3",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "jpeg2000",
+    "extensions": [
+      "jp2",
+      "j2k"
+    ],
+    "mime_types": [
+      "image/jp2"
+    ],
+    "can_decode": true,
+    "can_encode": true,
+    "supports_alpha": true,
+    "supports_animation": false,
+    "supports_metadata": false,
+    "supports_icc": true,
+    "supports_multiple_frames": false,
+    "native_dependency": "jpeg2k 0.11 / openjp2 0.7 (pure-Rust OpenJPEG port)",
+    "license": "BSD-2-Clause (OpenJPEG)",
+    "status": "implemented — encode is lossless-only",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "heic",
+    "extensions": [
+      "heic"
+    ],
+    "mime_types": [
+      "image/heic"
+    ],
+    "can_decode": false,
+    "can_encode": false,
+    "supports_alpha": true,
+    "supports_animation": false,
+    "supports_metadata": true,
+    "supports_icc": true,
+    "supports_multiple_frames": false,
+    "native_dependency": "libheif (blocked in Phase 3 — see docs/CODECS.md)",
+    "license": "LGPL-3.0 (libheif)",
+    "status": "planned — detection only",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "heif",
+    "extensions": [
+      "heif"
+    ],
+    "mime_types": [
+      "image/heif"
+    ],
+    "can_decode": false,
+    "can_encode": false,
+    "supports_alpha": true,
+    "supports_animation": false,
+    "supports_metadata": true,
+    "supports_icc": true,
+    "supports_multiple_frames": false,
+    "native_dependency": "libheif (blocked in Phase 3 — see docs/CODECS.md)",
+    "license": "LGPL-3.0 (libheif)",
+    "status": "planned — detection only",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "apng",
+    "extensions": [
+      "apng"
+    ],
+    "mime_types": [
+      "image/apng"
+    ],
+    "can_decode": false,
+    "can_encode": false,
+    "supports_alpha": true,
+    "supports_animation": true,
+    "supports_metadata": false,
+    "supports_icc": false,
+    "supports_multiple_frames": true,
+    "native_dependency": "image-rs apng (planned, Phase 5)",
+    "license": "MIT OR Apache-2.0",
+    "status": "planned — not implemented",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "raw",
+    "extensions": [
+      "cr2",
+      "cr3",
+      "nef",
+      "arw",
+      "dng"
+    ],
+    "mime_types": [
+      "image/x-raw"
+    ],
+    "can_decode": false,
+    "can_encode": false,
+    "supports_alpha": false,
+    "supports_animation": false,
+    "supports_metadata": true,
+    "supports_icc": false,
+    "supports_multiple_frames": false,
+    "native_dependency": "LibRaw (planned, Phase D) — preview/flattened only, TBD",
+    "license": "LGPL-2.1 / CDDL (LibRaw)",
+    "status": "planned — not implemented",
+    "max_dimension": 16384
+  },
+  {
+    "format_id": "psd",
+    "extensions": [
+      "psd",
+      "psb"
+    ],
+    "mime_types": [
+      "image/vnd.adobe.photoshop"
+    ],
+    "can_decode": false,
+    "can_encode": false,
+    "supports_alpha": true,
+    "supports_animation": false,
+    "supports_metadata": false,
+    "supports_icc": false,
+    "supports_multiple_frames": true,
+    "native_dependency": "planned, Phase D — flattened preview only, TBD",
+    "license": "TBD",
+    "status": "planned — not implemented",
+    "max_dimension": 16384
+  }
+]
