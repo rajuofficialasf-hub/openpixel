@@ -114,25 +114,13 @@ impl ImageFormat {
         }
     }
 
-    /// Map to the `image` crate format, where one exists in this build.
-    pub fn to_image_format(self) -> Option<image::ImageFormat> {
-        use image::ImageFormat as F;
-        Some(match self {
-            Self::Jpeg => F::Jpeg,
-            Self::Png => F::Png,
-            Self::Bmp => F::Bmp,
-            Self::Gif => F::Gif,
-            Self::Tiff => F::Tiff,
-            Self::Webp => F::WebP,
-            Self::Tga => F::Tga,
-            Self::Ico => F::Ico,
-            Self::Pnm => F::Pnm,
-            Self::Qoi => F::Qoi,
-            _ => return None,
-        })
-    }
-
     /// Parse a user-supplied name / extension, e.g. "jpg", "JPEG", ".png".
+    ///
+    /// NOTE (Phase 2): the mapping from `ImageFormat` to the `image` crate
+    /// lives in `openpixel-codecs` (`image_rs::to_image_format`), not here.
+    /// This crate stays pure — no codec dependency — so format identity
+    /// and detection can be used by every other crate without pulling
+    /// in a decoder.
     pub fn from_name(name: &str) -> Option<Self> {
         let n = name.trim().trim_start_matches('.').to_ascii_lowercase();
         match n.as_str() {
@@ -157,6 +145,38 @@ impl ImageFormat {
             "apng" => Some(Self::Apng),
             "cr2" | "cr3" | "nef" | "arw" | "dng" | "raw" => Some(Self::Raw),
             "psd" | "psb" => Some(Self::Psd),
+            _ => None,
+        }
+    }
+}
+
+impl ImageFormat {
+    /// Parse a MIME type, e.g. "image/jpeg". Used only as a
+    /// low-confidence discovery fallback — never as proof of format.
+    pub fn from_mime(mime: &str) -> Option<Self> {
+        let m = mime.trim().to_ascii_lowercase();
+        match m.as_str() {
+            "image/jpeg" => Some(Self::Jpeg),
+            "image/png" => Some(Self::Png),
+            "image/bmp" => Some(Self::Bmp),
+            "image/gif" => Some(Self::Gif),
+            "image/tiff" => Some(Self::Tiff),
+            "image/webp" => Some(Self::Webp),
+            "image/x-tga" => Some(Self::Tga),
+            "image/vnd.microsoft.icon" | "image/x-icon" => Some(Self::Ico),
+            "image/x-portable-anymap" => Some(Self::Pnm),
+            "image/qoi" => Some(Self::Qoi),
+            "image/avif" => Some(Self::Avif),
+            "image/heic" => Some(Self::Heic),
+            "image/heif" => Some(Self::Heif),
+            "image/jxl" => Some(Self::Jxl),
+            "image/jp2" => Some(Self::Jpeg2000),
+            "image/svg+xml" => Some(Self::Svg),
+            "image/x-exr" => Some(Self::Exr),
+            "image/vnd.radiance" => Some(Self::Hdr),
+            "image/apng" => Some(Self::Apng),
+            "image/x-raw" => Some(Self::Raw),
+            "image/vnd.adobe.photoshop" => Some(Self::Psd),
             _ => None,
         }
     }
@@ -223,8 +243,9 @@ pub fn detect_format(bytes: &[u8]) -> ImageFormat {
     if bytes.len() >= 4 && &bytes[0..4] == b"\0\0\x01\0" {
         return ImageFormat::Ico;
     }
-    // PNM: P1..P6 + whitespace
-    if bytes.len() >= 2 && bytes[0] == b'P' && (b'1'..=b'6').contains(&bytes[1]) {
+    // PNM: P1..P6 + whitespace, plus P7 (PAM, which image-rs writes
+    // for RGBA images). P7 is the PAM magic, treated as PNM here.
+    if bytes.len() >= 2 && bytes[0] == b'P' && (b'1'..=b'7').contains(&bytes[1]) {
         return ImageFormat::Pnm;
     }
     // EXR: 76 2F 31 01

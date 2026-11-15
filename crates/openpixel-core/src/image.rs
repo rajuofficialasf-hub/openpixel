@@ -1,4 +1,5 @@
-use crate::format::ImageFormat;
+use openpixel_codecs::EncodeParams;
+use openpixel_formats::ImageFormat;
 use serde::{Deserialize, Serialize};
 
 /// What `info` reports about an image — no pixel data, cheap to obtain.
@@ -49,6 +50,16 @@ impl Default for ConvertOptions {
 impl ConvertOptions {
     pub fn jpeg_quality(&self, default: u8) -> u8 {
         self.quality.unwrap_or(default).clamp(1, 100)
+    }
+
+    /// Translate the engine-level options into the codec-level params.
+    /// The codec honours only the fields that apply to its format.
+    pub fn to_encode_params(&self) -> EncodeParams {
+        EncodeParams {
+            quality: self.quality,
+            png_compression: self.png_compression,
+            background: self.background,
+        }
     }
 }
 

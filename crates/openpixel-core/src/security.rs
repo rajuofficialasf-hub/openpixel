@@ -5,7 +5,9 @@ use std::path::{Path, PathBuf};
 /// Tune in `EngineConfig`; never remove them silently.
 pub const MAX_FILE_SIZE_BYTES: u64 = 100 * 1024 * 1024; // 100 MiB
 pub const MAX_PIXELS: u64 = 100_000_000; // 100 MP — decompression-bomb guard
-pub const MAX_DIMENSION: u32 = 16_384;
+/// Single source of truth lives in `openpixel-formats`; re-exported here
+/// so Phase 1 callers (`security::MAX_DIMENSION`) still compile.
+pub use openpixel_formats::MAX_DIMENSION;
 
 #[derive(Debug, Clone)]
 pub struct EngineConfig {

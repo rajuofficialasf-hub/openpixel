@@ -1,19 +1,21 @@
-use crate::capability::{capability, registry, FormatCapability};
 use crate::error::{OpenPixelError, Result};
-use crate::format::{detect_format, ImageFormat};
 use crate::image::{ConvertOptions, ConvertResult, ImageInfo};
 use crate::security::{check_dimensions, check_file_size, validate_output_path, EngineConfig};
-use image::codecs::jpeg::JpegEncoder;
-use image::codecs::png::{CompressionType, FilterType, PngEncoder};
-use image::{DynamicImage, ImageEncoder};
+use openpixel_codecs::CodecRegistry;
+use openpixel_formats::{detect_format, discover, DiscoveryResult, FormatCapability, ImageFormat};
 use std::fs;
-use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 /// The unified engine interface. Applications (web / desktop / CLI / WASM)
 /// must go through this — they never call a codec directly.
+///
+/// Phase 2: the engine owns a [`CodecRegistry`] and asks it for the
+/// codec for a format. It holds no format list and no codec code of
+/// its own. To add a format, register a codec — the engine, the CLI
+/// and the capability listing all follow automatically.
 pub struct Engine {
     config: EngineConfig,
+    registry: CodecRegistry,
 }
 
 impl Default for Engine {
@@ -24,11 +26,24 @@ impl Default for Engine {
 
 impl Engine {
     pub fn new(config: EngineConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            registry: CodecRegistry::default(),
+        }
+    }
+
+    /// Build an engine over a custom registry — how tests inject a
+    /// fake codec, and how Phase 3 will inject a native codec.
+    pub fn with_registry(config: EngineConfig, registry: CodecRegistry) -> Self {
+        Self { config, registry }
     }
 
     pub fn config(&self) -> &EngineConfig {
         &self.config
+    }
+
+    pub fn registry(&self) -> &CodecRegistry {
+        &self.registry
     }
 
     /// Detect the actual format from magic bytes (never the extension).
@@ -45,12 +60,26 @@ impl Engine {
         Ok(format)
     }
 
+    /// Full discovery: signature first, extension/MIME only as a
+    /// low-confidence fallback, with mismatch reporting.
+    /// `extension` is the file extension without the dot, if any.
+    pub fn discover_format(
+        &self,
+        bytes: &[u8],
+        extension: Option<&str>,
+        mime: Option<&str>,
+    ) -> DiscoveryResult {
+        discover(bytes, extension, mime)
+    }
+
+    /// Capabilities are built by the registry from the codecs actually
+    /// registered — never a hard-coded list.
     pub fn get_capabilities(&self) -> Vec<FormatCapability> {
-        registry()
+        self.registry.capabilities()
     }
 
     pub fn get_capability(&self, format: ImageFormat) -> Option<FormatCapability> {
-        capability(format)
+        self.registry.capability(format)
     }
 
     fn read_input(&self, path: &Path) -> Result<Vec<u8>> {
@@ -71,63 +100,47 @@ impl Engine {
         })
     }
 
-    /// Cheap header info: format + dimensions + colour type, without
-    /// forcing a full pixel decode where the reader supports it.
-    /// Phase 1 uses image-rs `ImageReader`, which reads the header first.
     pub fn get_image_info(&self, path: &Path) -> Result<ImageInfo> {
         let bytes = self.read_input(path)?;
         let format = detect_format(&bytes);
         if format == ImageFormat::Unknown {
             return Err(OpenPixelError::UnknownFormat);
         }
-        let cap = capability(format);
-        if let Some(c) = &cap {
-            if !c.can_decode {
-                return Err(OpenPixelError::NotImplemented(format!(
-                    "{} is detected but not decodable in this build ({})",
-                    format.id(),
-                    c.status
-                )));
-            }
-        }
-        let image_format = format.to_image_format().ok_or_else(|| {
-            OpenPixelError::NotImplemented(format!("no decoder wired for {}", format.id()))
+        let codec = self.registry.get(format).ok_or_else(|| {
+            let status = self
+                .registry
+                .capability(format)
+                .map(|c| c.status.to_string())
+                .unwrap_or_else(|| "not implemented".to_string());
+            OpenPixelError::NotImplemented(format!(
+                "{format} is detected but not decodable in this build ({status})",
+                format = format.id()
+            ))
         })?;
-        let reader = image::ImageReader::with_format(Cursor::new(&bytes), image_format);
-        let (width, height) = reader
-            .into_dimensions()
-            .map_err(|e| OpenPixelError::Decode(e.to_string()))?;
-        check_dimensions(width, height, &self.config)?;
-        // Decode once for colour type / alpha — Phase 1 trades a decode
+        // Header-only dimensions where the codec supports it, then a
+        // full decode for colour type / alpha — Phase 2 trades a decode
         // for correctness; header-only colour info lands in Phase 4.
-        let img = image::ImageReader::with_format(Cursor::new(&bytes), image_format)
-            .decode()
-            .map_err(|e| OpenPixelError::Decode(e.to_string()))?;
-        let color_type = format!("{:?}", img.color()).to_lowercase();
-        let has_alpha = img.color().has_alpha();
-        let is_animated = format == ImageFormat::Gif;
+        let (width, height) = codec.dimensions(&bytes)?;
+        check_dimensions(width, height, &self.config)?;
+        let img = codec.decode(&bytes)?;
         Ok(ImageInfo {
             format,
             width,
             height,
-            color_type,
-            has_alpha,
+            color_type: img.pixel_format.name().to_string(),
+            has_alpha: img.has_alpha(),
             file_size_bytes: bytes.len() as u64,
-            is_animated,
-            frame_count: if is_animated { Some(1) } else { None },
-            note: if is_animated {
-                Some("animated GIF: Phase 1 decodes the first frame only".to_string())
-            } else if format == ImageFormat::Tiff {
-                Some("multi-page TIFF: Phase 1 decodes the first page only".to_string())
-            } else {
-                None
-            },
+            is_animated: img.is_animated,
+            frame_count: img.frame_count,
+            note: img.note,
         })
     }
 
-    /// Convert one file. Pipeline (Phase 1):
-    /// signature detect -> validate -> decode -> canonical DynamicImage
-    /// -> flatten alpha if target lacks it -> encode -> validate output.
+    /// Convert one file. Pipeline (Phase 2):
+    /// signature detect -> registry lookup (source + target) ->
+    /// decode via source codec -> canonical `DecodedImage` ->
+    /// encode via target codec (alpha flattening inside the codec) ->
+    /// output validation (re-detect what was written).
     pub fn convert(
         &self,
         input: &Path,
@@ -135,7 +148,7 @@ impl Engine {
         target: ImageFormat,
         options: &ConvertOptions,
     ) -> Result<ConvertResult> {
-        let target_cap = capability(target).ok_or_else(|| {
+        let target_cap = self.registry.capability(target).ok_or_else(|| {
             OpenPixelError::InvalidArgument(format!("unknown target format {target}"))
         })?;
         if !target_cap.can_encode {
@@ -145,36 +158,23 @@ impl Engine {
                 target_cap.status
             )));
         }
+        let target_codec = self.registry.get(target).ok_or_else(|| {
+            OpenPixelError::NotImplemented(format!("no encoder registered for {}", target.id()))
+        })?;
         validate_output_path(output)?;
         let bytes = self.read_input(input)?;
         let source_format = detect_format(&bytes);
         if source_format == ImageFormat::Unknown {
             return Err(OpenPixelError::UnknownFormat);
         }
-        if capability(source_format)
-            .map(|c| !c.can_decode)
-            .unwrap_or(true)
-        {
-            return Err(OpenPixelError::NotImplemented(format!(
+        let source_codec = self.registry.get(source_format).ok_or_else(|| {
+            OpenPixelError::NotImplemented(format!(
                 "{} is detected but not decodable in this build",
                 source_format.id()
-            )));
-        }
-        let source_image_format = source_format.to_image_format().ok_or_else(|| {
-            OpenPixelError::NotImplemented(format!("no decoder wired for {}", source_format.id()))
+            ))
         })?;
-        let img = image::ImageReader::with_format(Cursor::new(&bytes), source_image_format)
-            .decode()
-            .map_err(|e| OpenPixelError::Decode(e.to_string()))?;
-        let (width, height) = (img.width(), img.height());
-        check_dimensions(width, height, &self.config)?;
-
-        // Flatten alpha for targets without it (JPEG, BMP).
-        let img = if !target_cap.supports_alpha && img.color().has_alpha() {
-            flatten_alpha(&img, options.background)
-        } else {
-            img
-        };
+        let img = source_codec.decode(&bytes)?;
+        check_dimensions(img.width, img.height, &self.config)?;
 
         if let Some(parent) = output.parent() {
             if !parent.as_os_str().is_empty() {
@@ -184,14 +184,11 @@ impl Engine {
                 })?;
             }
         }
-        let mut out: Vec<u8> = Vec::new();
-        encode(
-            &img,
-            target,
-            options,
-            self.config.default_jpeg_quality,
-            &mut out,
-        )?;
+        let mut params = options.to_encode_params();
+        if params.quality.is_none() {
+            params.quality = Some(self.config.default_jpeg_quality);
+        }
+        let out = target_codec.encode(&img, &params)?;
         // Output validation: re-detect what we just wrote.
         // TGA has no magic bytes, so it cannot be re-detected — for TGA
         // only check that something was written.
@@ -214,8 +211,8 @@ impl Engine {
         Ok(ConvertResult {
             source_format,
             target_format: target,
-            width,
-            height,
+            width: img.width,
+            height: img.height,
             input_bytes: bytes.len() as u64,
             output_bytes: out.len() as u64,
             output_path: output.to_string_lossy().to_string(),
@@ -242,102 +239,6 @@ impl Engine {
     }
 }
 
-fn flatten_alpha(img: &DynamicImage, bg: [u8; 3]) -> DynamicImage {
-    let rgba = img.to_rgba8();
-    let mut rgb = image::RgbImage::new(rgba.width(), rgba.height());
-    for (x, y, px) in rgba.enumerate_pixels() {
-        let a = px[3] as f32 / 255.0;
-        let blend = |fg: u8, b: u8| ((fg as f32 * a) + (b as f32 * (1.0 - a))).round() as u8;
-        rgb.put_pixel(
-            x,
-            y,
-            image::Rgb([
-                blend(px[0], bg[0]),
-                blend(px[1], bg[1]),
-                blend(px[2], bg[2]),
-            ]),
-        );
-    }
-    DynamicImage::ImageRgb8(rgb)
-}
-
-fn encode(
-    img: &DynamicImage,
-    target: ImageFormat,
-    options: &ConvertOptions,
-    default_quality: u8,
-    out: &mut Vec<u8>,
-) -> Result<()> {
-    match target {
-        ImageFormat::Jpeg => {
-            let rgb = img.to_rgb8();
-            let mut cursor = Cursor::new(out);
-            let mut encoder =
-                JpegEncoder::new_with_quality(&mut cursor, options.jpeg_quality(default_quality));
-            encoder
-                .encode(
-                    &rgb,
-                    rgb.width(),
-                    rgb.height(),
-                    image::ExtendedColorType::Rgb8,
-                )
-                .map_err(|e| OpenPixelError::Encode(e.to_string()))?;
-        }
-        ImageFormat::Png => {
-            let compression = match options.png_compression.unwrap_or(1) {
-                0 => CompressionType::Fast,
-                2 => CompressionType::Best,
-                _ => CompressionType::Default,
-            };
-            let mut cursor = Cursor::new(out);
-            let encoder =
-                PngEncoder::new_with_quality(&mut cursor, compression, FilterType::Adaptive);
-            // PngEncoder::encode needs raw bytes + colour type.
-            let (data, color) = raw_bytes(img);
-            encoder
-                .write_image(&data, img.width(), img.height(), color)
-                .map_err(|e| OpenPixelError::Encode(e.to_string()))?;
-        }
-        _ => {
-            // BMP / GIF / TIFF / WebP / TGA / ICO / PNM / QOI via image-rs.
-            let fmt = target.to_image_format().ok_or_else(|| {
-                OpenPixelError::NotImplemented(format!("no encoder wired for {}", target.id()))
-            })?;
-            let mut cursor = Cursor::new(out);
-            img.write_to(&mut cursor, fmt)
-                .map_err(|e| OpenPixelError::Encode(e.to_string()))?;
-        }
-    }
-    Ok(())
-}
-
-fn raw_bytes(img: &DynamicImage) -> (Vec<u8>, image::ExtendedColorType) {
-    use image::ExtendedColorType as C;
-    match img.color() {
-        image::ColorType::Rgb8 => (img.to_rgb8().into_raw(), C::Rgb8),
-        image::ColorType::Rgba8 => (img.to_rgba8().into_raw(), C::Rgba8),
-        image::ColorType::L8 => (img.to_luma8().into_raw(), C::L8),
-        image::ColorType::La8 => (img.to_luma_alpha8().into_raw(), C::La8),
-        image::ColorType::Rgb16 => (
-            img.to_rgb16()
-                .as_raw()
-                .iter()
-                .flat_map(|v| v.to_ne_bytes())
-                .collect(),
-            C::Rgb16,
-        ),
-        image::ColorType::Rgba16 => (
-            img.to_rgba16()
-                .as_raw()
-                .iter()
-                .flat_map(|v| v.to_ne_bytes())
-                .collect(),
-            C::Rgba16,
-        ),
-        _ => (img.to_rgba8().into_raw(), C::Rgba8),
-    }
-}
-
 /// Helper used by tests / CLI to build an output path next to the input.
 pub fn default_output_path(input: &Path, target: ImageFormat) -> PathBuf {
     let stem = input
@@ -351,7 +252,7 @@ pub fn default_output_path(input: &Path, target: ImageFormat) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use image::{Rgb, RgbImage};
+    use image::{DynamicImage, Rgb, RgbImage};
 
     fn test_image_rgba() -> DynamicImage {
         let mut im = image::RgbaImage::new(8, 6);
@@ -453,5 +354,35 @@ mod tests {
             engine.get_image_info(Path::new("/no/such/file.png")),
             Err(OpenPixelError::NotFound(_))
         ));
+    }
+
+    #[test]
+    fn capabilities_come_from_the_registry() {
+        let engine = Engine::default();
+        let caps = engine.get_capabilities();
+        assert_eq!(caps.len(), 21);
+        assert_eq!(caps.iter().filter(|c| c.can_encode).count(), 10);
+        // Removing a codec removes it from the capability list too.
+        let mut registry = CodecRegistry::default();
+        registry.remove(ImageFormat::Webp);
+        let engine = Engine::with_registry(EngineConfig::default(), registry);
+        assert_eq!(engine.get_capabilities().len(), 20);
+        assert!(engine.get_capability(ImageFormat::Webp).is_none());
+        let src_dir = tempfile::tempdir().unwrap();
+        let src = src_dir.path().join("a.png");
+        test_image_rgb().save(&src).unwrap();
+        let dst = src_dir.path().join("b.webp");
+        assert!(engine
+            .convert(&src, &dst, ImageFormat::Webp, &ConvertOptions::default())
+            .is_err());
+    }
+
+    #[test]
+    fn discovery_reports_a_lying_extension() {
+        let engine = Engine::default();
+        let png = b"\x89PNG\r\n\x1A\nxxxx";
+        let r = engine.discover_format(png, Some("jpg"), None);
+        assert_eq!(r.format, ImageFormat::Png);
+        assert!(r.has_mismatch());
     }
 }

@@ -4,9 +4,14 @@
   error system, magic-byte detection, capability registry, JPEG/PNG/BMP/
   GIF/TIFF/WebP/TGA/ICO/PNM/QOI via image-rs, CLI (`info/convert/formats/
   capabilities/batch`), security limits, unit + integration tests, docs.
-  **Stop here for approval before Phase 2.**
-- [ ] **Phase 2 — Codec Registry**: codec traits, dynamic registry,
-  format discovery, adapter architecture; harden JPEG/PNG/WebP/BMP/GIF/TIFF.
+  (Approved 15 Nov 2026; Phase 2 followed.)
+- [x] **Phase 2 — Codec Registry** (done 15 Nov 2026): `openpixel-formats`
+  (format identity, magic-byte detection, discovery, capability data),
+  `openpixel-codecs` (`Codec`/`Decoder`/`Encoder` traits, `ImageRsCodec`
+  adapters for 10 formats, dynamic `CodecRegistry`, `DecodedImage`
+  canonical type), engine refactored to the registry with an unchanged
+  public API, new CLI `discover` command. 29 tests pass.
+  **Stop here for approval before Phase 3.**
 - [ ] **Phase 3 — Native Codecs**: libjpeg-turbo, libwebp, libavif,
   libheif, libtiff; evaluate libjxl + OpenJPEG; SVG rasterisation (resvg).
 - [ ] **Phase 4 — Processing Pipeline**: resize, crop, rotate, flip,

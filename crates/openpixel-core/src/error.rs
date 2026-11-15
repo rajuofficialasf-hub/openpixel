@@ -39,8 +39,19 @@ pub enum OpenPixelError {
     #[error("output path is unsafe or outside the allowed directory: {0}")]
     UnsafePath(PathBuf),
 
-    #[error("image crate error: {0}")]
-    Image(#[from] image::ImageError),
+    #[error("codec error: {0}")]
+    Codec(openpixel_codecs::CodecError),
 }
 
 pub type Result<T> = std::result::Result<T, OpenPixelError>;
+
+impl From<openpixel_codecs::CodecError> for OpenPixelError {
+    fn from(e: openpixel_codecs::CodecError) -> Self {
+        match e {
+            openpixel_codecs::CodecError::Decode(msg) => OpenPixelError::Decode(msg),
+            openpixel_codecs::CodecError::Encode(msg) => OpenPixelError::Encode(msg),
+            openpixel_codecs::CodecError::Unsupported(msg) => OpenPixelError::NotImplemented(msg),
+            openpixel_codecs::CodecError::InvalidInput(msg) => OpenPixelError::InvalidArgument(msg),
+        }
+    }
+}

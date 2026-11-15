@@ -357,13 +357,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "openpixel-codecs"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "openpixel-formats",
+ "serde",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
 name = "openpixel-core"
 version = "0.1.0"
 dependencies = [
  "image",
+ "openpixel-codecs",
+ "openpixel-formats",
  "serde",
  "tempfile",
  "thiserror",
+]
+
+[[package]]
+name = "openpixel-formats"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

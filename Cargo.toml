@@ -1,5 +1,7 @@
 [workspace]
 members = [
+    "crates/openpixel-formats",
+    "crates/openpixel-codecs",
     "crates/openpixel-core",
     "apps/cli",
 ]

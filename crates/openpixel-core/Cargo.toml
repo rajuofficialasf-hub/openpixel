@@ -3,12 +3,14 @@ name = "openpixel-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "OpenPixel Core — format detection, codec registry, security limits and conversion engine (Phase 1)"
+description = "OpenPixel Core — unified engine over the dynamic codec registry (Phase 2)"
 
 [dependencies]
-image.workspace = true
+openpixel-formats = { path = "../openpixel-formats" }
+openpixel-codecs = { path = "../openpixel-codecs" }
 thiserror.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
+image.workspace = true
 tempfile = "3.10"

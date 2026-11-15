@@ -1,8 +1,6 @@
 use clap::{Parser, Subcommand};
 use openpixel_core::security::parse_background;
-use openpixel_core::{
-    capability, detect_format, ConvertOptions, Engine, EngineConfig, ImageFormat,
-};
+use openpixel_core::{detect_format, ConvertOptions, Engine, EngineConfig, ImageFormat};
 use std::fs;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -11,7 +9,7 @@ use std::process::ExitCode;
 #[command(
     name = "openpixel",
     version,
-    about = "OpenPixel Engine — local image conversion (Phase 1)"
+    about = "OpenPixel Engine — local image conversion (Phase 2)"
 )]
 struct Cli {
     /// Output machine-readable JSON instead of human text
@@ -45,6 +43,8 @@ enum Commands {
         #[arg(long, default_value = "white")]
         background: String,
     },
+    /// Identify a file's real format: signature vs extension vs MIME
+    Discover { input: PathBuf },
     /// List every format the registry knows, with what this build can do
     Formats,
     /// Show capabilities for one format, e.g. `capabilities avif`
@@ -130,6 +130,35 @@ fn run(cli: &Cli, engine: &Engine) -> Result<(), openpixel_core::OpenPixelError>
             }
             Ok(())
         }
+        Commands::Discover { input } => {
+            let bytes = fs::read(input).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    openpixel_core::OpenPixelError::NotFound(input.clone())
+                } else {
+                    openpixel_core::OpenPixelError::Io {
+                        path: input.clone(),
+                        source: e,
+                    }
+                }
+            })?;
+            let ext = input.extension().and_then(|e| e.to_str());
+            let result = engine.discover_format(&bytes, ext, None);
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&result).unwrap());
+            } else {
+                println!("file:       {}", input.display());
+                println!("format:     {}", result.format);
+                println!("method:     {:?}", result.method);
+                println!("confidence: {:?}", result.confidence);
+                if result.has_mismatch() {
+                    println!(
+                        "warning:    extension claims {:?} but the signature says {}",
+                        result.extension_claim, result.format
+                    );
+                }
+            }
+            Ok(())
+        }
         Commands::Formats => {
             let caps = engine.get_capabilities();
             if cli.json {
@@ -150,7 +179,7 @@ fn run(cli: &Cli, engine: &Engine) -> Result<(), openpixel_core::OpenPixelError>
                         c.status
                     );
                 }
-                println!("\nOnly formats with decode=yes and encode=yes convert in Phase 1.");
+                println!("\nOnly formats with decode=yes and encode=yes convert in Phase 2.");
                 println!("Use `openpixel capabilities <format>` for full detail.");
             }
             Ok(())
@@ -161,7 +190,7 @@ fn run(cli: &Cli, engine: &Engine) -> Result<(), openpixel_core::OpenPixelError>
                     "unknown format '{format}'"
                 ))
             })?;
-            let cap = capability(fmt).ok_or_else(|| {
+            let cap = engine.get_capability(fmt).ok_or_else(|| {
                 openpixel_core::OpenPixelError::InvalidArgument(format!(
                     "unknown format '{format}'"
                 ))

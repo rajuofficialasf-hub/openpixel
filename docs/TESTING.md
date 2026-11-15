@@ -27,7 +27,27 @@ cargo test --workspace
   - Corrupted file (valid PNG signature + garbage) errors cleanly.
   - JPEG quality 20 vs 95 changes output size in the expected direction.
 
-## Verified results — 15 Nov 2026, Ubuntu 24.04, Rust 1.100.0
+## Verified results — Phase 2, 15 Nov 2026, Ubuntu 24.04, Rust 1.100.0
+
+Re-run `cargo test --workspace` to reproduce.
+
+- `cargo build --release` — succeeds, binary `target/release/openpixel`.
+- `cargo test --workspace` — **29 passed, 0 failed**: formats 9
+  (detection 5 + discovery 4), codecs 6 (registry 3 + adapter
+  round-trips 3), core 14 (unit 10 + integration 4). Phase 1's 17
+  tests still pass unchanged in behaviour.
+- `cargo clippy --workspace -- -D warnings` — passes.
+  `cargo fmt --check` — passes.
+- Manual CLI verification: `discover` on a PNG named `.jpg` reports
+  format png, method Signature, confidence High, with a mismatch
+  warning; `formats` still lists 21 formats from the dynamic
+  registry; conversions unchanged from Phase 1.
+- Bugs found and fixed during Phase 2: image-rs writes RGBA PNM as
+  PAM (P7), which detection rejected — P7 is now recognised as PNM;
+  `Decoder`/`Encoder` both defining `format()` was ambiguous, so
+  the format is now reported once, on `Decoder`.
+
+## Verified results — Phase 1, 15 Nov 2026, Ubuntu 24.04, Rust 1.100.0
 
 Re-run `cargo test --workspace` to reproduce.
 

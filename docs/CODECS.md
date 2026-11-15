@@ -19,7 +19,7 @@ runtime expression of this table — run `openpixel formats` to see it live.
 | WebP | yes | yes | image-rs 0.25.10 | MIT OR Apache-2.0 |
 | TGA | yes | yes | image-rs 0.25.10 | MIT OR Apache-2.0 |
 | ICO | yes | yes | image-rs 0.25.10 | MIT OR Apache-2.0 |
-| PNM/PBM/PGM/PPM | yes | yes | image-rs 0.25.10 | MIT OR Apache-2.0 |
+| PNM/PBM/PGM/PPM (+PAM/P7, which image-rs writes for RGBA) | yes | yes | image-rs 0.25.10 | MIT OR Apache-2.0 |
 | QOI | yes | yes | image-rs 0.25.10 | MIT OR Apache-2.0 |
 
 \* GIF: first frame only. TIFF: first page only. Animated WebP / APNG:
@@ -33,7 +33,15 @@ jpeg-decoder, png, gif, tiff, etc.) — all permissive. A full SBOM
 (`cargo tree` / `cargo audit`) is a Phase 9 task; Phase 1 pins exact
 versions in `Cargo.lock`.
 
-## Detected only in Phase 1 (NOT convertible — do not claim otherwise)
+## Phase 2 — adapters
+
+Each implemented format has one `ImageRsCodec` adapter behind the
+`Codec` trait. The registry builds its capability list from the
+registered adapters, so `openpixel formats` always reflects the
+codecs actually present. A custom codec can be registered without
+touching the engine (proven by a test codec in `registry.rs`).
+
+## Detected only in Phase 2 (NOT convertible — do not claim otherwise)
 
 | Format | Signature detected | Planned implementation | Licence / risk |
 |---|---|---|---|

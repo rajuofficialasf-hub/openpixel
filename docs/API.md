@@ -49,10 +49,32 @@ let result = engine.convert_to_path(Path::new("in.png"), Path::new("out.webp"), 
   NotImplemented, EncodeUnsupported, Decode, Encode, LimitExceeded,
   InvalidArgument, UnsafePath, Io, Image`.
 
-## CLI (the Phase 1 application of this API)
+## Phase 2 — registry and discovery
+
+```rust
+use openpixel_core::{CodecRegistry, Engine, EngineConfig};
+use openpixel_codecs::{Codec, Decoder, Encoder, DecodedImage, EncodeParams};
+use openpixel_formats::ImageFormat;
+
+// Capabilities come from the registry, not a hard-coded list:
+let registry = CodecRegistry::default();          // 10 codecs + 11 planned
+assert_eq!(registry.capabilities().len(), 21);
+let engine = Engine::with_registry(EngineConfig::default(), registry);
+
+// Discovery: signature wins; a lying extension is reported, not trusted:
+let found = engine.discover_format(&bytes, Some("jpg"), None);
+assert!(found.has_mismatch()); // a PNG named .jpg
+
+// Adding a codec: implement Codec for your struct and register it.
+// Registering for an existing format replaces that format's codec —
+// that is how a Phase 3 native codec will supersede image-rs.
+```
+
+## CLI (the Phase 2 application of this API)
 
 ```
 openpixel info <input>
+openpixel discover <input>
 openpixel convert <input> <output> [--quality 1-100] [--png-compression 0|1|2] [--background white|black|#RRGGBB]
 openpixel formats
 openpixel capabilities <format>

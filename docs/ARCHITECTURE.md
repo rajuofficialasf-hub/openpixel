@@ -26,6 +26,30 @@ Application Layer
                             (evaluated in CODECS.md, wired in Phase 3)
 ```
 
+## Phase 2 — what changed
+
+- `openpixel-formats`: `ImageFormat`, magic-byte detection, `discover()`
+  (signature → extension/MIME fallback, mismatch reporting),
+  `FormatCapability` data. Pure — no codec dependency.
+- `openpixel-codecs`: `Decoder` / `Encoder` / `Codec` traits,
+  `ImageRsCodec` (one adapter per format, image-rs 0.25),
+  `CodecRegistry` (register / replace / remove; capabilities built
+  from registered codecs + 11 planned entries), `DecodedImage`
+  (canonical `width, height, PixelFormat, data`) and `EncodeParams`.
+  A native codec is a second struct implementing `Codec` for the
+  same format — registering it replaces the pure-Rust adapter.
+- `openpixel-core`: `Engine` now owns a `CodecRegistry`
+  (`Engine::with_registry` injects a custom one for tests / native
+  codecs). It holds no format list and calls no codec directly.
+  Its public API (`detect_format`, `get_image_info`, `convert`,
+  `convert_to_path`, `get_capabilities`) is unchanged from Phase 1.
+- New CLI command: `openpixel discover <file>` — signature vs
+  extension, with a warning on mismatch.
+- One design fix found by the compiler: `Decoder` and `Encoder`
+  both defining `format()` was ambiguous, so the format is reported
+  once, on `Decoder` — a codec is one format, and its two sides
+  can never disagree about which one.
+
 ## Phase 1 decisions (with reasons)
 
 | Decision | Reason | Revisit when |
@@ -40,9 +64,14 @@ Application Layer
 ## Module map — `crates/openpixel-core/src/`
 
 - `lib.rs` — public surface: `Engine`, `ImageFormat`, `FormatCapability`, errors, options.
-- `format.rs` — `ImageFormat` enum, extensions/MIME, `detect_format()` (magic bytes).
-- `capability.rs` — `FormatCapability` + `registry()`; the single source of truth the UI/CLI generate options from.
-- `engine.rs` — `Engine`: `detect_format`, `get_image_info`, `convert`, `convert_to_path`, alpha flattening, output re-validation.
+- `openpixel-formats/src/format.rs` — `ImageFormat` enum, extensions/MIME, `detect_format()` (magic bytes), `from_mime()`.
+- `openpixel-formats/src/discovery.rs` — `discover()`: signature first, extension/MIME low-confidence fallback, mismatch flag.
+- `openpixel-formats/src/capability.rs` — `FormatCapability` data only.
+- `openpixel-codecs/src/traits.rs` — `Decoder` / `Encoder` / `Codec`.
+- `openpixel-codecs/src/image_rs.rs` — `ImageRsCodec` adapters + the only `image`-crate format mapping.
+- `openpixel-codecs/src/registry.rs` — `CodecRegistry`: the single source of truth the UI/CLI generate options from.
+- `openpixel-codecs/src/types.rs` — `DecodedImage`, `PixelFormat`, `EncodeParams`.
+- `openpixel-core/src/engine.rs` — `Engine`: `detect_format`, `discover_format`, `get_image_info`, `convert`, `convert_to_path`, output re-validation. Alpha flattening moved into the codec.
 - `image.rs` — `ImageInfo`, `ConvertOptions`, `ConvertResult` (typed API, no codec details leak out).
 - `security.rs` — `EngineConfig` + limits (`MAX_FILE_SIZE_BYTES` 100 MiB, `MAX_PIXELS` 100 MP, `MAX_DIMENSION` 16384), path validation, background-colour parsing.
 - `error.rs` — `OpenPixelError` (thiserror): typed, no silent failures.

@@ -1,0 +1,9 @@
+[package]
+name = "openpixel-formats"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OpenPixel formats — format identity, magic-byte detection, discovery and capability data (Phase 2)"
+
+[dependencies]
+serde.workspace = true

@@ -1,0 +1,15 @@
+[package]
+name = "openpixel-codecs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OpenPixel codecs — Codec/Decoder/Encoder traits, image-rs adapters, dynamic registry (Phase 2)"
+
+[dependencies]
+openpixel-formats = { path = "../openpixel-formats" }
+image.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+tempfile = "3.10"
