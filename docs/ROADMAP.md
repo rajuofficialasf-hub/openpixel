@@ -11,9 +11,19 @@
   adapters for 10 formats, dynamic `CodecRegistry`, `DecodedImage`
   canonical type), engine refactored to the registry with an unchanged
   public API, new CLI `discover` command. 29 tests pass.
-  **Stop here for approval before Phase 3.**
-- [ ] **Phase 3 — Native Codecs**: libjpeg-turbo, libwebp, libavif,
-  libheif, libtiff; evaluate libjxl + OpenJPEG; SVG rasterisation (resvg).
+  (Phase 3 followed under the auto-run permission, 15 Nov 2026.)
+- [x] **Phase 3 — Native Codecs** (done 16 Nov 2026, verified by
+  coordinator): SVG rasterisation (resvg 0.48 / usvg 0.48,
+  decode-only, scripts and external resources disabled), AVIF
+  (ravif encode + system dav1d decode — needs `libdav1d-dev`, see
+  `scripts/setup/ubuntu-24.04.sh`), JPEG XL (jxl-oxide decode +
+  zune-jpegxl lossless encode — the `image` crate 0.25.10 has no
+  `jxl` feature), HDR + EXR (image-rs, clamped to 8-bit SDR in
+  Phase 3, noted on the image), JPEG 2000 (jpeg2k/openjp2,
+  pure-Rust OpenJPEG port — no C library). HEIC/HEIF stays
+  detection-only: blocked because the VM's libheif1 1.23.3-1 has no
+  matching `-dev` package (see `docs/CODECS.md`).
+  50 tests pass (was 29).
 - [ ] **Phase 4 — Processing Pipeline**: resize, crop, rotate, flip,
   fit/fill/pad, thumbnail, grayscale, brightness/contrast/saturation,
   blur, sharpen, watermark, background colour.

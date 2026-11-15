@@ -272,11 +272,44 @@ pub fn detect_format(bytes: &[u8]) -> ImageFormat {
             return ImageFormat::Tga;
         }
     }
-    // SVG is XML text — only a weak sniff; real SVG validation is Phase 3 (resvg).
-    // We deliberately do NOT claim SVG here from a bare "<svg" without more
-    // context, because HTML/XML can mimic it. SVG detection stays extension-
-    // assisted in Phase 1 and is reported as planned, not implemented.
+    // SVG is XML text — sniff it strictly, at the start of the file only:
+    // optional UTF-8 BOM, whitespace, an optional `<?xml ...?>`
+    // declaration, then `<svg` followed by whitespace / `>` / `/`.
+    // An `<svg>` buried inside an HTML document does NOT match, so a
+    // web page is never misdetected as an SVG image. The rasteriser
+    // (Phase 3, resvg) validates the document again on decode.
+    if is_svg(bytes) {
+        return ImageFormat::Svg;
+    }
     ImageFormat::Unknown
+}
+
+/// Strict start-of-file SVG sniff used by [`detect_format`].
+/// See the comment at the call site for why the match is anchored.
+fn is_svg(bytes: &[u8]) -> bool {
+    let mut i = 0;
+    // UTF-8 BOM.
+    if bytes.len() >= 3 && &bytes[0..3] == b"\xEF\xBB\xBF" {
+        i = 3;
+    }
+    let skip_ws = |mut i: usize| -> usize {
+        while i < bytes.len() && matches!(bytes[i], b' ' | b'\t' | b'\r' | b'\n') {
+            i += 1;
+        }
+        i
+    };
+    i = skip_ws(i);
+    // Optional `<?xml ...?>` declaration.
+    if bytes.len() >= i + 5 && &bytes[i..i + 5] == b"<?xml" {
+        match bytes[i..].windows(2).position(|w| w == b"?>") {
+            Some(end) => i = skip_ws(i + end + 2),
+            None => return false,
+        }
+    }
+    // `<svg` followed by whitespace, `>` or `/` (so `<svgx` is not SVG).
+    bytes.len() >= i + 5
+        && &bytes[i..i + 4] == b"<svg"
+        && matches!(bytes[i + 4], b' ' | b'\t' | b'\r' | b'\n' | b'>' | b'/')
 }
 
 #[cfg(test)]
@@ -311,6 +344,33 @@ mod tests {
         // 18-byte TGA header: type 2 (true-colour), 8x6, 24-bit.
         let hdr: [u8; 18] = [0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 0, 6, 0, 24, 0];
         assert_eq!(detect_format(&hdr), ImageFormat::Tga);
+    }
+
+    #[test]
+    fn detects_svg_at_start_only() {
+        assert_eq!(
+            detect_format(
+                b"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"4\" height=\"4\"></svg>"
+            ),
+            ImageFormat::Svg
+        );
+        assert_eq!(
+            detect_format(b"<?xml version=\"1.0\"?>\n<svg width=\"4\" height=\"4\"/>"),
+            ImageFormat::Svg
+        );
+        assert_eq!(detect_format(b"\xEF\xBB\xBF  <svg/>"), ImageFormat::Svg);
+        // `<svg` buried in HTML is NOT an SVG file.
+        assert_eq!(
+            detect_format(b"<html><body><svg></svg></body></html>"),
+            ImageFormat::Unknown
+        );
+        // `<svgx` is not `<svg`.
+        assert_eq!(detect_format(b"<svgx></svgx>"), ImageFormat::Unknown);
+        // Unterminated XML declaration is not SVG.
+        assert_eq!(
+            detect_format(b"<?xml version=\"1.0\""),
+            ImageFormat::Unknown
+        );
     }
 
     #[test]

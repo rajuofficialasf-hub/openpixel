@@ -9,7 +9,7 @@ use std::process::ExitCode;
 #[command(
     name = "openpixel",
     version,
-    about = "OpenPixel Engine — local image conversion (Phase 2)"
+    about = "OpenPixel Engine — local image conversion (Phase 3)"
 )]
 struct Cli {
     /// Output machine-readable JSON instead of human text
@@ -179,7 +179,7 @@ fn run(cli: &Cli, engine: &Engine) -> Result<(), openpixel_core::OpenPixelError>
                         c.status
                     );
                 }
-                println!("\nOnly formats with decode=yes and encode=yes convert in Phase 2.");
+                println!("\nFormats with decode=yes convert as a source; formats with encode=yes convert as a target.");
                 println!("Use `openpixel capabilities <format>` for full detail.");
             }
             Ok(())

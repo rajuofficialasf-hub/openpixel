@@ -3,13 +3,21 @@ name = "openpixel-codecs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "OpenPixel codecs — Codec/Decoder/Encoder traits, image-rs adapters, dynamic registry (Phase 2)"
+description = "OpenPixel codecs — Codec/Decoder/Encoder traits, image-rs adapters, native Phase 3 codecs, dynamic registry (Phase 2)"
 
 [dependencies]
 openpixel-formats = { path = "../openpixel-formats" }
 image.workspace = true
 thiserror.workspace = true
 serde.workspace = true
+# Phase 3 native codecs.
+resvg.workspace = true
+usvg.workspace = true
+fontdb.workspace = true
+jxl-oxide.workspace = true
+zune-jpegxl.workspace = true
+zune-core.workspace = true
+jpeg2k.workspace = true
 
 [dev-dependencies]
 tempfile = "3.10"

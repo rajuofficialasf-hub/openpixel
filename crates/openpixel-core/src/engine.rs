@@ -329,7 +329,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_format_and_unimplemented_avif() {
+    fn rejects_unknown_format_and_unimplemented_heic() {
         let dir = tempfile::tempdir().unwrap();
         let bad = dir.path().join("bad.bin");
         fs::write(&bad, b"this is not an image at all").unwrap();
@@ -340,9 +340,9 @@ mod tests {
         ));
         let src = dir.path().join("a.png");
         test_image_rgb().save(&src).unwrap();
-        let dst = dir.path().join("b.avif");
+        let dst = dir.path().join("b.heic");
         assert!(matches!(
-            engine.convert(&src, &dst, ImageFormat::Avif, &ConvertOptions::default()),
+            engine.convert(&src, &dst, ImageFormat::Heic, &ConvertOptions::default()),
             Err(OpenPixelError::NotImplemented(_))
         ));
     }
@@ -361,7 +361,7 @@ mod tests {
         let engine = Engine::default();
         let caps = engine.get_capabilities();
         assert_eq!(caps.len(), 21);
-        assert_eq!(caps.iter().filter(|c| c.can_encode).count(), 10);
+        assert_eq!(caps.iter().filter(|c| c.can_encode).count(), 15);
         // Removing a codec removes it from the capability list too.
         let mut registry = CodecRegistry::default();
         registry.remove(ImageFormat::Webp);
@@ -375,6 +375,48 @@ mod tests {
         assert!(engine
             .convert(&src, &dst, ImageFormat::Webp, &ConvertOptions::default())
             .is_err());
+    }
+
+    #[test]
+    fn svg_source_converts_to_png_and_avif_roundtrips() {
+        let dir = tempfile::tempdir().unwrap();
+        let svg = dir.path().join("a.svg");
+        fs::write(
+            &svg,
+            b"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"8\" height=\"6\"><rect width=\"8\" height=\"6\" fill=\"#ff0000\"/></svg>",
+        )
+        .unwrap();
+        let engine = Engine::default();
+        // SVG is detected by the strict start-of-file sniff.
+        let info = engine.get_image_info(&svg).unwrap();
+        assert_eq!(info.format, ImageFormat::Svg);
+        assert_eq!((info.width, info.height), (8, 6));
+        let png = dir.path().join("b.png");
+        let r = engine
+            .convert(&svg, &png, ImageFormat::Png, &ConvertOptions::default())
+            .unwrap();
+        assert_eq!(r.source_format, ImageFormat::Svg);
+        assert_eq!(r.target_format, ImageFormat::Png);
+
+        // PNG -> AVIF -> PNG through the engine, with output validation.
+        let src = dir.path().join("c.png");
+        test_image_rgb().save(&src).unwrap();
+        let avif = dir.path().join("d.avif");
+        engine
+            .convert(&src, &avif, ImageFormat::Avif, &ConvertOptions::default())
+            .unwrap();
+        assert_eq!(
+            engine.get_image_info(&avif).unwrap().format,
+            ImageFormat::Avif
+        );
+        let back = dir.path().join("e.png");
+        engine
+            .convert(&avif, &back, ImageFormat::Png, &ConvertOptions::default())
+            .unwrap();
+        assert_eq!(
+            engine.get_image_info(&back).unwrap().format,
+            ImageFormat::Png
+        );
     }
 
     #[test]

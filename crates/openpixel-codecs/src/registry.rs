@@ -18,7 +18,7 @@ pub struct CodecRegistry {
 
 impl Default for CodecRegistry {
     fn default() -> Self {
-        Self::with_image_rs_defaults()
+        Self::with_defaults()
     }
 }
 
@@ -37,6 +37,21 @@ impl CodecRegistry {
         for codec in ImageRsCodec::all() {
             r.register(Box::new(codec));
         }
+        r
+    }
+
+    /// The standard Phase 3 registry: the image-rs adapters plus the
+    /// native codecs (SVG, AVIF, JXL, HDR, EXR, JPEG 2000). The
+    /// planned list shrinks as formats move from planned to
+    /// implemented — see `planned_capabilities()`.
+    pub fn with_defaults() -> Self {
+        let mut r = Self::with_image_rs_defaults();
+        r.register(Box::new(crate::SvgCodec));
+        r.register(Box::new(crate::AvifCodec));
+        r.register(Box::new(crate::JxlCodec));
+        r.register(Box::new(crate::HdrCodec));
+        r.register(Box::new(crate::ExrCodec));
+        r.register(Box::new(crate::Jpeg2000Codec));
         r
     }
 
@@ -167,24 +182,33 @@ mod tests {
     }
 
     #[test]
-    fn default_registry_has_ten_implemented_and_eleven_planned() {
+    fn default_registry_has_sixteen_codecs_and_five_planned() {
+        // Phase 3: 10 image-rs adapters + 6 native codecs (SVG, AVIF,
+        // JXL, HDR, EXR, JPEG 2000). SVG is decode-only, so it is
+        // registered but not in `implemented_formats()` (which counts
+        // decode+encode). 5 formats stay planned (HEIC/HEIF, APNG,
+        // RAW, PSD); total capabilities stay 21.
         let r = CodecRegistry::default();
-        assert_eq!(r.registered_formats().len(), 10);
-        assert_eq!(r.implemented_formats().len(), 10);
-        assert_eq!(r.planned_formats().len(), 11);
+        assert_eq!(r.registered_formats().len(), 16);
+        assert_eq!(r.implemented_formats().len(), 15);
+        assert_eq!(r.planned_formats().len(), 5);
         assert_eq!(r.capabilities().len(), 21);
         assert!(r.can_decode(ImageFormat::Png));
         assert!(r.can_encode(ImageFormat::Jpeg));
-        assert!(!r.can_decode(ImageFormat::Avif));
-        assert!(!r.can_encode(ImageFormat::Avif));
+        assert!(r.can_decode(ImageFormat::Avif));
+        assert!(r.can_encode(ImageFormat::Avif));
+        assert!(r.can_decode(ImageFormat::Svg));
+        assert!(!r.can_encode(ImageFormat::Svg));
+        assert!(!r.can_decode(ImageFormat::Heic));
+        assert!(!r.can_encode(ImageFormat::Heic));
     }
 
     #[test]
     fn register_replaces_and_remove_unregisters() {
         let mut r = CodecRegistry::default();
         r.register(Box::new(OnePixelCodec));
-        // Still 10 codecs — QOI was replaced, not duplicated.
-        assert_eq!(r.registered_formats().len(), 10);
+        // Still 16 codecs — QOI was replaced, not duplicated.
+        assert_eq!(r.registered_formats().len(), 16);
         assert_eq!(
             r.get(ImageFormat::Qoi)
                 .unwrap()

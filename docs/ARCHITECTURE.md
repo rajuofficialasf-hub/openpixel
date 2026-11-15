@@ -26,6 +26,28 @@ Application Layer
                             (evaluated in CODECS.md, wired in Phase 3)
 ```
 
+## Phase 3 — what changed
+
+- `openpixel-formats`: strict start-of-file SVG sniff (BOM /
+  whitespace / optional `<?xml?>` / `<svg`); HTML is never
+  misdetected. No other format changes.
+- `openpixel-codecs`: six new adapters — `SvgCodec` (resvg/usvg,
+  decode-only), `AvifCodec` (ravif encode + system dav1d decode),
+  `JxlCodec` (jxl-oxide decode + zune-jpegxl lossless encode),
+  `HdrCodec` / `ExrCodec` (image-rs, 8-bit SDR with a clamp note),
+  `Jpeg2000Codec` (jpeg2k/openjp2, pure-Rust OpenJPEG port).
+  `CodecRegistry::with_defaults()` registers all 16 codecs; the
+  planned list shrinks 11 → 5 (HEIC/HEIF, APNG, RAW, PSD).
+  A shared `float.rs` holds the HDR/EXR float helpers and the
+  honest clamp note. The engine and CLI needed no changes — the
+  registry and the SVG sniff carry the whole feature.
+- `scripts/setup/ubuntu-24.04.sh`: installs `libdav1d-dev`, the one
+  system library Phase 3 needs. `native/licenses/` holds the
+  third-party licence texts.
+- One design fix found by testing: OpenJPEG's default 6
+  resolutions need each side ≥ 32 px, so the JP2 encoder scales
+  the resolution count to the image size.
+
 ## Phase 2 — what changed
 
 - `openpixel-formats`: `ImageFormat`, magic-byte detection, `discover()`

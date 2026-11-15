@@ -27,6 +27,58 @@ cargo test --workspace
   - Corrupted file (valid PNG signature + garbage) errors cleanly.
   - JPEG quality 20 vs 95 changes output size in the expected direction.
 
+## Verified results — Phase 3, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0
+
+Re-run `cargo test --workspace` to reproduce. System setup first:
+`sudo ./scripts/setup/ubuntu-24.04.sh` installs `libdav1d-dev`
+(AVIF decode — the only system library Phase 3 needs).
+
+- `cargo build --release` — succeeds, binary `target/release/openpixel`.
+- `cargo test --workspace` — **50 passed, 0 failed**: formats 10
+  (detection 6 incl. the new strict SVG sniff + discovery 4),
+  codecs 25 (registry 3 + adapter round-trips 3 + new-codec unit
+  tests 19: SVG 5, AVIF 3, JXL 3, HDR 3, EXR 2, JPEG 2000 3),
+  core 15 (unit 11 incl. SVG→PNG + AVIF round-trip through the
+  engine + integration 4). Phase 2's 29 tests still pass unchanged
+  in behaviour except the two that named AVIF as unimplemented
+  (now HEIC) and the registry counts (16 codecs, 5 planned).
+- `cargo clippy --workspace -- -D warnings` — passes.
+  `cargo fmt --check` — passes.
+- Manual CLI verification: `info`/`discover`/`convert` on real
+  generated AVIF, JXL, EXR, HDR, JP2 and SVG files (see below);
+  `formats` still lists 21 formats, now with 15 fully implemented
+  (decode+encode) and SVG decode-only; `capabilities heic`
+  correctly reports decode=no / encode=no.
+  - One 64×48 RGBA Pillow fixture converted to all five new
+    formats and back to PNG: round-trip MAE vs the original —
+    AVIF 0.47 (lossy), JXL 0.00, EXR 0.00, JP2 0.00, HDR 0.00 on
+    opaque pixels (the semi-transparent region flattens onto
+    white by design, as documented).
+  - Independent tools confirmed the outputs: `file(1)` reports
+    "ISO Media, AVIF Image", "JPEG XL codestream", "OpenEXR image
+    data", "Radiance HDR image data", "JPEG 2000 Part 1 (JP2)";
+    `heif-info` (libheif) reads our AVIF as 64×48, YCbCr 4:4:4,
+    8-bit, with alpha; real OpenJPEG `opj_decompress` decodes our
+    JP2 byte-exact (0 mismatches in 12 288 bytes); Pillow reads
+    our JP2 directly with exact pixels.
+  - SVG: yellow background + blue circle rasterise to the exact
+    expected pixels; a 100 000×100 000 SVG is scaled to
+    10 000×10 000 by the pixel cap, not rejected; `discover` on an
+    AVIF named `.jpg` reports avif/Signature/High with a mismatch
+    warning; a truncated AVIF fails with a clean typed error
+    (`UnexpectedEOF`), not a crash; `batch` converted 3 files
+    (PNG, JPG, SVG) to AVIF with 0 failures; `convert x.png
+    x.heic` fails cleanly with "cannot be encoded in this build
+    (planned — detection only)".
+- Bugs found and fixed during Phase 3: OpenJPEG's default 6
+  resolutions need each side ≥ 32 px, so small images failed
+  `start_compress` — the JP2 encoder now scales the resolution
+  count to the image size; HDR decode always yields Rgba8 in
+  Phase 3 (float → Rgba8), so the alpha-flatten test checks the
+  flattened colour instead of `has_alpha`; a 100 000×100 000 SVG
+  lands at 10 000×10 000 because the 100 MP pixel cap dominates
+  the 16 384 px side cap.
+
 ## Verified results — Phase 2, 15 Nov 2026, Ubuntu 24.04, Rust 1.100.0
 
 Re-run `cargo test --workspace` to reproduce.

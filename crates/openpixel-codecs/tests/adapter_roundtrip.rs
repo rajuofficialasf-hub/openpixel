@@ -36,6 +36,15 @@ fn every_registered_adapter_roundtrips() {
 
     for format in registry.registered_formats() {
         let codec = registry.get(format).unwrap();
+        // Decode-only codecs (SVG in Phase 3) have no encode path to
+        // round-trip through — their own unit tests cover decoding.
+        if !codec.capability().can_encode {
+            assert!(
+                codec.capability().can_decode,
+                "{format} must at least decode"
+            );
+            continue;
+        }
         let encoded = codec
             .encode(&source, &EncodeParams::default())
             .unwrap_or_else(|e| panic!("encode {format} failed: {e}"));

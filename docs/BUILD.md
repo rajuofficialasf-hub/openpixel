@@ -5,9 +5,10 @@
 - Rust stable **1.100.0** (verified 15 Nov 2026 on Ubuntu 24.04, x86_64).
   Older stable toolchains may work; 1.100 is the pinned, tested one.
 - A C compiler (`gcc`/`cc`) — needed by some transitive Rust crates.
-- No system image libraries in Phase 1. No libvips, no libjpeg-turbo,
-  no Python. If `cargo build` asks for a system library, something is
-  wrong — report it instead of installing one.
+- Phase 3 adds one system image library: `libdav1d-dev` (AVIF
+  decode). See "Native dependencies (Phase 3)" below. No libvips,
+  no Python. If `cargo build` asks for any other system library,
+  something is wrong — report it instead of installing one.
 - Internet for the first `cargo build` (crates.io). After that, builds
   are offline from `~/.cargo` + `Cargo.lock`.
 
@@ -44,13 +45,25 @@ cargo fmt --check
 ./target/release/openpixel formats
 ```
 
-## Native dependencies (Phase 3 — not needed now)
+## Native dependencies (Phase 3)
 
-When libavif / libheif / libjxl / OpenJPEG / resvg / LibRaw are wired
-in, per-platform setup scripts go in `scripts/setup/` and build notes
-in `native/build/`, with licence files in `native/licenses/`. Do not
-install any of them for Phase 1 — the build does not need them and the
-registry correctly reports those formats as not implemented.
+Phase 3 needs exactly one system library:
+
+```bash
+sudo ./scripts/setup/ubuntu-24.04.sh   # installs libdav1d-dev (AVIF decode)
+```
+
+- `libdav1d-dev` ≥ 1.3.0 (Ubuntu 24.04 ships 1.4.1) — AVIF decode
+  only. The build fails at `dav1d-sys` with a pkg-config error if
+  it is missing; the error names the package. Runtime needs
+  `libdav1d7`, which comes with the `-dev` package.
+- Everything else in Phase 3 is pure Rust from crates.io — no other
+  system library, no libheif, no libjxl, no OpenJPEG C library.
+  (HEIC/HEIF is blocked on a missing matching `libheif-dev` —
+  see `docs/CODECS.md`; do not force-install it.)
+- The build still works fully offline after the first build
+  (`~/.cargo` + `Cargo.lock`), except that the final binary links
+  `libdav1d` dynamically at runtime.
 
 ## Troubleshooting
 
