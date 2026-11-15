@@ -22,8 +22,10 @@ runtime expression of this table — run `openpixel formats` to see it live.
 | PNM/PBM/PGM/PPM (+PAM/P7, which image-rs writes for RGBA) | yes | yes | image-rs 0.25.10 | MIT OR Apache-2.0 |
 | QOI | yes | yes | image-rs 0.25.10 | MIT OR Apache-2.0 |
 
-\* GIF: first frame only. TIFF: first page only. Animated WebP / APNG:
-not decoded as animation in Phase 1.
+\* GIF: first frame only in plain decode; full frame enumeration +
+extraction in Phase 5 (see above). TIFF: first page only in plain
+decode; page count + extraction in Phase 5. Animated WebP / APNG:
+frame info in Phase 5, first frame only for decode.
 
 `image-rs` 0.25.10 was chosen after checking crates.io on 15 Nov 2026:
 actively maintained, pure Rust for these formats, no C toolchain beyond
@@ -123,6 +125,82 @@ What each new codec actually does and does not do:
   per platform — that is a Phase 6 benchmark decision, to be
   measured before it is made, not assumed in Phase 3.
 
+## Phase 5 — metadata, animation, colour (evaluated 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0)
+
+New pinned dependencies (workspace `Cargo.toml`, exact `=`):
+`gif` 0.14.2, `tiff` 0.11.3, `flate2` 1.1.11, `tintbox` 0.5.0.
+The first three were already transitive dependencies of image-rs
+0.25.10 at those exact versions (already in `Cargo.lock`), so the
+only genuinely new crate in the tree is `tintbox` plus its small
+pure-Rust dependencies. All four are MIT OR Apache-2.0 (tintbox:
+MIT). No C library, no system package, no account, no cost.
+
+| Capability | How (Phase 5) | Licence |
+|---|---|---|
+| EXIF read (JPEG/PNG/TIFF/WebP) | hand-written std-only TIFF IFD parser in `openpixel-metadata/src/exif.rs` (bounds-checked, partial data + warnings on corrupt input) | n/a (own code) |
+| ICC read + preserve | byte-level: JPEG APP2 / PNG `iCCP` / TIFF / WebP `ICCP`; `parse_icc` requires the `acsp` signature at offset 36 | n/a (own code) |
+| XMP read + preserve | raw packet extraction: JPEG APP1 / PNG `iTXt`/`tEXt`/`zTXt` / WebP `XMP ` | n/a (own code) |
+| GIF frames | `gif` 0.14.2 — full enumeration + extraction with disposal compositing | MIT OR Apache-2.0 |
+| TIFF pages | `tiff` 0.11.3 — page count + extraction | MIT OR Apache-2.0 |
+| PNG `iCCP` decompression | `flate2` 1.1.11 (zlib) | MIT OR Apache-2.0 |
+| ICC-to-sRGB conversion | `tintbox` 0.5.0 — pure-Rust LittleCMS reimplementation | MIT |
+
+### Phase 5 — evaluated and NOT used (honest blocks)
+
+- **`kamadak-exif` 0.6.2 / `exif` (MIT OR Apache-2.0, pure Rust)
+  — evaluated, not used.** It parses EXIF well, but it does not
+  supply the raw APP1/chunk bytes that preservation needs, and
+  adopting it would leave two EXIF implementations in the crate
+  (the parser for reading, a second one for byte preservation).
+  One hand-written parser serves both jobs.
+- **`img-parts` 0.3 (MIT OR Apache-2.0) — evaluated, not used.**
+  Same reason: it models image parts but does not hand back the
+  raw bytes in the form the JPEG/PNG splicer needs, and it would
+  still need a TIFF IFD parser for the EXIF fields.
+- **`lcms2` crate (MIT, wraps the C LittleCMS library) — evaluated,
+  not used.** It needs the `liblcms2-dev` headers at build time;
+  this machine has only the runtime `liblcms2.so.2`, no headers
+  (`/usr/include/lcms*` absent; apt candidate for `liblcms2-dev`
+  is 2.14-2ubuntu0.1). Adding a system build dependency for one
+  transform was rejected in favour of `tintbox` (above), which
+  claims bit-identical results to lcms2 by differential testing
+  and was verified to build and transform here. Fallback if
+  tintbox ever becomes unmaintained: `lcms2` + `liblcms2-dev`
+  (apt 2.14); the `convert_to_srgb` API does not change.
+- **IPTC — not read in Phase 5.** EXIF/ICC/XMP only; IPTC
+  reading is a later phase, not a hidden gap in the reader.
+
+### Phase 5 — what each format actually does
+
+- **JPEG** — reads EXIF (APP1), ICC (APP2, multi-chunk
+  reassembly), XMP (APP1); preserves all three byte-exact on
+  `Preserve` (APP1 EXIF / APP2 ICC chunked at 65 519 B payload /
+  APP1 XMP after SOI). ICC profiles over 64 KiB are chunked by
+  the splicer, but no unit test covers a real > 64 KiB profile
+  (test profiles are ~600 B) — the chunking code path is
+  exercised only with small profiles.
+- **PNG** — reads `eXIf`, `iCCP` (zlib), `iTXt`/`tEXt`/`zTXt`
+  XMP, `pHYs` DPI; preserves EXIF/ICC/XMP (`eXIf` / `iCCP` /
+  `iTXt` after IHDR, CRC-32 IEEE). APNG frame info is read
+  (acTL/fcTL) but only frame 0 decodes.
+- **GIF** — full frame enumeration (count, per-frame delay,
+  disposal, loop count) and extraction with disposal compositing.
+  Plain decode still yields the first frame only.
+- **TIFF** — page count via a bounded IFD-chain walk and page
+  extraction (U8/U16 Gray/RGB/RGBA/GrayA; Gray16 widened to
+  Rgb16; CMYK / palette-16 / float are honest errors). Metadata
+  preservation to TIFF targets is dropped (no injection point
+  in the image-rs encoder); reading EXIF/ICC from TIFF sources
+  works.
+- **WebP** — reads `EXIF` / `ICCP` / `XMP ` chunks and animated
+  frame info (VP8X/ANMF); only frame 0 decodes; preservation to
+  WebP targets is dropped (would need a VP8X remux).
+- **BMP / TGA / ICO / PNM / QOI / AVIF / JXL / JP2 / HDR / EXR /
+  SVG** — no metadata reading or preservation in Phase 5; the
+  engine reports no metadata for them, never invented metadata.
+  Converting *from* these formats never warns about dropped
+  metadata (there was none to drop).
+
 ## Detected only in Phase 2 (NOT convertible — do not claim otherwise)
 
 Six of these were implemented in Phase 3 (see the table above);
@@ -137,7 +215,7 @@ the rows below are updated to say so. What is still only detected:
 | SVG | strict start-of-file sniff (Phase 3) | **implemented in Phase 3** (resvg, rasterisation only) | see Phase 3 table |
 | EXR | `v/1\x01` | **implemented in Phase 3** (image-rs exr) | see Phase 3 table |
 | HDR | `#?RADIANCE` | **implemented in Phase 3** (image-rs hdr) | see Phase 3 table |
-| APNG | — (PNG signature) | image-rs apng — Phase 5 | MIT OR Apache-2.0 |
+| APNG | — (PNG signature) | frame info in Phase 5 (acTL/fcTL); frame 0 decodes, later frames are an honest error | MIT OR Apache-2.0 |
 | RAW (CR2/CR3/NEF/ARW/DNG) | — | LibRaw, preview/flattened only — Phase D | LGPL-2.1/CDDL; CR3 needs extra work |
 | PSD/PSB | — | Flattened preview only, TBD — Phase D | TBD — do not promise layer access |
 

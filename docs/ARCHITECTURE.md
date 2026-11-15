@@ -15,8 +15,8 @@ Application Layer
                             Codec Registry    (capability.rs — honest, runtime)
                             Decoder / Encoder (image-rs adapters, engine.rs)
                             Security Layer    (security.rs — limits, path checks)
-                            Processing Pipeline (stub — Phase 4)
-                            Metadata / Colour (stubs — Phase 5)
+                            Processing Pipeline (Phase 4)
+                            Metadata / Colour (Phase 5 — openpixel-metadata)
                             Job Manager       (stub — Phase 6)
                                   |
                           Codec Adapters
@@ -25,6 +25,97 @@ Application Layer
                             libtiff / libjxl / OpenJPEG / resvg / LibRaw
                             (evaluated in CODECS.md, wired in Phase 3)
 ```
+
+## Phase 5 — what changed
+
+- `openpixel-metadata` is now a real workspace member (was a stub):
+  a hand-written, bounds-checked, std-only TIFF IFD parser reads
+  EXIF (orientation, camera make/model, date/time, GPS, DPI) from
+  JPEG APP1, PNG `eXIf`, TIFF IFD0 and WebP `EXIF` chunks; ICC
+  presence/description from JPEG APP2, PNG `iCCP`, TIFF and WebP
+  `ICCP`; XMP presence/raw string from JPEG APP1, PNG `iTXt`/
+  `tEXt`/`zTXt`, WebP `XMP `. The typed result is `Metadata`
+  (raw APP1/ICC/XMP bytes kept alongside the parsed fields, so
+  preservation is byte-exact -- nothing is re-serialised from
+  parsed values). Corrupt metadata never crashes a conversion:
+  the parser returns partial data plus `warnings` and the engine
+  carries them through to `ConvertResult`.
+- `MetadataPolicy` -- `Strip` (default), `Preserve`,
+  `PreserveSelected { fields }`, `PreserveColorProfiles`,
+  `NormalizeOrientation` -- parsed from CLI `--metadata <name>`
+  (`preserve`, `strip`, `selected:exif,icc,xmp,gps`,
+  `preserve-color-profiles`, `normalize-orientation`).
+  `ConvertOptions` gains `metadata_policy: Option<MetadataPolicy>`
+  (explicit policy wins over the legacy `preserve_metadata` bool),
+  `selected_frame: Option<u32>` and `convert_to_srgb: bool`.
+  `ConvertResult` gains `warnings`, `metadata_preserved`,
+  `metadata_dropped` and `orientation_applied`; `ImageInfo`
+  gains `orientation`, `has_exif`, `has_icc`, `has_xmp`.
+- Preservation is byte-level splicing in the engine *after*
+  encoding (the `Codec` trait is unchanged): JPEG gets APP1 EXIF /
+  APP2 ICC (chunked at 65 519 B payload or less) / APP1 XMP after
+  SOI; PNG gets `eXIf` / `iCCP` (zlib) / `iTXt` chunks right after
+  IHDR (CRC-32 IEEE computed in-crate). Every other target
+  honestly drops metadata with a reason recorded in
+  `metadata_dropped` and printed by the CLI as a warning --
+  never a silent claim of success. GPS lives inside EXIF, so
+  selecting `Gps` preserves the whole EXIF block.
+- Orientation normalisation (`NormalizeOrientation`) maps EXIF
+  1-8 to pipeline operations exactly as Pillow's
+  `ImageOps.exif_transpose` (5 = rotate-90 + flip-h, 6 = rotate
+  90 degrees clockwise, 7 = flip-h + rotate-90, 8 = rotate 270),
+  applied at decode time before the user's pipeline, and reports
+  the applied transform. Verified against Pillow for
+  orientations 2-8 (at most 2 of 3 072 pixels off by more than
+  12/255 -- JPEG re-encode noise at the fixture's hard edge;
+  dimensions exact).
+- Animation: `AnimationInfo` / `FrameInfo` (index, size, offset,
+  delay, disposal, loop count). GIF is fully enumerated and
+  extractable via the `gif` crate, with disposal compositing
+  (Background clears the frame rect, Previous restores a
+  snapshot, Keep/Any is a no-op) so extracted frames are the
+  composited canvas, not the raw partial rect. APNG and animated
+  WebP give frame info only (acTL/fcTL, VP8X/ANMF) -- only frame 0
+  decodes; extracting a later frame is an honest
+  `NotImplemented` error, never a silent first-frame
+  substitution. Multi-page TIFF: page count via a bounded
+  IFD-chain walk (10 000-page cap, cycle guard) and page
+  extraction via the `tiff` crate. Converting an animated or
+  multi-page source to a static target warns unless a frame was
+  explicitly selected (`--frame N`).
+- Colour: ICC-to-sRGB conversion is real, via `tintbox` 0.5.0 (a
+  pure-Rust LittleCMS reimplementation, bit-identical to lcms2
+  by differential testing -- see CODECS.md for why the `lcms2`
+  C crate was not used). RGB8/RGBA8 only, relative colorimetric;
+  a non-RGB profile is an honest error, sRGB-to-sRGB is a no-op,
+  and a failed transform warns and keeps the original pixels.
+  When `--to-srgb` actually changes the pixels, the source ICC
+  profile is dropped even under `Preserve` (it no longer
+  describes the pixels) with a warning saying so.
+- New engine methods: `read_metadata`, `animation_info`,
+  `list_frames` (alias), `extract_frame`, `extract_frame_to_path`,
+  `read_decode_frame` / `decode_selected_frame` (GIF/TIFF full,
+  APNG/WebP frame > 0 gives `NotImplemented`, anything else gives
+  `InvalidArgument`). New CLI commands: `openpixel metadata`,
+  `openpixel frames`, `openpixel extract-frame`; `convert` /
+  `process` gain `--metadata`, `--preserve-metadata`, `--frame`,
+  `--to-srgb`; `info` prints orientation and exif/icc/xmp.
+  152 tests pass (was 89).
+- Dependency versions pinned exactly (`=` in the workspace
+  `Cargo.toml`): new in Phase 5 are `gif` 0.14.2, `tiff`
+  0.11.3, `flate2` 1.1.11, `tintbox` 0.5.0 -- all already
+  transitive dependencies of image-rs 0.25.10 at those exact
+  versions (already in `Cargo.lock`), so no new crate entered
+  the tree except `tintbox` and its small pure-Rust deps.
+- Environment note found during Phase 5 verification: the
+  `dav1d-sys` build (Phase 3) emits `-ldav1d` at link time, so
+  test binaries only link when `libdav1d-dev` is installed.
+  The package had gone missing from this machine (the runtime
+  `libdav1d7` 1.4.1 was still present); it was restored with
+  `sudo apt-get install libdav1d-dev` (1.4.1-1build1, exact
+  match, one package, nothing else touched). If a fresh checkout
+  fails to link test binaries with `unable to find library
+  -ldav1d`, run `scripts/setup/ubuntu-24.04.sh` first.
 
 ## Phase 4 — what changed
 
@@ -136,7 +227,15 @@ Application Layer
 - `openpixel-core/src/engine.rs` — `Engine`: `detect_format`, `discover_format`, `get_image_info`, `convert`, `convert_to_path`, output re-validation. Alpha flattening moved into the codec. Phase 4 adds `decode_file`, `process`, `convert_with_pipeline`, `process_to_path`, sharing one encode-and-write tail with `convert`.
 - `openpixel-pipeline/src/` — `Pipeline` / `Operation` /
   `PipelineSpec` / `PipelineError` (Phase 4, see above).
-- `image.rs` — `ImageInfo`, `ConvertOptions`, `ConvertResult` (typed API, no codec details leak out). Phase 4 adds `ProcessOptions { convert, pipeline }`.
+- `openpixel-metadata/src/` — `Metadata` / `MetadataPolicy` /
+  `MetadataField` / `AnimationInfo` / `FrameInfo` / `MetadataError`
+  (Phase 5, see above): `exif.rs` (TIFF IFD parser),
+  `extract.rs` (JPEG/PNG/TIFF/WebP chunk scans), `icc.rs`
+  (profile parsing + tintbox sRGB conversion), `frames.rs` (GIF /
+  APNG / WebP / TIFF frame and page handling), `orientation.rs`
+  (EXIF 1-8 to pipeline operations), `policy.rs` (JPEG/PNG
+  byte-level preservation splicing + CRC-32).
+- `image.rs` — `ImageInfo`, `ConvertOptions`, `ConvertResult` (typed API, no codec details leak out). Phase 4 adds `ProcessOptions { convert, pipeline }`. Phase 5 adds metadata policy, frame selection and sRGB conversion to `ConvertOptions`, and warnings / preserved / dropped / orientation-applied to `ConvertResult`.
 - `security.rs` — `EngineConfig` + limits (`MAX_FILE_SIZE_BYTES` 100 MiB, `MAX_PIXELS` 100 MP, `MAX_DIMENSION` 16384), path validation, background-colour parsing.
 - `error.rs` — `OpenPixelError` (thiserror): typed, no silent failures.
 
@@ -159,10 +258,12 @@ contrast / saturation / blur / sharpen -> watermark -> flatten.
 The repeatable `--op` CLI flag (and a hand-built `Pipeline`)
 applies operations in exactly the order given instead.
 
-Missing in Phase 1 (honest): resize/crop/rotate/flip, watermark, colour
-management, metadata copy, animation frames beyond the first, streaming/
-tiled large-image processing, timeouts, job cancellation. All are
-roadmapped, none are claimed.
+Missing after Phase 5 (honest): streaming/tiled large-image
+processing, timeouts, job cancellation (Phase 6); APNG / animated
+WebP frame extraction beyond frame 0; metadata preservation to
+targets other than JPEG/PNG; ICC conversion for non-RGB profiles
+and 16-bit pixels; IPTC reading (XMP/EXIF/ICC only in Phase 5).
+All are roadmapped, none are claimed.
 
 ## Cross-platform
 

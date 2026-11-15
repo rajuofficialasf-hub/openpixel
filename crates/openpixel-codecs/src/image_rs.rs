@@ -74,9 +74,13 @@ impl Decoder for ImageRsCodec {
         if self.format == ImageFormat::Gif {
             img.is_animated = true;
             img.frame_count = Some(1);
-            img.note = Some("animated GIF: Phase 2 decodes the first frame only".to_string());
+            img.note = Some(
+                "animated GIF: plain decode is the first frame only — use `openpixel frames` / `extract-frame` for the full animation (Phase 5)".to_string(),
+            );
         } else if self.format == ImageFormat::Tiff {
-            img.note = Some("multi-page TIFF: Phase 2 decodes the first page only".to_string());
+            img.note = Some(
+                "multi-page TIFF: plain decode is the first page only — use `openpixel frames` / `extract-frame` for all pages (Phase 5)".to_string(),
+            );
         }
         Ok(img)
     }
@@ -165,7 +169,14 @@ impl Codec for ImageRsCodec {
         let f = self.format;
         let (alpha, anim, meta, icc, multi, note) = match f {
             ImageFormat::Jpeg => (false, false, true, true, false, "implemented"),
-            ImageFormat::Png => (true, false, true, true, false, "implemented"),
+            ImageFormat::Png => (
+                true,
+                false,
+                true,
+                true,
+                true,
+                "implemented — APNG: frame info in Phase 5; plain decode is the first frame only",
+            ),
             ImageFormat::Bmp => (false, false, false, false, false, "implemented"),
             ImageFormat::Gif => (
                 true,
@@ -173,7 +184,7 @@ impl Codec for ImageRsCodec {
                 false,
                 false,
                 true,
-                "implemented — animation: first frame on decode in Phase 2, see CODECS.md",
+                "implemented — animation: frame enumeration + extraction in Phase 5; plain decode is the first frame only",
             ),
             ImageFormat::Tiff => (
                 true,
@@ -181,15 +192,15 @@ impl Codec for ImageRsCodec {
                 true,
                 true,
                 true,
-                "implemented — multi-page: first page in Phase 2",
+                "implemented — multi-page: page count + extraction in Phase 5; plain decode is the first page only",
             ),
             ImageFormat::Webp => (
                 true,
+                true,
                 false,
                 false,
-                false,
-                false,
-                "implemented — lossless/lossy via image-rs; animated WebP not yet",
+                true,
+                "implemented — animated WebP: frame info in Phase 5; plain decode is the first frame only",
             ),
             _ => (true, false, false, false, false, "implemented"),
         };

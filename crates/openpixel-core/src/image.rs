@@ -1,5 +1,6 @@
 use openpixel_codecs::EncodeParams;
 use openpixel_formats::ImageFormat;
+use openpixel_metadata::MetadataPolicy;
 use openpixel_pipeline::Pipeline;
 use serde::{Deserialize, Serialize};
 
@@ -13,11 +14,17 @@ pub struct ImageInfo {
     pub color_type: String,
     pub has_alpha: bool,
     pub file_size_bytes: u64,
-    /// True when the source is animated / multi-frame. Phase 1 decodes
-    /// only the first frame/page and says so in `note`.
+    /// True when the source is animated / multi-frame. Phase 5
+    /// reports the real frame count (GIF / APNG / animated WebP /
+    /// multi-page TIFF), not just "first frame".
     pub is_animated: bool,
     pub frame_count: Option<u32>,
     pub note: Option<String>,
+    /// EXIF orientation tag (1..=8), when the source carries one.
+    pub orientation: Option<u8>,
+    pub has_exif: bool,
+    pub has_icc: bool,
+    pub has_xmp: bool,
 }
 
 /// Options for one conversion. Format-specific options live here so a
@@ -31,10 +38,26 @@ pub struct ConvertOptions {
     pub png_compression: Option<u8>,
     /// Background for flattening alpha when the target has no alpha.
     pub background: [u8; 3],
-    /// Preserve metadata where the encoder supports it. Phase 1: EXIF/ICC
-    /// are NOT yet copied — this flag is accepted, recorded, and honoured
-    /// only where implemented; see CODECS.md. Default false = strip.
+    /// Preserve metadata where the encoder supports it. Phase 5:
+    /// honoured via [`Self::effective_policy`] — `true` means
+    /// `MetadataPolicy::Preserve`, `false` means `Strip`, unless
+    /// `metadata_policy` is set, which wins. Kept for Phase 1–4
+    /// callers; new code should set `metadata_policy` directly.
     pub preserve_metadata: bool,
+    /// Metadata policy for this conversion. `None` = fall back to
+    /// `preserve_metadata` (above). Default `None` = strip.
+    pub metadata_policy: Option<MetadataPolicy>,
+    /// Convert only this frame (GIF) / page (TIFF), 0-based.
+    /// `None` = first frame/page. For APNG / animated WebP only
+    /// frame 0 is extractable in Phase 5 — any other index is an
+    /// error, not a silent first-frame substitution.
+    pub selected_frame: Option<u32>,
+    /// Convert the pixels to sRGB using the source's embedded ICC
+    /// profile (real tintbox transform) before encoding. When the
+    /// profile already is sRGB this is a no-op; when the source has
+    /// no ICC profile, or the transform fails, the pixels are kept
+    /// as-is and a warning is recorded — never a silent failure.
+    pub convert_to_srgb: bool,
 }
 
 impl Default for ConvertOptions {
@@ -44,6 +67,9 @@ impl Default for ConvertOptions {
             png_compression: None,
             background: [255, 255, 255],
             preserve_metadata: false,
+            metadata_policy: None,
+            selected_frame: None,
+            convert_to_srgb: false,
         }
     }
 }
@@ -51,6 +77,22 @@ impl Default for ConvertOptions {
 impl ConvertOptions {
     pub fn jpeg_quality(&self, default: u8) -> u8 {
         self.quality.unwrap_or(default).clamp(1, 100)
+    }
+
+    /// The policy that actually applies: an explicit
+    /// `metadata_policy` wins; otherwise the legacy
+    /// `preserve_metadata` bool maps to Preserve / Strip.
+    pub fn effective_policy(&self) -> MetadataPolicy {
+        match &self.metadata_policy {
+            Some(policy) => policy.clone(),
+            None => {
+                if self.preserve_metadata {
+                    MetadataPolicy::Preserve
+                } else {
+                    MetadataPolicy::Strip
+                }
+            }
+        }
     }
 
     /// Translate the engine-level options into the codec-level params.
@@ -73,6 +115,20 @@ pub struct ConvertResult {
     pub input_bytes: u64,
     pub output_bytes: u64,
     pub output_path: String,
+    /// Warnings that do not fail the conversion but the caller
+    /// should show: animated source flattened to one frame,
+    /// metadata dropped because the target cannot carry it, colour
+    /// conversion that could not run, corrupt source metadata.
+    pub warnings: Vec<String>,
+    /// Metadata categories actually written into the output
+    /// (e.g. `["exif", "icc"]`) — empty when stripped or dropped.
+    pub metadata_preserved: Vec<String>,
+    /// Metadata categories requested but not carried, as
+    /// `"category: reason"` strings.
+    pub metadata_dropped: Vec<String>,
+    /// The EXIF orientation transform applied, if any, e.g.
+    /// `"EXIF orientation 6 (rotated 90° clockwise) applied"`.
+    pub orientation_applied: Option<String>,
 }
 
 /// Options for one processed conversion: the encode options plus the

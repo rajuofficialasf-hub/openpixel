@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand};
 use openpixel_core::security::parse_background;
 use openpixel_core::{
-    detect_format, ConvertOptions, Engine, EngineConfig, ImageFormat, Operation, Pipeline,
-    PipelineSpec, ProcessOptions, WatermarkPosition, WatermarkSpec,
+    detect_format, ConvertOptions, Engine, EngineConfig, ImageFormat, MetadataPolicy, Operation,
+    Pipeline, PipelineSpec, ProcessOptions, WatermarkPosition, WatermarkSpec,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -12,7 +12,7 @@ use std::process::ExitCode;
 #[command(
     name = "openpixel",
     version,
-    about = "OpenPixel Engine — local image conversion and processing (Phase 4)"
+    about = "OpenPixel Engine — local image conversion and processing (Phase 5)"
 )]
 struct Cli {
     /// Output machine-readable JSON instead of human text
@@ -37,6 +37,36 @@ struct Cli {
 enum Commands {
     /// Show format, dimensions, colour type and size for an image
     Info { input: PathBuf },
+    /// Show EXIF / ICC / XMP metadata for an image
+    Metadata { input: PathBuf },
+    /// List the frames of an animated image (GIF / APNG / animated WebP) or the pages of a multi-page TIFF
+    Frames { input: PathBuf },
+    /// Extract one frame (GIF) or page (TIFF) and write it as an image: openpixel extract-frame input.gif frame2.png --frame 2
+    ExtractFrame {
+        input: PathBuf,
+        output: PathBuf,
+        /// Frame / page index, 0-based (default 0)
+        #[arg(long, default_value = "0")]
+        frame: u32,
+        /// JPEG quality 1-100 (default 85). Ignored for lossless formats.
+        #[arg(long)]
+        quality: Option<u8>,
+        /// PNG compression 0=fast, 1=default, 2=best
+        #[arg(long)]
+        png_compression: Option<u8>,
+        /// Background when flattening alpha: white, black, or #RRGGBB
+        #[arg(long, default_value = "white")]
+        background: String,
+        /// Keep metadata: preserve, strip, color-profiles, normalize-orientation, selected:exif,icc,xmp,gps
+        #[arg(long)]
+        metadata: Option<String>,
+        /// Legacy shorthand for --metadata preserve
+        #[arg(long)]
+        preserve_metadata: bool,
+        /// Convert pixels to sRGB using the embedded ICC profile
+        #[arg(long)]
+        to_srgb: bool,
+    },
     /// Convert one image: openpixel convert input.jpg output.png
     Convert {
         input: PathBuf,
@@ -50,6 +80,18 @@ enum Commands {
         /// Background when flattening alpha: white, black, or #RRGGBB
         #[arg(long, default_value = "white")]
         background: String,
+        /// Keep metadata: preserve, strip, color-profiles, normalize-orientation, selected:exif,icc,xmp,gps
+        #[arg(long)]
+        metadata: Option<String>,
+        /// Legacy shorthand for --metadata preserve
+        #[arg(long)]
+        preserve_metadata: bool,
+        /// Convert only this frame (GIF) / page (TIFF), 0-based
+        #[arg(long)]
+        frame: Option<u32>,
+        /// Convert pixels to sRGB using the embedded ICC profile
+        #[arg(long)]
+        to_srgb: bool,
     },
     /// Identify a file's real format: signature vs extension vs MIME
     Discover { input: PathBuf },
@@ -91,6 +133,18 @@ enum Commands {
         /// Background when flattening alpha: white, black, or #RRGGBB
         #[arg(long, default_value = "white")]
         background: String,
+        /// Keep metadata: preserve, strip, color-profiles, normalize-orientation, selected:exif,icc,xmp,gps
+        #[arg(long)]
+        metadata: Option<String>,
+        /// Legacy shorthand for --metadata preserve
+        #[arg(long)]
+        preserve_metadata: bool,
+        /// Convert only this frame (GIF) / page (TIFF), 0-based
+        #[arg(long)]
+        frame: Option<u32>,
+        /// Convert pixels to sRGB using the embedded ICC profile
+        #[arg(long)]
+        to_srgb: bool,
         /// Exact size, e.g. 800x600 (aspect ratio ignored)
         #[arg(long, value_name = "WxH")]
         resize: Option<String>,
@@ -201,10 +255,152 @@ fn run(cli: &Cli, engine: &Engine) -> Result<(), openpixel_core::OpenPixelError>
                 println!("colour:    {}", info.color_type);
                 println!("alpha:     {}", if info.has_alpha { "yes" } else { "no" });
                 println!("file size: {} bytes", info.file_size_bytes);
+                if info.is_animated {
+                    println!(
+                        "animated:  yes ({} frame{})",
+                        info.frame_count.unwrap_or(0),
+                        if info.frame_count == Some(1) { "" } else { "s" }
+                    );
+                }
+                if let Some(o) = info.orientation {
+                    println!("orientation: {o}");
+                }
+                println!("exif:      {}", yes(info.has_exif));
+                println!("icc:       {}", yes(info.has_icc));
+                println!("xmp:       {}", yes(info.has_xmp));
                 if let Some(n) = &info.note {
                     println!("note:      {n}");
                 }
             }
+            Ok(())
+        }
+        Commands::Metadata { input } => {
+            let meta = engine.read_metadata(input)?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&meta).unwrap());
+            } else {
+                println!("file:      {}", input.display());
+                println!("summary:   {}", meta.summary());
+                if let Some(o) = meta.orientation {
+                    println!("orientation: {o}");
+                }
+                if let Some(make) = &meta.make {
+                    println!(
+                        "camera:    {make}{}",
+                        meta.model
+                            .as_ref()
+                            .map(|m| format!(" {m}"))
+                            .unwrap_or_default()
+                    );
+                }
+                if let Some(dt) = meta.date_time_original.as_ref().or(meta.date_time.as_ref()) {
+                    println!("taken:     {dt}");
+                }
+                if let Some(gps) = meta.gps {
+                    println!(
+                        "gps:       {:.5}, {:.5}{}",
+                        gps.latitude,
+                        gps.longitude,
+                        gps.altitude_m
+                            .map(|a| format!(" ({a} m)"))
+                            .unwrap_or_default()
+                    );
+                }
+                if let (Some(x), Some(y)) = (meta.x_resolution, meta.y_resolution) {
+                    println!(
+                        "resolution: {x:.1} x {y:.1} (unit {})",
+                        meta.resolution_unit.unwrap_or(0)
+                    );
+                }
+                if let Some(icc) = &meta.icc {
+                    println!(
+                        "icc:       {} ({} bytes{})",
+                        icc.description.as_deref().unwrap_or(&icc.color_space),
+                        icc.size_bytes,
+                        if icc.is_srgb { ", sRGB" } else { "" }
+                    );
+                }
+                println!("xmp:       {}", yes(meta.has_xmp));
+                for w in &meta.warnings {
+                    println!("warning:   {w}");
+                }
+            }
+            Ok(())
+        }
+        Commands::Frames { input } => {
+            let info = engine.list_frames(input)?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&info).unwrap());
+            } else {
+                println!("file:      {}", input.display());
+                println!("format:    {}", info.format);
+                println!(
+                    "frames:    {}{}",
+                    info.frame_count,
+                    if info.format == "tiff" {
+                        " (multi-page)".to_string()
+                    } else if info.is_animated {
+                        " (animated)".to_string()
+                    } else {
+                        String::new()
+                    }
+                );
+                if let Some(loops) = info.loop_count {
+                    println!(
+                        "loops:     {}",
+                        if loops == 0 {
+                            "forever".to_string()
+                        } else {
+                            loops.to_string()
+                        }
+                    );
+                }
+                println!(
+                    "{:<6} {:<9} {:<9} {:<9} {:<8}",
+                    "index", "size", "offset", "delay", "dispose"
+                );
+                for f in &info.frames {
+                    println!(
+                        "{:<6} {:<9} {:<9} {:<9} {:<8}",
+                        f.index,
+                        format!("{}x{}", f.width, f.height),
+                        format!("{},{}", f.offset_x, f.offset_y),
+                        f.delay_ms
+                            .map(|d| format!("{d} ms"))
+                            .unwrap_or_else(|| "-".to_string()),
+                        f.disposal
+                            .map(|d| d.to_string())
+                            .unwrap_or_else(|| "-".to_string())
+                    );
+                }
+                if let Some(n) = &info.note {
+                    println!("note:      {n}");
+                }
+            }
+            Ok(())
+        }
+        Commands::ExtractFrame {
+            input,
+            output,
+            frame,
+            quality,
+            png_compression,
+            background,
+            metadata,
+            preserve_metadata,
+            to_srgb,
+        } => {
+            let options = ConvertOptions {
+                quality: *quality,
+                png_compression: *png_compression,
+                background: parse_background(background)?,
+                preserve_metadata: *preserve_metadata,
+                metadata_policy: resolve_metadata_policy(*preserve_metadata, metadata.as_deref())?,
+                selected_frame: Some(*frame),
+                convert_to_srgb: *to_srgb,
+            };
+            let result = engine.extract_frame_to_path(input, *frame, output, &options)?;
+            print_convert_result(cli, &result, "extracted");
             Ok(())
         }
         Commands::Convert {
@@ -213,28 +409,22 @@ fn run(cli: &Cli, engine: &Engine) -> Result<(), openpixel_core::OpenPixelError>
             quality,
             png_compression,
             background,
+            metadata,
+            preserve_metadata,
+            frame,
+            to_srgb,
         } => {
             let options = ConvertOptions {
                 quality: *quality,
                 png_compression: *png_compression,
                 background: parse_background(background)?,
-                preserve_metadata: false,
+                preserve_metadata: *preserve_metadata,
+                metadata_policy: resolve_metadata_policy(*preserve_metadata, metadata.as_deref())?,
+                selected_frame: *frame,
+                convert_to_srgb: *to_srgb,
             };
             let result = engine.convert_to_path(input, output, &options)?;
-            if cli.json {
-                println!("{}", serde_json::to_string_pretty(&result).unwrap());
-            } else if !cli.quiet {
-                println!(
-                    "converted {} ({}x{}) -> {} : {} bytes -> {} bytes",
-                    result.source_format,
-                    result.width,
-                    result.height,
-                    result.target_format,
-                    result.input_bytes,
-                    result.output_bytes
-                );
-                println!("wrote {}", result.output_path);
-            }
+            print_convert_result(cli, &result, "converted");
             Ok(())
         }
         Commands::Process {
@@ -243,6 +433,10 @@ fn run(cli: &Cli, engine: &Engine) -> Result<(), openpixel_core::OpenPixelError>
             quality,
             png_compression,
             background,
+            metadata,
+            preserve_metadata,
+            frame,
+            to_srgb,
             resize,
             resize_fit,
             resize_fill,
@@ -338,7 +532,13 @@ fn run(cli: &Cli, engine: &Engine) -> Result<(), openpixel_core::OpenPixelError>
                     quality: *quality,
                     png_compression: *png_compression,
                     background,
-                    preserve_metadata: false,
+                    preserve_metadata: *preserve_metadata,
+                    metadata_policy: resolve_metadata_policy(
+                        *preserve_metadata,
+                        metadata.as_deref(),
+                    )?,
+                    selected_frame: *frame,
+                    convert_to_srgb: *to_srgb,
                 },
                 pipeline,
             );
@@ -359,6 +559,7 @@ fn run(cli: &Cli, engine: &Engine) -> Result<(), openpixel_core::OpenPixelError>
                     if op_count == 1 { "" } else { "s" },
                 );
                 println!("wrote {}", result.output_path);
+                print_warnings(cli, &result);
             }
             Ok(())
         }
@@ -542,6 +743,73 @@ fn run(cli: &Cli, engine: &Engine) -> Result<(), openpixel_core::OpenPixelError>
             }
             Ok(())
         }
+    }
+}
+
+/// Resolve the metadata policy from the CLI flags: an explicit
+/// `--metadata <policy>` wins; `--preserve-metadata` means
+/// `preserve`; otherwise the policy is `None` (engine default =
+/// strip). An unknown policy name is a clean error.
+fn resolve_metadata_policy(
+    preserve: bool,
+    policy: Option<&str>,
+) -> Result<Option<MetadataPolicy>, openpixel_core::OpenPixelError> {
+    match policy {
+        Some(name) => MetadataPolicy::from_name(name)
+            .map(Some)
+            .ok_or_else(|| {
+                openpixel_core::OpenPixelError::InvalidArgument(format!(
+                    "unknown metadata policy '{name}' — use preserve, strip, color-profiles, normalize-orientation, or selected:exif,icc,xmp,gps"
+                ))
+            }),
+        None => {
+            if preserve {
+                Ok(Some(MetadataPolicy::Preserve))
+            } else {
+                Ok(None)
+            }
+        }
+    }
+}
+
+fn print_warnings(cli: &Cli, result: &openpixel_core::ConvertResult) {
+    if cli.quiet {
+        return;
+    }
+    for w in &result.warnings {
+        println!("warning: {w}");
+    }
+    if let Some(o) = &result.orientation_applied {
+        println!("orientation: {o}");
+    }
+    if !result.metadata_preserved.is_empty() {
+        println!(
+            "metadata preserved: {}",
+            result.metadata_preserved.join(", ")
+        );
+    }
+    if !result.metadata_dropped.is_empty() {
+        for d in &result.metadata_dropped {
+            println!("metadata dropped: {d}");
+        }
+    }
+}
+
+fn print_convert_result(cli: &Cli, result: &openpixel_core::ConvertResult, verb: &str) {
+    if cli.json {
+        println!("{}", serde_json::to_string_pretty(&result).unwrap());
+    } else if !cli.quiet {
+        println!(
+            "{verb} {} ({}x{}) -> {} : {} bytes -> {} bytes",
+            result.source_format,
+            result.width,
+            result.height,
+            result.target_format,
+            result.input_bytes,
+            result.output_bytes
+        );
+        println!("wrote {}", result.output_path);
+        print_warnings(cli, result);
     }
 }
 
@@ -788,5 +1056,39 @@ mod tests {
             WatermarkPosition::Center
         );
         assert!(parse_watermark_position("middle").is_err());
+    }
+}
+
+#[cfg(test)]
+mod phase5_tests {
+    use super::*;
+
+    #[test]
+    fn resolves_metadata_policy_flags() {
+        assert_eq!(resolve_metadata_policy(false, None).unwrap(), None);
+        assert_eq!(
+            resolve_metadata_policy(true, None).unwrap(),
+            Some(MetadataPolicy::Preserve)
+        );
+        assert_eq!(
+            resolve_metadata_policy(false, Some("strip")).unwrap(),
+            Some(MetadataPolicy::Strip)
+        );
+        assert_eq!(
+            resolve_metadata_policy(false, Some("normalize-orientation")).unwrap(),
+            Some(MetadataPolicy::NormalizeOrientation)
+        );
+        assert_eq!(
+            resolve_metadata_policy(true, Some("selected:icc")).unwrap(),
+            Some(MetadataPolicy::PreserveSelected {
+                fields: vec![openpixel_core::MetadataField::Icc]
+            })
+        );
+        // An explicit --metadata wins over --preserve-metadata.
+        assert_eq!(
+            resolve_metadata_policy(true, Some("strip")).unwrap(),
+            Some(MetadataPolicy::Strip)
+        );
+        assert!(resolve_metadata_policy(false, Some("bogus")).is_err());
     }
 }

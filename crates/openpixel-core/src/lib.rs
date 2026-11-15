@@ -20,8 +20,12 @@
 //! * JPEG / PNG / BMP / GIF / TIFF / WebP / TGA / ICO / PNM / QOI only.
 //! * AVIF / HEIC / JXL / JPEG 2000 / SVG / EXR / RAW / PSD: detected,
 //!   not decoded or encoded.
-//! * GIF: first frame only. TIFF: first page only.
-//! * Metadata (EXIF/ICC/XMP) is NOT yet copied to outputs.
+//! * GIF: first frame only on plain decode (frame enumeration +
+//!   extraction live in `openpixel-metadata`, Phase 5). TIFF: first
+//!   page only on plain decode (page count + extraction in Phase 5).
+//! * Metadata (EXIF/ICC/XMP) is copied to JPEG/PNG outputs only
+//!   when the metadata policy asks for it (Phase 5); every other
+//!   target honestly reports the drop.
 
 pub mod engine;
 pub mod error;
@@ -36,6 +40,7 @@ pub use openpixel_formats::{
     detect_format, discover, Confidence, DetectionMethod, DiscoveryResult, FormatCapability,
     ImageFormat, MAX_DIMENSION,
 };
+pub use openpixel_metadata::{AnimationInfo, FrameInfo, Metadata, MetadataField, MetadataPolicy};
 pub use openpixel_pipeline::{
     Operation, Pipeline, PipelineError, PipelineSpec, WatermarkPosition, WatermarkSpec,
 };

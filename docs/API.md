@@ -36,18 +36,25 @@ let result = engine.convert_to_path(Path::new("in.png"), Path::new("out.webp"), 
   supports_icc, supports_multiple_frames, native_dependency, license,
   status, max_dimension`. Serializable to JSON (`--json`).
 - `ImageInfo` — `format, width, height, color_type, has_alpha,
-  file_size_bytes, is_animated, frame_count, note`.
+  file_size_bytes, is_animated, frame_count, note`, plus Phase 5:
+  `orientation: Option<u8>`, `has_exif, has_icc, has_xmp: bool`.
 - `ConvertOptions` — `quality: Option<u8>` (JPEG), `png_compression:
   Option<u8>` (0/1/2), `background: [u8;3]`, `preserve_metadata: bool`
-  (accepted, not yet honoured — see CODECS.md).
+  (legacy — maps to a `MetadataPolicy`, see Phase 5), plus Phase 5:
+  `metadata_policy: Option<MetadataPolicy>`,
+  `selected_frame: Option<u32>`, `convert_to_srgb: bool`.
 - `ConvertResult` — `source_format, target_format, width, height,
-  input_bytes, output_bytes, output_path`.
+  input_bytes, output_bytes, output_path`, plus Phase 5:
+  `warnings: Vec<String>`, `metadata_preserved: Vec<String>`,
+  `metadata_dropped: Vec<String>`,
+  `orientation_applied: Option<String>`.
 - `EngineConfig` — `max_file_size_bytes` (100 MiB), `max_pixels`
   (100 MP), `max_dimension` (16 384), `default_jpeg_quality` (85),
   `default_background` (white).
 - `OpenPixelError` — typed errors: `NotFound, UnknownFormat,
   NotImplemented, EncodeUnsupported, Decode, Encode, LimitExceeded,
-  InvalidArgument, UnsafePath, Io, Image`.
+  InvalidArgument, UnsafePath, Io, Image`, plus Phase 5:
+  `Metadata(String)`.
 
 ## Phase 2 — registry and discovery
 
@@ -69,6 +76,129 @@ assert!(found.has_mismatch()); // a PNG named .jpg
 // Registering for an existing format replaces that format's codec —
 // that is how a Phase 3 native codec will supersede image-rs.
 ```
+
+## Phase 5 — metadata, animation, colour
+
+```rust
+use openpixel_core::{Engine, EngineConfig, ImageFormat, ConvertOptions,
+    Metadata, MetadataPolicy, MetadataField, AnimationInfo};
+
+// 1. Read metadata -- EXIF / ICC / XMP from the source bytes
+let meta: Metadata = engine.read_metadata(input)?;
+assert_eq!(meta.orientation, Some(6));
+assert_eq!(meta.camera_make.as_deref(), Some("Canon"));
+assert_eq!(meta.gps, Some((23.81028, 90.41250))); // (lat, lon) decimal
+assert!(meta.has_icc());
+
+// 2. Animation / multi-page info -- frame count, delays, loop count
+let anim: AnimationInfo = engine.animation_info(input)?;
+assert_eq!(anim.frame_count, 3);
+assert_eq!(anim.frames[1].delay_ms, Some(200));
+assert_eq!(anim.loop_count, Some(0)); // 0 = forever
+
+// 3. Extract one frame / page -- GIF and TIFF fully; APNG/WebP frame 0 only
+let result = engine.extract_frame_to_path(input, output, ImageFormat::Png, 1, &opts)?;
+
+// 4. Convert with a metadata policy and/or sRGB conversion
+let mut opts = ConvertOptions::default();
+opts.metadata_policy = Some(MetadataPolicy::Preserve);
+opts.convert_to_srgb = true;
+let result = engine.convert(input, output, ImageFormat::Jpeg, &opts)?;
+// result.warnings, result.metadata_preserved, result.metadata_dropped
+// and result.orientation_applied tell you exactly what happened.
+```
+
+- `Metadata` -- `orientation: Option<u8>`, `camera_make`,
+  `camera_model`, `date_time: Option<String>`,
+  `gps: Option<(f64, f64)>` (decimal latitude, longitude),
+  `gps_altitude_m: Option<f64>`, `dpi: Option<(f64, f64)>`,
+  `software: Option<String>` (EXIF tag 0x0131),
+  `artist: Option<String>` (EXIF tag 0x013B),
+  `icc: Option<IccProfile>` (`description`, `is_srgb`, `size_bytes`),
+  `xmp: Option<String>` (raw packet), `has_exif()`, `has_icc()`,
+  `has_xmp()`, `warnings: Vec<String>` (corrupt input is partial
+  data + warnings, never a crash), `summary()`. Raw bytes are kept
+  (`raw_exif_app1`, `raw_icc`, `raw_xmp`) so preservation is
+  byte-exact. Never invented: a field is `None` when the source
+  does not carry it.
+- `MetadataPolicy` -- `Strip` (default), `Preserve`,
+  `PreserveSelected { fields: Vec<MetadataField> }`,
+  `PreserveColorProfiles`, `NormalizeOrientation`.
+  `MetadataField` -- `Exif`, `Icc`, `Xmp`, `Gps`. `Gps` selects the
+  whole EXIF block (GPS lives inside EXIF). `from_name()` parses
+  CLI names: `preserve`, `strip`, `selected:exif,icc,xmp,gps`,
+  `preserve-color-profiles`, `normalize-orientation`.
+- `AnimationInfo` -- `format`, `frame_count`, `is_animated`,
+  `is_multi_page`, `loop_count: Option<u32>` (`0` = forever,
+  `None` = not a looping format), `frames: Vec<FrameInfo>`,
+  `note`. `FrameInfo` -- `index`, `width`, `height`, `offset_x`,
+  `offset_y`, `delay_ms: Option<u32>`, `disposal: Option<u8>`,
+  `is_keyframe`.
+- `MetadataError` (in `openpixel_metadata`, mapped onto
+  `OpenPixelError::Metadata`) -- `InvalidInput`, `Unsupported`,
+  `FrameOutOfRange { index, count }`, `NoFrames`, `Colour`.
+- `ConvertOptions` (new in Phase 5) -- `metadata_policy:
+  Option<MetadataPolicy>`, `selected_frame: Option<u32>`
+  (convert only this frame/page; without it an animated source
+  warns and keeps the first frame), `convert_to_srgb: bool`.
+  `effective_policy()` maps the legacy `preserve_metadata` bool
+  (`true` = `Preserve`, `false` = `Strip`); an explicit
+  `metadata_policy` wins.
+- `ConvertResult` (new in Phase 5) -- `warnings: Vec<String>`,
+  `metadata_preserved: Vec<String>`, `metadata_dropped:
+  Vec<String>`, `orientation_applied: Option<String>`.
+- `ImageInfo` (new in Phase 5) -- `orientation: Option<u8>`,
+  `has_exif: bool`, `has_icc: bool`, `has_xmp: bool`.
+- `OpenPixelError` gains `Metadata(String)`.
+- `NormalizeOrientation` applies the EXIF 1-8 transform at decode
+  time (before the user's pipeline) and reports it in
+  `orientation_applied`; the orientation tag is gone from the
+  output because the pixels are already rotated. Mapping is
+  Pillow's `exif_transpose`: 1 none, 2 flip-h, 3 rotate 180,
+  4 flip-v, 5 rotate-90 + flip-h, 6 rotate 90 clockwise,
+  7 flip-h + rotate-90, 8 rotate 270.
+- `convert_to_srgb` converts RGB8/RGBA8 pixels from the embedded
+  ICC profile to sRGB (tintbox, relative colorimetric). A profile
+  that is already sRGB is a no-op; a non-RGB profile errors
+  honestly; a failed transform warns and keeps the original
+  pixels. When the pixels actually change, the source ICC profile
+  is dropped even under `Preserve` -- it no longer describes the
+  pixels -- with a warning.
+
+### Per-format metadata preservation matrix (Phase 5)
+
+`--metadata preserve` (or `selected:...`) on `convert` /
+`process` / `extract-frame`. Anything not listed as preserved is
+recorded in `metadata_dropped` with a reason and printed as a
+warning by the CLI.
+
+| Target | EXIF | ICC | XMP | Notes |
+|---|---|---|---|---|
+| JPEG | preserved (APP1) | preserved (APP2, chunked) | preserved (APP1) | Byte-exact re-insertion after SOI. |
+| PNG | preserved (`eXIf`) | preserved (`iCCP`, zlib) | preserved (`iTXt`) | Chunks inserted right after IHDR. |
+| TIFF | dropped | dropped | dropped | image-rs TIFF encoder has no metadata injection point in Phase 5. |
+| WebP | dropped | dropped | dropped | Would need a VP8X remux; not done in Phase 5. |
+| GIF | dropped | dropped | dropped | GIF has no EXIF/ICC/XMP container in this build. |
+| BMP / TGA / ICO / PNM / QOI / AVIF / JXL / JP2 / HDR / EXR / SVG | dropped | dropped | dropped | No metadata container support in Phase 5. |
+
+Source reading (what `openpixel metadata` sees): JPEG (APP1 EXIF,
+APP2 ICC, APP1 XMP), PNG (`eXIf`, `iCCP`, `iTXt`/`tEXt`/`zTXt`,
+`pHYs` DPI), TIFF (IFD0 EXIF/ICC), WebP (`EXIF`, `ICCP`, `XMP `).
+Other formats report no metadata, never invented metadata.
+
+### Animation support (Phase 5)
+
+| Source | Frame info | Frame extraction |
+|---|---|---|
+| GIF | full (count, per-frame delay, disposal, loop count) | full, with disposal compositing |
+| APNG | full (acTL/fcTL) | frame 0 only; later frames are an honest error |
+| Animated WebP | full (VP8X/ANMF) | frame 0 only; later frames are an honest error |
+| Multi-page TIFF | page count + dimensions | full (all pages) |
+| Anything else | single frame | frame 0 only; `--frame N>0` is `InvalidArgument` |
+
+Converting an animated/multi-page source without `--frame`
+warns (`source is animated (N frames); converting to a static
+image keeps the first frame only`) and keeps frame 0.
 
 ## Phase 4 — processing pipeline
 
@@ -126,9 +256,12 @@ cannot be combined with individual operation flags.
 
 ```
 openpixel info <input>
+openpixel metadata <input>
+openpixel frames <input>
+openpixel extract-frame <input> <output> [--frame N] [--quality N] [--png-compression N] [--background ...] [--metadata <policy>] [--preserve-metadata] [--to-srgb]
 openpixel discover <input>
-openpixel convert <input> <output> [--quality 1-100] [--png-compression 0|1|2] [--background white|black|#RRGGBB]
-openpixel process <input> <output> [--quality N] [--png-compression N] [--background ...]
+openpixel convert <input> <output> [--quality 1-100] [--png-compression 0|1|2] [--background white|black|#RRGGBB] [--metadata <policy>] [--preserve-metadata] [--frame N] [--to-srgb]
+openpixel process <input> <output> [--quality N] [--png-compression N] [--background ...] [--metadata <policy>] [--preserve-metadata] [--frame N] [--to-srgb]
     [--resize 800x600] [--resize-fit 800x600] [--resize-fill 800x600]
     [--pad 800x600 --pad-color white] [--crop 10,20,400,300] [--thumbnail 256]
     [--rotate 90] [--rotate-background white] [--flip-h] [--flip-v] [--grayscale]
@@ -149,6 +282,7 @@ Exit codes: 0 success, 1 any error (with `error: …` on stderr unless `--quiet`
 ## Stability note
 
 This is a Phase 1 internal API. `ConvertOptions` and `ImageInfo` may gain
-fields in later phases (resize, metadata policy, frame selection). The
+fields in later phases (Phase 5 already added the metadata policy,
+frame selection and sRGB conversion fields). The
 `Engine` method names above are the intended stable surface; codec
 details will stay behind it.

@@ -1268,13 +1268,16 @@ dependencies = [
 name = "openpixel-core"
 version = "0.1.0"
 dependencies = [
+ "gif",
  "image",
  "openpixel-codecs",
  "openpixel-formats",
+ "openpixel-metadata",
  "openpixel-pipeline",
  "serde",
  "tempfile",
  "thiserror",
+ "tintbox",
 ]
 
 [[package]]
@@ -1282,6 +1285,22 @@ name = "openpixel-formats"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "openpixel-metadata"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "gif",
+ "image",
+ "openpixel-codecs",
+ "openpixel-formats",
+ "openpixel-pipeline",
+ "serde",
+ "thiserror",
+ "tiff",
+ "tintbox",
 ]
 
 [[package]]
@@ -1839,6 +1858,12 @@ dependencies = [
  "weezl",
  "zune-jpeg",
 ]
+
+[[package]]
+name = "tintbox"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "19d3b9ef45699a6c0e1a13529ddf9aadc23189d246846f8657cb1794f64cb82c"
 
 [[package]]
 name = "tiny-skia"

@@ -42,6 +42,9 @@ pub enum OpenPixelError {
     #[error("codec error: {0}")]
     Codec(openpixel_codecs::CodecError),
 
+    #[error("metadata error: {0}")]
+    Metadata(String),
+
     #[error("pipeline error: {0}")]
     Pipeline(openpixel_pipeline::PipelineError),
 }
@@ -55,6 +58,18 @@ impl From<openpixel_codecs::CodecError> for OpenPixelError {
             openpixel_codecs::CodecError::Encode(msg) => OpenPixelError::Encode(msg),
             openpixel_codecs::CodecError::Unsupported(msg) => OpenPixelError::NotImplemented(msg),
             openpixel_codecs::CodecError::InvalidInput(msg) => OpenPixelError::InvalidArgument(msg),
+        }
+    }
+}
+
+impl From<openpixel_metadata::MetadataError> for OpenPixelError {
+    fn from(e: openpixel_metadata::MetadataError) -> Self {
+        match e {
+            openpixel_metadata::MetadataError::FrameOutOfRange { .. }
+            | openpixel_metadata::MetadataError::InvalidInput(_) => {
+                OpenPixelError::InvalidArgument(e.to_string())
+            }
+            other => OpenPixelError::Metadata(other.to_string()),
         }
     }
 }

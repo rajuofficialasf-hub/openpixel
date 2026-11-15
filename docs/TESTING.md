@@ -27,6 +27,79 @@ cargo test --workspace
   - Corrupted file (valid PNG signature + garbage) errors cleanly.
   - JPEG quality 20 vs 95 changes output size in the expected direction.
 
+## Verified results — Phase 5, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0
+
+Re-run `cargo test --workspace` to reproduce. System setup first:
+`sudo ./scripts/setup/ubuntu-24.04.sh` installs `libdav1d-dev`
+(AVIF decode — the only system library Phase 3 needs). Note: during
+Phase 5 verification the package had gone missing from this machine
+(runtime `libdav1d7` 1.4.1 still present); test binaries failed to
+link with `unable to find library -ldav1d` until it was restored
+(`sudo apt-get install libdav1d-dev`, 1.4.1-1build1, exact match).
+If a fresh checkout fails to link test binaries, run the setup
+script first.
+
+- `cargo build --release` — succeeds, binary `target/release/openpixel`.
+- `cargo test --workspace` — **152 passed, 0 failed** (was 89):
+  CLI 4 (new: metadata-policy flag resolution), codecs 25 (22 unit +
+  3 adapter round-trip, unchanged), core 36 (30 unit + 6 integration;
+  new: metadata read, policy strip vs preserve, orientation
+  normalisation, GIF frames, TIFF pages, frame extraction,
+  `to-srgb` + ICC-drop behaviour), formats 10 (unchanged), metadata
+  47 (46 unit + 1 doctest — exif 5, extract 8, icc 7, orientation 7,
+  frames 11, policy 8), pipeline 30 (29 unit + 1 doctest,
+  unchanged). Phase 4's 89 tests still pass unchanged.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passes.
+  `cargo fmt --check` — passes.
+- Manual CLI verification on real Pillow fixtures in `/tmp/p5`
+  (not checked in): `exif.jpg` 64x48 (EXIF orientation 6, Canon
+  EOS R50, 2026:11:15 10:30:00, GPS 23.81028,90.41250, sRGB ICC
+  588 B) + `exif_xmp.jpg` (same + XMP), `orient_2..8.jpg`,
+  `anim.gif` / `anim.webp` / `apng.png` (32x24, 3 frames, delays
+  100/200/300 ms), `multi.tiff` (2 pages, grey 10/200),
+  `adobe.jpg` (Adobe RGB ICC 604 B), `badexif.jpg` (garbage EXIF).
+  - `metadata exif.jpg` reads orientation 6, Canon EOS R50, GPS,
+    sRGB ICC; `info` shows orientation 6, exif/icc yes, xmp no.
+  - JPEG-to-JPEG `--metadata preserve` round-trips EXIF + ICC +
+    XMP and the output re-reads identically; JPEG-to-PNG preserves
+    EXIF + ICC; default (strip) drops everything; JPEG-to-TIFF
+    `--metadata preserve` warns and drops exif + icc with reasons.
+  - Orientation 6 normalises 64x48 to 48x64 with the tag gone;
+    orientations 2-8 all match Pillow `ImageOps.exif_transpose`
+    (at most 2 of 3 072 pixels off by more than 12/255 -- JPEG
+    re-encode noise at the fixture's hard quadrant edge, not a
+    mapping error; dimensions exact), including 5 (transpose) vs
+    7 (transverse).
+  - `frames anim.gif` lists 3 frames, delays 100/200/300 ms, loop
+    forever; `extract-frame --frame 1` gives green (0,255,0),
+    `--frame 2` blue (0,0,255); `convert anim.gif flat.png` warns
+    about the animated source and keeps frame 0 (red). `frames`
+    on `anim.webp` / `apng.png` lists 3 frames each;
+    `extract-frame apng.png --frame 1` fails cleanly with exit 1
+    (frame info only). `frames multi.tiff` lists 2 pages;
+    `extract-frame --frame 1` gives grey 200.
+  - `convert adobe.jpg --to-srgb` changes pixels (mean R 125 to
+    118) and drops the Adobe ICC; on the sRGB `exif.jpg` it is a
+    no-op (mean unchanged). `--to-srgb --metadata preserve` on
+    `adobe.jpg` converts the pixels and drops the ICC with a
+    warning (the profile no longer describes the pixels).
+  - `convert badexif.jpg` succeeds with a warning, no crash.
+  - `--json` output parses.
+- Bugs found and fixed during Phase 5: the CRC-32 test constant
+  for "IEND" was wrong in the test (`0xAE42_6001`, implementation
+  correct at `0xAE42_6082`); a TIFF page-count walk accepted an
+  IFD claiming 65 280 entries in 3 bytes (now requires the IFD
+  structure to fit in the file); GIF partial frames built via a
+  bare `Frame` struct failed `MissingColorPalette` (must use
+  `Frame::from_rgba`); tintbox zeroes alpha without
+  `Flags::COPY_ALPHA` on RGBA transforms; combining `--to-srgb`
+  with `--metadata preserve` used to keep the stale Adobe ICC
+  (now dropped with a warning); `frames` labelled a multi-page
+  TIFF "(animated)" (now "(multi-page)"); EXIF tag 0x013B (Artist)
+  was mis-mapped to `software` -- 0x0131 is Software, 0x013B is
+  now reported as `artist` (found by the `--json` output of the
+  regenerated fixtures).
+
 ## Verified results — Phase 4, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0
 
 Re-run `cargo test --workspace` to reproduce.
@@ -177,7 +250,11 @@ Re-run `cargo test --workspace` to reproduce.
 - Large-image / memory benchmarks — Phase 6.
 - Cross-platform (Windows/macOS) — Phase 9; Phase 1 code is pure Rust
   + `std`, so no platform-specific test exists yet.
-- Animation round-trips, metadata preservation, ICC handling — Phases 5.
+- Animation round-trips, metadata preservation, ICC handling — done
+  in Phase 5 (see above). Still open: APNG / animated WebP frame
+  extraction beyond frame 0, metadata preservation to targets
+  other than JPEG/PNG, ICC conversion for non-RGB profiles and
+  16-bit pixels, IPTC reading, > 64 KiB ICC chunking test.
 - Corrupted-file corpus (`tests/corrupted-files/`) — folder exists,
   corpus to be added in Phase 9.
 

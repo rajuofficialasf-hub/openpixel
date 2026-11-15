@@ -35,9 +35,21 @@
   `--op` for exact ordering); dependency versions pinned exactly.
   Text watermark intentionally not included (no bundled font).
   89 tests pass (was 50).
-- [ ] **Phase 5 — Metadata & Animation**: EXIF/IPTC/XMP/ICC/DPI/
-  orientation, metadata policies, colour management (LittleCMS),
-  GIF/APNG/animated WebP frames, multi-page TIFF.
+- [x] **Phase 5 — Metadata & Animation** (done 16 Nov 2026, verified
+  by coordinator): `openpixel-metadata`
+  crate — hand-written EXIF reader (orientation, make/model,
+  date/time, GPS, DPI) + ICC/XMP detection from JPEG/PNG/TIFF/WebP;
+  `MetadataPolicy` (Strip / Preserve / PreserveSelected /
+  PreserveColorProfiles / NormalizeOrientation) wired into the
+  engine with honest per-format preservation (JPEG + PNG only,
+  everything else dropped with a recorded reason); orientation
+  normalisation per EXIF 1-8 (Pillow `exif_transpose` mapping);
+  GIF frame enumeration + extraction with disposal compositing,
+  APNG / animated WebP frame info (frame 0 only), multi-page TIFF
+  count + extraction; ICC-to-sRGB conversion via tintbox
+  (pure-Rust LittleCMS reimplementation — `lcms2` C crate not
+  used, see `docs/CODECS.md`); new CLI commands `metadata`,
+  `frames`, `extract-frame`. 152 tests pass (was 89).
 - [ ] **Phase 6 — Batch & Performance**: job manager, worker pool,
   bounded concurrency, memory limits, benchmarks, cancellation,
   retry, error recovery.

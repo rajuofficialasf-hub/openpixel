@@ -1,0 +1,20 @@
+[package]
+name = "openpixel-metadata"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OpenPixel Metadata — EXIF/ICC/XMP reading, metadata policies, orientation normalisation, animation frame info/extraction, ICC colour conversion (Phase 5)"
+
+[dependencies]
+openpixel-formats = { path = "../openpixel-formats" }
+openpixel-codecs = { path = "../openpixel-codecs" }
+openpixel-pipeline = { path = "../openpixel-pipeline" }
+gif.workspace = true
+tiff.workspace = true
+flate2.workspace = true
+tintbox.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+image.workspace = true

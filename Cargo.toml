@@ -4,6 +4,7 @@ members = [
     "crates/openpixel-codecs",
     "crates/openpixel-core",
     "crates/openpixel-pipeline",
+    "crates/openpixel-metadata",
     "apps/cli",
 ]
 resolver = "2"
@@ -35,6 +36,14 @@ jxl-oxide = "=0.12.6"
 zune-jpegxl = "=0.5.2"
 zune-core = "=0.5.3"
 jpeg2k = { version = "=0.11.0", default-features = false, features = ["image"] }
+# Phase 5 metadata & animation (pinned exact — see docs/CODECS.md):
+# gif/tiff/flate2 were already transitive deps of image-rs 0.25.10
+# at these exact versions; tintbox is a pure-Rust LittleCMS
+# reimplementation (MIT) used for ICC -> sRGB colour conversion.
+gif = "=0.14.2"
+tiff = "=0.11.3"
+flate2 = "=1.1.11"
+tintbox = "=0.5.0"
 
 [profile.release]
 opt-level = 3
