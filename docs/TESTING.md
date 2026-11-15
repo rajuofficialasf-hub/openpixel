@@ -86,6 +86,120 @@ Web app in `apps/web/` (React 19.3.1 + TypeScript 7.0.2 + Vite 8.3.8
   (5) keyboard-only: tab to the drop zone, Enter opens the picker;
   (6) GIF converts as first frame only, with the note shown.
 
+## Verified results — Phase 8, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0, Node v24.22.1 / npm 10.9.4
+
+Desktop app in `apps/desktop/` (Tauri 2.12.4 backend + React 19.3.1 +
+TypeScript 7.0.2 + Vite 8.3.8 + Tailwind CSS 3.4.17 frontend; all
+versions pinned exactly, including `@tauri-apps/api 2.12.4`,
+`@tauri-apps/plugin-dialog 2.8.4`, `@tauri-apps/cli 2.12.4`). No
+server anywhere; the backend calls `Engine` / `JobManager` directly.
+
+- `npm test` — **11 passed, 0 failed** (2 files): `tauri.test.ts` 7
+  (encodable-format filtering, decodable extensions, primary
+  extension, labels, output paths incl. Windows separators,
+  file/dir name splitting, byte formatting), `settings.test.ts` 4
+  (defaults, round-trip, batch-worker clamp 1–8, quality clamp +
+  bad-JSON fallback). Two real failures found and fixed on the way:
+  a wrong sort expectation (`jpeg` sorts before `jpg`) and the
+  settings tests needing jsdom for `localStorage` (the suite runs
+  in jsdom, unlike the web app's node-only tests).
+- `npm run build` — passes (`tsc -b && vite build`):
+  `dist/index.html` 0.62 kB, `dist/assets/index-*.css` 12.76 kB,
+  `dist/assets/index-*.js` 257.58 kB (gzip 77.82 kB). Three real
+  build failures found and fixed on the way: an extra `)` in three
+  checkbox handlers, an unused `settings` parameter in the options
+  builder, and a `string` assigned to a `'strip' | 'preserve'`
+  state. `npm run lint` (oxlint) — 0 warnings, 0 errors, 16 files.
+- Backend (own workspace, `apps/desktop/src-tauri/`):
+  `cargo fmt --all` + `cargo fmt --check` pass,
+  `cargo clippy --all-targets -- -D warnings` passes,
+  `cargo check` passes, `cargo test` — **16 passed, 0 failed**:
+  logging 4 (UTC epoch + known date, log round-trip + tail, missing
+  log reads empty), commands 12 (capabilities from the registry —
+  21 formats, format parsing, option/pipeline validation, info /
+  metadata / frames on a generated fixture, PNG→JPEG/WebP
+  conversion with output re-detection, unencodable-target and
+  missing-file rejection, resize-fit + grayscale processing, frame
+  0 extraction + out-of-range rejection, a real 2-file batch via
+  `JobManager` with 1 done / 1 failed, batch refusal rules,
+  directory listing of decodable files only). Two real failures
+  found and fixed on the way: `Metadata.has_exif` is a field, not a
+  method, and a missing `&` on a `PathBuf`; clippy's
+  `field_reassign_with_default` in two tests (rewritten as struct
+  literals, not by weakening the lint).
+- Rust workspace unchanged and green: `cargo fmt --all` +
+  `cargo fmt --check` pass, `cargo clippy --workspace --all-targets
+  -- -D warnings` passes, `cargo test --workspace` **171 passed, 0
+  failed** (same as the Phase 7 baseline), `cargo build --release`
+  succeeds (`target/release/openpixel`, 16 731 576 B).
+- Capability match (manual check): `openpixel --json formats`
+  lists 21 formats (16 decodable, 15 encodable); the backend test
+  asserts 21 from `Engine::get_capabilities`, and the frontend
+  fetches that same list live on every launch — the Formats tab and
+  the output selectors cannot drift from the registry.
+- Tauri build — **succeeds for the binary and the .deb; the
+  .AppImage was produced by hand** (see below for the exact split):
+  release binary `src-tauri/target/release/openpixel-desktop`
+  (30 223 224 B, built in 15 m 41 s on first compile),
+  `.deb` `src-tauri/target/release/bundle/deb/OpenPixel_0.1.0_amd64.deb`
+  (9 665 496 B, package `open-pixel` 0.1.0, depends
+  `libwebkit2gtk-4.1-0, libgtk-3-0`, icons at 4 sizes + desktop
+  file inside), `.AppImage`
+  `src-tauri/target/release/bundle/appimage/OpenPixel_0.1.0_amd64.AppImage`
+  (80 046 584 B). Three real build failures found and fixed on the
+  way: `core:asset:default` is not a permission in Tauri 2.12
+  (removed — the asset protocol is covered by `core:default`); the
+  hand-written icons lacked the PNG signature and were RGB, not
+  RGBA (regenerated); the bundle category `Graphics & Design` is
+  invalid (Tauri wants `Graphics and Design`); and the `bundle.icon`
+  list was missing, so no icons were staged and the AppImage step
+  panicked on "couldn't find a square icon" (added the list).
+- `.deb` verified by installing it (`sudo dpkg -i`, package
+  `open-pixel` 0.1.0, `/usr/bin/openpixel-desktop` present,
+  `ldd` shows no missing libraries) and leaving it installed.
+- App smoke test under Xvfb (no live-browser tooling in this
+  session, so the app was run headless): `timeout 20 xvfb-run -a
+  /usr/bin/openpixel-desktop` — the main process stayed alive with
+  `WebKitNetworkProcess` and `WebKitWebProcess` children (the window
+  and webview loaded), and the log file gained
+  `2026-11-15T21:02:16Z [INFO] OpenPixel desktop started (offline mode)`.
+  Only warnings were the Xvfb DRI3 software-rendering notices.
+  No click-through of Convert/Batch/Formats/Settings/Logs was run
+  in this environment (no live-GUI tooling for this subagent); the
+  manual checklist below lists the flows to confirm on a real
+  desktop before release.
+- Environment findings during Phase 8 (all in `docs/DESKTOP.md`):
+  the `-dev` packages for WebKitGTK/GTK cannot install via apt
+  (`libzstd-dev` pins stock `libzstd1`, the image ships a
+  Hatch-patched `+hatch1` build; downgrading a core library was
+  refused) — the build used 104 downloaded -dev packages extracted
+  into a sysroot at `~/.tauri-sysroot` with `PKG_CONFIG_PATH`;
+  linking the backend test binary needed the runtime `.so.0`
+  files copied into that sysroot (105 dangling `-dev` symlinks);
+  the sysroot first lived in `/tmp` (512 MiB tmpfs) and starved the
+  linker — the metadata doctest failed with `ld terminated with
+  signal 7 [Bus error]` until the sysroot moved to `$HOME`
+  (the doctest then passes in isolation, and the full suite is
+  171/171 again — the failure was environmental, not a code
+  failure); the AppImage step cannot run through `tauri build`
+  here because the VM has no FUSE kernel module (`modprobe fuse`:
+  module not found; `/dev/fuse` absent), so `linuxdeploy` was run
+  by hand from its extracted AppImage (see `docs/DESKTOP.md`).
+- Manual desktop checklist — NOT yet run on a real desktop (no
+  live-GUI tooling in this subagent session); confirm before
+  release: (1) launch the installed app, drop a PNG, convert to
+  JPEG/WebP/TIFF and save via the native dialog — output
+  re-detects as the target; (2) convert a JPEG with
+  `--metadata preserve` equivalent (Preserve in the UI) to JPEG and
+  confirm EXIF survives; (3) batch of 3+ files incl. one corrupt —
+  corrupt fails with its error, the rest convert, pause/resume and
+  retry-failed work; (4) Formats tab shows 21 formats with SVG
+  decode-only and HEIC/HEIF/APNG/RAW/PSD unconvertible; (5) theme
+  toggle light/dark/system persists across restart; (6) Logs tab
+  shows the conversion lines and the log file path; (7) keyboard-only:
+  tab to the drop zone, Enter opens the native picker; (8) drag a
+  file onto the window from the file manager.
+
 ## Verified results — Phase 6, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0
 
 Re-run `cargo test --workspace` to reproduce. System setup first:

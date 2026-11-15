@@ -81,8 +81,18 @@
   Rust workspace unchanged at 171 tests. See `docs/TESTING.md` for
   the verification results and the manual browser checklist that
   still needs a real browser run.
-- [ ] **Phase 8 — Desktop Application**: Tauri 2, native file picker,
-  drag-and-drop, offline mode, installers (Windows/macOS/Linux).
+- [x] **Phase 8 — Desktop Application** (done 16 Nov 2026, verified
+  by coordinator): Tauri 2, native file picker, drag-and-drop, offline mode,
+  installers (Windows/macOS/Linux). Delivered as `apps/desktop/`:
+  Tauri 2.12.4 backend over `openpixel-core` / `openpixel-jobs` +
+  React/Vite/Tailwind frontend; Convert / Batch / Formats / Settings /
+  Logs tabs; capability list read live from the engine registry
+  (21 formats); application log file in the app data dir. Linux
+  `.deb` + `.AppImage` build verified on this VM (see
+  `docs/DESKTOP.md` for the `libzstd-dev` sysroot workaround and for
+  what is still missing: Windows/macOS installers, arbitrary rotation
+  in the UI). Rust workspace unchanged at 171 tests; backend has its
+  own test suite (see `docs/TESTING.md`).
 - [ ] **Phase 9 — Production QA**: security audit, fuzz tests,
   cross-platform tests, licence audit + SBOM, performance testing,
   release packaging.

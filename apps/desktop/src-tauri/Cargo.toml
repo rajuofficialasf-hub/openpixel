@@ -1,0 +1,43 @@
+[package]
+name = "openpixel-desktop"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "OpenPixel Engine desktop application — Tauri 2 frontend over openpixel-core (Phase 8)"
+
+# Detached workspace: this crate is deliberately NOT a member of the
+# root workspace (see docs/DESKTOP.md). Tauri 2 pulls a GUI toolkit
+# (WebKitGTK/GTK on Linux) plus an async runtime into the build; making
+# it a root member would make `cargo test --workspace` link the GUI
+# libraries and compile the whole Tauri tree for every engine test run.
+# It has its own lockfile and its own commands:
+#   cargo check -p openpixel-desktop --manifest-path apps/desktop/src-tauri/Cargo.toml
+#   cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+[workspace]
+
+[lib]
+name = "openpixel_desktop"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
+[[bin]]
+name = "openpixel-desktop"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "=2.7.4", features = [] }
+
+[dependencies]
+# Pinned exactly, like the rest of the engine (see docs/CODECS.md).
+tauri = { version = "=2.12.4", features = [] }
+tauri-plugin-dialog = "=2.8.4"
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+openpixel-core = { path = "../../../crates/openpixel-core", version = "=0.1.0" }
+openpixel-formats = { path = "../../../crates/openpixel-formats", version = "=0.1.0" }
+openpixel-jobs = { path = "../../../crates/openpixel-jobs", version = "=0.1.0" }
+
+[dev-dependencies]
+# Fixture generation in tests only (same pinned version as the workspace).
+image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg"] }
+tempfile = "=3.27.0"

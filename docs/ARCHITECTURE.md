@@ -26,6 +26,56 @@ Application Layer
                             (evaluated in CODECS.md, wired in Phase 3)
 ```
 
+## Phase 8 — what changed (draft — coordinator verifies and commits)
+
+- `apps/desktop/` is now a real app (was an empty placeholder):
+  Tauri 2.12.4 backend crate `openpixel-desktop` in `src-tauri/`
+  (Rust, pinned exactly: `tauri =2.12.4`, `tauri-plugin-dialog
+  =2.8.4`, `tauri-build =2.7.4`) + React 19 + TypeScript + Vite 8 +
+  Tailwind CSS 3 frontend (same pinned versions as the web app, plus
+  `@tauri-apps/api =2.12.4`, `@tauri-apps/plugin-dialog =2.8.4`,
+  `@tauri-apps/cli =2.12.4`). No server anywhere: the backend calls
+  `openpixel-core`'s `Engine` and `openpixel-jobs`' `JobManager`
+  directly — the same code the CLI uses — and the frontend only sends
+  file paths + options. Five tabs: Convert (native open-file dialog
+  or window drag-and-drop, asset-protocol preview, engine info /
+  metadata / frames, output from the live registry, quality /
+  background / metadata controls, optional processing via
+  `Engine::process`, frame extraction, native save dialog), Batch
+  (file multi-pick + folder pick via `list_directory_images`,
+  per-file target, worker pool 1–8, 500 ms progress polling,
+  pause/resume/cancel-one/cancel-all/retry-failed), Formats
+  (capability table read live from the registry on every launch —
+  21 formats, never a hand-written list), Settings (theme, defaults,
+  batch workers, reset, About with the offline statement and the log
+  path), Logs (tail of the app log file + its path).
+- The backend is deliberately **not** a root workspace member:
+  `src-tauri/Cargo.toml` carries its own `[workspace]` table, so
+  Tauri's GUI toolkit (WebKitGTK/GTK) and async runtime do not enter
+  `cargo test --workspace`. The engine workspace is unchanged and
+  green (171 tests, same as the Phase 7 baseline); the backend has
+  its own lockfile and its own `cargo test` / `cargo clippy` /
+  `cargo check` commands (see `docs/DESKTOP.md`).
+- Logging is a std-only append-only file in the app data directory
+  (`<app_data_dir>/logs/openpixel-desktop.log`, UTC timestamps, no
+  date crate): every conversion, batch event and error is logged,
+  and the Logs tab shows the tail.
+- Offline is stated in the header badge, in Settings / About and in
+  the footer, and the CSP in `tauri.conf.json` is `default-src
+  'self'` plus the asset protocol for local previews.
+- Full build on this VM: see `docs/DESKTOP.md` — the `-dev`
+  packages for WebKitGTK/GTK are blocked by a `libzstd-dev` pin
+  conflict (the image's `libzstd1` is a Hatch-patched build), so the
+  build used a downloaded -dev sysroot under `/tmp` with
+  `PKG_CONFIG_PATH`; no system library was downgraded. The produced
+  `.deb` / `.AppImage` link only the runtime libraries, which are
+  ordinary apt packages.
+- Tests: backend `cargo test` (command-core tests over the real
+  engine + a real `JobManager` batch) and frontend `npm test`
+  (Vitest: settings + format helpers); `npm run build` (tsc + Vite)
+  passes. See `docs/TESTING.md` for the exact counts and the Tauri
+  build outcome.
+
 ## Phase 7 — what changed (draft — coordinator verifies and commits)
 
 - `apps/web/` is now a real app (was an empty placeholder): React 19
