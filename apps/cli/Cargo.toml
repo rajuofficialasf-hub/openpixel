@@ -11,6 +11,14 @@ path = "src/main.rs"
 
 [dependencies]
 openpixel-core = { path = "../../crates/openpixel-core" }
+openpixel-jobs = { path = "../../crates/openpixel-jobs" }
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# Phase 6: `bench` generates its own fixtures with the `image`
+# crate (pinned exact in the workspace, as elsewhere). The engine
+# itself never depends on it at runtime for conversion.
+image.workspace = true
+
+[dev-dependencies]
+tempfile = "=3.27.0"

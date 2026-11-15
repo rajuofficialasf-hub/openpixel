@@ -4,15 +4,20 @@ use openpixel_core::{
     detect_format, ConvertOptions, Engine, EngineConfig, ImageFormat, MetadataPolicy, Operation,
     Pipeline, PipelineSpec, ProcessOptions, WatermarkPosition, WatermarkSpec,
 };
+use openpixel_jobs::{JobManager, JobManagerConfig};
+use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
+
+mod bench;
 
 #[derive(Parser)]
 #[command(
     name = "openpixel",
     version,
-    about = "OpenPixel Engine — local image conversion and processing (Phase 5)"
+    about = "OpenPixel Engine — local image conversion and processing (Phase 6)"
 )]
 struct Cli {
     /// Output machine-readable JSON instead of human text
@@ -99,7 +104,9 @@ enum Commands {
     Formats,
     /// Show capabilities for one format, e.g. `capabilities avif`
     Capabilities { format: String },
-    /// Convert every image in a directory (Phase 1: sequential, no parallelism yet)
+    /// Convert every image in a directory (Phase 6: parallel worker
+    /// pool by default; --workers 1 or --sequential keeps the old
+    /// one-by-one behaviour)
     Batch {
         input_dir: PathBuf,
         /// Target format, e.g. webp
@@ -111,6 +118,24 @@ enum Commands {
         /// Where to write outputs (default: <input_dir>/openpixel-out)
         #[arg(long)]
         out_dir: Option<PathBuf>,
+        /// Worker threads (1..=8, default = CPUs capped at 4).
+        /// 1 runs the old sequential batch.
+        #[arg(long)]
+        workers: Option<usize>,
+        /// Force the old sequential batch (same as --workers 1)
+        #[arg(long)]
+        sequential: bool,
+    },
+    /// Run the Phase 6 benchmark suite (JPEG decode, PNG/WebP/AVIF
+    /// encode, large TIFF, 12-file batch) and print a table
+    Bench {
+        /// Repetitions per operation (default 3)
+        #[arg(long, default_value = "3")]
+        iterations: usize,
+        /// Small fixtures (256x192 base, 4-file batch) for a fast
+        /// smoke run; timings are not comparable to a full run
+        #[arg(long)]
+        quick: bool,
     },
     /// Process one image and write it out: openpixel process input.png output.jpg --resize 800x600 --grayscale --rotate 90
     ///
@@ -227,7 +252,7 @@ enum Commands {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let engine = Engine::new(EngineConfig::default());
+    let engine = Arc::new(Engine::new(EngineConfig::default()));
     match run(&cli, &engine) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -239,7 +264,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(cli: &Cli, engine: &Engine) -> Result<(), openpixel_core::OpenPixelError> {
+fn run(cli: &Cli, engine: &Arc<Engine>) -> Result<(), openpixel_core::OpenPixelError> {
     match &cli.command {
         Commands::Info { input } => {
             let info = engine.get_image_info(input)?;
@@ -653,6 +678,8 @@ fn run(cli: &Cli, engine: &Engine) -> Result<(), openpixel_core::OpenPixelError>
             format,
             quality,
             out_dir,
+            workers,
+            sequential,
         } => {
             let target = ImageFormat::from_name(format).ok_or_else(|| {
                 openpixel_core::OpenPixelError::InvalidArgument(format!(
@@ -666,84 +693,250 @@ fn run(cli: &Cli, engine: &Engine) -> Result<(), openpixel_core::OpenPixelError>
                 path: out_dir.clone(),
                 source: e,
             })?;
-            let mut done = 0usize;
-            let mut failed = 0usize;
-            let mut entries: Vec<_> = fs::read_dir(input_dir)
-                .map_err(|e| openpixel_core::OpenPixelError::Io {
-                    path: input_dir.clone(),
-                    source: e,
-                })?
-                .filter_map(|e| e.ok())
-                .map(|e| e.path())
-                .filter(|p| p.is_file())
-                .collect();
-            entries.sort();
-            for input in entries {
-                // Skip files we cannot even detect — report, don't crash the batch.
-                let bytes = match fs::read(&input) {
-                    Ok(b) => b,
-                    Err(_) => {
-                        failed += 1;
-                        continue;
-                    }
-                };
-                if detect_format(&bytes) == ImageFormat::Unknown {
-                    if cli.verbose {
-                        println!("skip (unknown format): {}", input.display());
-                    }
-                    continue;
-                }
-                let stem = input
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().to_string())
-                    .unwrap_or_else(|| "out".into());
-                // Same stem from different sources (photo.jpg + photo.png)
-                // must not silently overwrite each other.
-                let mut output = out_dir.join(format!("{stem}.{}", target.extensions()[0]));
-                if output.exists() {
-                    let src_ext = input
-                        .extension()
-                        .map(|e| e.to_string_lossy().to_string())
-                        .unwrap_or_else(|| "img".into());
-                    output = out_dir.join(format!("{stem}-{src_ext}.{}", target.extensions()[0]));
-                }
-                let options = ConvertOptions {
-                    quality: *quality,
-                    background: [255, 255, 255],
-                    ..Default::default()
-                };
-                match engine.convert(&input, &output, target, &options) {
-                    Ok(r) => {
-                        done += 1;
-                        if cli.verbose {
-                            println!(
-                                "ok: {} -> {} ({} bytes)",
-                                input.display(),
-                                r.output_path,
-                                r.output_bytes
-                            );
-                        }
-                    }
-                    Err(e) => {
-                        failed += 1;
-                        eprintln!("failed: {}: {e}", input.display());
-                    }
-                }
+            let worker_count = match (*workers, *sequential) {
+                (_, true) => 1,
+                (Some(n), false) => n,
+                (None, false) => openpixel_jobs::default_workers(),
+            };
+            if worker_count == 0 || worker_count > openpixel_jobs::MAX_WORKERS {
+                return Err(openpixel_core::OpenPixelError::InvalidArgument(format!(
+                    "--workers must be 1..={} (got {worker_count})",
+                    openpixel_jobs::MAX_WORKERS
+                )));
             }
+            let options = ConvertOptions {
+                quality: *quality,
+                background: [255, 255, 255],
+                ..Default::default()
+            };
+            let summary = if worker_count == 1 {
+                batch_sequential(cli, engine, input_dir, &out_dir, target, &options)?
+            } else {
+                batch_parallel(
+                    cli,
+                    engine,
+                    input_dir,
+                    &out_dir,
+                    target,
+                    &options,
+                    worker_count,
+                )?
+            };
             if cli.json {
-                println!(
-                    "{}",
-                    serde_json::json!({"converted": done, "failed": failed, "out_dir": out_dir})
-                );
+                println!("{}", serde_json::to_string_pretty(&summary).unwrap());
             } else if !cli.quiet {
                 println!(
-                    "batch done: {done} converted, {failed} failed -> {}",
+                    "batch done: {} converted, {} failed ({} worker{}) -> {}",
+                    summary.converted,
+                    summary.failed,
+                    summary.workers,
+                    if summary.workers == 1 { "" } else { "s" },
                     out_dir.display()
                 );
             }
             Ok(())
         }
+        Commands::Bench { iterations, quick } => {
+            let report = bench::run_bench(*iterations, *quick)?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&report).unwrap());
+            } else {
+                bench::print_report(&report);
+            }
+            Ok(())
+        }
     }
+}
+
+/// What a batch run reports, in both text and `--json` output.
+#[derive(Debug, serde::Serialize)]
+struct BatchSummary {
+    converted: usize,
+    failed: usize,
+    workers: usize,
+    out_dir: PathBuf,
+    failures: Vec<BatchFailure>,
+}
+
+/// One file that did not convert, with the reason.
+#[derive(Debug, serde::Serialize)]
+struct BatchFailure {
+    input: PathBuf,
+    error: String,
+}
+
+/// Sorted image files in `input_dir`: unreadable files are reported
+/// as failures (not crashes), files with an unknown signature are
+/// skipped (not counted) — the Phase 1 rules, shared by both batch
+/// paths so sequential and parallel agree on what counts.
+fn collect_batch_inputs(
+    cli: &Cli,
+    input_dir: &Path,
+) -> Result<(Vec<PathBuf>, Vec<BatchFailure>), openpixel_core::OpenPixelError> {
+    let mut entries: Vec<_> = fs::read_dir(input_dir)
+        .map_err(|e| openpixel_core::OpenPixelError::Io {
+            path: input_dir.to_path_buf(),
+            source: e,
+        })?
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.is_file())
+        .collect();
+    entries.sort();
+    let mut inputs = Vec::new();
+    let mut failures = Vec::new();
+    for input in entries {
+        // Skip files we cannot even detect — report, don't crash the batch.
+        let bytes = match fs::read(&input) {
+            Ok(b) => b,
+            Err(e) => {
+                failures.push(BatchFailure {
+                    input: input.clone(),
+                    error: format!("could not read file: {e}"),
+                });
+                continue;
+            }
+        };
+        if detect_format(&bytes) == ImageFormat::Unknown {
+            if cli.verbose {
+                println!("skip (unknown format): {}", input.display());
+            }
+            continue;
+        }
+        inputs.push(input);
+    }
+    Ok((inputs, failures))
+}
+
+/// Output path for one batch input, honouring the stem-collision
+/// rule: `photo.jpg` + `photo.png` must not overwrite each other
+/// (`photo.png` -> `photo-png.<target>`). `used` tracks outputs
+/// already claimed in this run, so the rule holds even when the
+/// output file does not exist on disk yet (parallel path).
+fn batch_output_path(
+    input: &Path,
+    out_dir: &Path,
+    target: ImageFormat,
+    used: &mut HashSet<PathBuf>,
+) -> PathBuf {
+    let stem = input
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "out".into());
+    let mut output = out_dir.join(format!("{stem}.{}", target.extensions()[0]));
+    if output.exists() || used.contains(&output) {
+        let src_ext = input
+            .extension()
+            .map(|e| e.to_string_lossy().to_string())
+            .unwrap_or_else(|| "img".into());
+        output = out_dir.join(format!("{stem}-{src_ext}.{}", target.extensions()[0]));
+    }
+    used.insert(output.clone());
+    output
+}
+
+/// The Phase 1 batch, unchanged in behaviour: one file at a time,
+/// in sorted order. Kept as the fallback for `--workers 1` and
+/// `--sequential`.
+fn batch_sequential(
+    cli: &Cli,
+    engine: &Engine,
+    input_dir: &Path,
+    out_dir: &Path,
+    target: ImageFormat,
+    options: &ConvertOptions,
+) -> Result<BatchSummary, openpixel_core::OpenPixelError> {
+    let (inputs, mut failures) = collect_batch_inputs(cli, input_dir)?;
+    let mut used: HashSet<PathBuf> = HashSet::new();
+    let mut done = 0usize;
+    for input in inputs {
+        let output = batch_output_path(&input, out_dir, target, &mut used);
+        match engine.convert(&input, &output, target, options) {
+            Ok(r) => {
+                done += 1;
+                if cli.verbose {
+                    println!(
+                        "ok: {} -> {} ({} bytes)",
+                        input.display(),
+                        r.output_path,
+                        r.output_bytes
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("failed: {}: {e}", input.display());
+                failures.push(BatchFailure {
+                    input: input.clone(),
+                    error: e.to_string(),
+                });
+            }
+        }
+    }
+    Ok(BatchSummary {
+        converted: done,
+        failed: failures.len(),
+        workers: 1,
+        out_dir: out_dir.to_path_buf(),
+        failures,
+    })
+}
+
+/// The Phase 6 batch: the same inputs and output rules, converted
+/// through a bounded `JobManager` pool. A failed file is recorded
+/// in its `JobResult` and never stops the batch.
+fn batch_parallel(
+    cli: &Cli,
+    engine: &Arc<Engine>,
+    input_dir: &Path,
+    out_dir: &Path,
+    target: ImageFormat,
+    options: &ConvertOptions,
+    workers: usize,
+) -> Result<BatchSummary, openpixel_core::OpenPixelError> {
+    let (inputs, mut failures) = collect_batch_inputs(cli, input_dir)?;
+    let mut used: HashSet<PathBuf> = HashSet::new();
+    let manager =
+        JobManager::for_engine(JobManagerConfig::with_workers(workers), Arc::clone(engine))
+            .map_err(|e| openpixel_core::OpenPixelError::InvalidArgument(e.to_string()))?;
+    for input in inputs {
+        let output = batch_output_path(&input, out_dir, target, &mut used);
+        manager.submit(input, output, target, options.clone());
+    }
+    manager.wait_all();
+    let mut done = 0usize;
+    for result in manager.results() {
+        match result.status {
+            openpixel_jobs::JobStatus::Done => {
+                done += 1;
+                if cli.verbose {
+                    println!(
+                        "ok: {} -> {} ({} bytes)",
+                        result.input.display(),
+                        result.output.display(),
+                        result.bytes
+                    );
+                }
+            }
+            openpixel_jobs::JobStatus::Failed => {
+                let error = result
+                    .error
+                    .unwrap_or_else(|| "conversion failed".to_string());
+                eprintln!("failed: {}: {error}", result.input.display());
+                failures.push(BatchFailure {
+                    input: result.input,
+                    error,
+                });
+            }
+            _ => {}
+        }
+    }
+    Ok(BatchSummary {
+        converted: done,
+        failed: failures.len(),
+        workers,
+        out_dir: out_dir.to_path_buf(),
+        failures,
+    })
 }
 
 /// Resolve the metadata policy from the CLI flags: an explicit

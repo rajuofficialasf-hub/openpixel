@@ -29,8 +29,14 @@ Image input is untrusted input. Treat every file as hostile until proven otherwi
   timeout. A pathological file can take a long time. Timeouts + worker
   isolation land with the Job Manager (Phase 6).
 - **Memory limits (RSS):** pixel-count limits bound the decoded buffer,
-  but there is no OS-level RSS cap yet. Add `ulimit` / cgroup guidance
-  for server mode in Phase 6.
+  but there is no OS-level RSS cap yet. Phase 6 bounds concurrency
+  instead of capping RSS: at most `workers` images are decoded at
+  once (default 4), each bounded by `EngineConfig`, so worst-case
+  live pixel data is `workers x 100 MP x 4 bytes` — see
+  `docs/BENCHMARKS.md` (measured peak RSS 70 MiB for the whole
+  bench suite). For very large images, run with `--workers 1`.
+  A `ulimit` / cgroup cap for server mode is still not set — that
+  remains a deployment decision, not an engine default.
 - **Fuzz testing:** not yet run. `cargo-fuzz` targets for `detect_format`
   and the decode path are a Phase 9 requirement.
 - **SVG:** not implemented. When resvg lands (Phase 3), scripts and

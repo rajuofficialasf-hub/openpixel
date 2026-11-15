@@ -77,6 +77,67 @@ assert!(found.has_mismatch()); // a PNG named .jpg
 // that is how a Phase 3 native codec will supersede image-rs.
 ```
 
+## Phase 6 — batch jobs
+
+```rust
+use openpixel_core::{ConvertOptions, Engine, EngineConfig, ImageFormat};
+use openpixel_jobs::{JobManager, JobManagerConfig, JobStatus};
+use std::path::PathBuf;
+use std::sync::Arc;
+
+let engine = Arc::new(Engine::new(EngineConfig::default()));
+// Default workers = min(CPUs, 4); explicit counts clamp to 1..=8.
+let manager = JobManager::for_engine(JobManagerConfig::default(), engine).unwrap();
+let id = manager.submit(
+    PathBuf::from("in.png"),
+    PathBuf::from("out.webp"),
+    ImageFormat::Webp,
+    ConvertOptions::default(),
+);
+manager.wait_all(); // blocks until every job is Done / Failed / Cancelled
+assert_eq!(manager.job(id).unwrap().status, JobStatus::Done);
+let progress = manager.progress(); // total / queued / running / done / failed / cancelled / paused
+let results = manager.results();   // per-file JobResult, in completion order
+```
+
+- `Job` — `id, input, output, target: ImageFormat, options:
+  ConvertOptions, status: JobStatus`.
+- `JobStatus` — `Queued, Running, Done, Failed, Cancelled,
+  Paused`. `Paused` is queue-level: the manager was paused while
+  the job was still queued. `is_terminal()` is true for `Done` /
+  `Failed` / `Cancelled`.
+- `JobResult` — `job_id, input, output, bytes` (output size, 0
+  on failure), `duration_ms`, `error: Option<String>`,
+  `status`. Cancelled jobs (never started) have no result.
+- `BatchProgress` — `total, queued, running, done, failed,
+  cancelled, paused`, plus `completed()` (`done + failed +
+  cancelled`).
+- `JobManager::new(config, work)` takes any `Arc<dyn Fn(&Job)
+  -> Result<u64, String> + Send + Sync>` — that is how the unit
+  tests inject a fake worker (sleep + peak-concurrency counter)
+  without touching the engine. `for_engine` is the same pool
+  with `Engine::convert` as the work function.
+- `pause()` / `resume()` — queue-level only. A running job is
+  never interrupted mid-call. `cancel(id)` returns `false` for a
+  running job (it runs to completion) and for unknown ids.
+  `cancel_all()` returns how many queued/paused jobs were
+  cancelled. `retry_failed()` re-queues failed jobs and drops
+  their old results; returns the count.
+- `wait_all()` blocks until every job is terminal — paused jobs
+  are not terminal, so `resume()` first or use
+  `wait_timeout(Duration) -> bool`.
+- `shutdown()` stops the workers and joins them (also called
+  from `Drop`); jobs still queued are left unrun.
+- Memory bound: at most `workers` images in RAM at once, each
+  bounded by `EngineConfig` (100 MiB file / 100 MP / 16 384 px).
+  Worst case `workers x 100 MP x 4 bytes` RGBA8; see
+  `crates/openpixel-jobs/src/lib.rs` and `docs/BENCHMARKS.md`
+  (measured peak RSS 70 MiB for the whole suite).
+- `openpixel_jobs::default_workers()` — `min(available CPUs, 4)`,
+  at least 1. `MAX_WORKERS` is 8. Peak/current RSS helpers:
+  `peak_rss_bytes()` / `current_rss_bytes()` (Linux
+  `/proc/self/status` `VmHWM` / `VmRSS`, `None` elsewhere).
+
 ## Phase 5 — metadata, animation, colour
 
 ```rust
@@ -272,7 +333,8 @@ openpixel process <input> <output> [--quality N] [--png-compression N] [--backgr
     [--op resize:800x600 --op grayscale --op rotate:90]   # exact order, repeatable; not mixable with the flags above
 openpixel formats
 openpixel capabilities <format>
-openpixel batch <dir> --format <fmt> [--quality N] [--out-dir <dir>]
+openpixel batch <dir> --format <fmt> [--quality N] [--out-dir <dir>] [--workers 1..=8] [--sequential]
+openpixel bench [--iterations N] [--quick]
 openpixel --json <any command>     # JSON output
 openpixel --quiet / --verbose      # log level
 ```

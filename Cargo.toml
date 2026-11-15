@@ -5,6 +5,7 @@ members = [
     "crates/openpixel-core",
     "crates/openpixel-pipeline",
     "crates/openpixel-metadata",
+    "crates/openpixel-jobs",
     "apps/cli",
 ]
 resolver = "2"

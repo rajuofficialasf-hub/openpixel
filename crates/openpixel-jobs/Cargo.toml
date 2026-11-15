@@ -1,0 +1,16 @@
+[package]
+name = "openpixel-jobs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OpenPixel Jobs — bounded worker pool for batch conversion: pause/resume/cancel/retry, per-file results, error recovery (Phase 6)"
+
+[dependencies]
+openpixel-core = { path = "../openpixel-core" }
+openpixel-formats = { path = "../openpixel-formats" }
+thiserror.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+image.workspace = true
+tempfile = "=3.27.0"

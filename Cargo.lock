@@ -1241,9 +1241,12 @@ name = "openpixel"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "image",
  "openpixel-core",
+ "openpixel-jobs",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -1285,6 +1288,18 @@ name = "openpixel-formats"
 version = "0.1.0"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "openpixel-jobs"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "openpixel-core",
+ "openpixel-formats",
+ "serde",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]

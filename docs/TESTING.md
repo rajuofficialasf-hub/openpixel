@@ -27,6 +27,56 @@ cargo test --workspace
   - Corrupted file (valid PNG signature + garbage) errors cleanly.
   - JPEG quality 20 vs 95 changes output size in the expected direction.
 
+## Verified results — Phase 6, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0
+
+Re-run `cargo test --workspace` to reproduce. System setup first:
+`sudo ./scripts/setup/ubuntu-24.04.sh` (libdav1d-dev, as in Phase 5).
+
+- `cargo build --release` — succeeds, binary `target/release/openpixel`.
+- `cargo test --workspace` — **171 passed, 0 failed** (was 152):
+  CLI 8 (4 unit, unchanged, + 4 integration: parallel batch with
+  a corrupt file, sequential-vs-parallel agreement, `--workers 0`
+  rejection, `bench --quick` table), codecs 25 (unchanged),
+  core 36 (unchanged), formats 10 (unchanged), jobs **15 new**
+  (11 unit + 1 doctest + 3 integration: bounded concurrency with
+  a peak counter, pause/resume, cancel queued vs running,
+  cancel-all, retry of a flaky job, failing file not aborting the
+  batch, progress counts, wait-timeout on a paused queue;
+  integration: 6 real images convert with 2 workers, 1 corrupt
+  file fails while 4 succeed, over-limit job fails with
+  `LimitExceeded`), metadata 47 (unchanged), pipeline 30
+  (unchanged). Phase 5's 152 tests still pass unchanged.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passes.
+  `cargo fmt --check` — passes.
+- Manual CLI verification on real Pillow fixtures in `/tmp/p6`
+  (not checked in): 21 files — 9 PNG + 9 JPEG (800x600, random
+  pixels), `photo.jpg` + `photo.png` (same stem), 1 corrupt PNG
+  (valid signature + garbage).
+  - `batch --format webp --quality 80 --workers 2` → `batch done:
+    20 converted, 1 failed (2 workers)`; exit 0; corrupt file
+    reported on stderr with its decode error; all 20 outputs
+    exist; stem rule holds (`img0.webp` + `img0-png.webp`,
+    `photo.webp` + `photo-png.webp`).
+  - `batch --sequential` → same 20/1 with `(1 worker)`;
+    `--json batch --workers 4` → same counts plus the failure
+    list (`input` + `error`); `--workers 0` → exit 1 with
+    `--workers must be 1..=8`.
+  - `bench --iterations 3` (release) — see `docs/BENCHMARKS.md`
+    for both runs: JPEG decode ~3 ms, PNG encode ~25 ms, WebP
+    encode ~17 ms, AVIF encode ~9.3 s, large TIFF ~75–96 ms,
+    12-file batch ~26–33 ms total (4 workers), peak RSS 70.2 MiB
+    in both runs.
+- Bugs / findings during Phase 6: a full `bench` run from the
+  debug test binary took ~224 s (AVIF encode in debug), so the
+  suite gained a `--quick` mode (small fixtures) and the CLI
+  integration test uses it — debug timings are not comparable
+  to release and the report says so. `clippy::manual_clamp`
+  (`.min(4).max(1)` → `.clamp(1, 4)`) and `print_literal` in
+  the bench table header were fixed in the code, not by
+  weakening the lint config. `--pause-after N` was not added:
+  in a non-interactive CLI run a paused queue has nothing to
+  wait for except an immediate resume.
+
 ## Verified results — Phase 5, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0
 
 Re-run `cargo test --workspace` to reproduce. System setup first:
@@ -247,11 +297,8 @@ Re-run `cargo test --workspace` to reproduce.
 ## Not yet tested (later phases)
 
 - Fuzz tests (`cargo-fuzz` on detection + decode) — Phase 9.
-- Large-image / memory benchmarks — Phase 6.
-- Cross-platform (Windows/macOS) — Phase 9; Phase 1 code is pure Rust
-  + `std`, so no platform-specific test exists yet.
-- Animation round-trips, metadata preservation, ICC handling — done
-  in Phase 5 (see above). Still open: APNG / animated WebP frame
+- Large-image / memory benchmarks — done in Phase 6 (see
+  `docs/BENCHMARKS.md`). Still open: APNG / animated WebP frame
   extraction beyond frame 0, metadata preservation to targets
   other than JPEG/PNG, ICC conversion for non-RGB profiles and
   16-bit pixels, IPTC reading, > 64 KiB ICC chunking test.

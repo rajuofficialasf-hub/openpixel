@@ -26,6 +26,57 @@ Application Layer
                             (evaluated in CODECS.md, wired in Phase 3)
 ```
 
+## Phase 6 — what changed (draft — coordinator verifies and commits)
+
+- `openpixel-jobs` is now a real workspace member (was a stub):
+  `JobManager` + a bounded worker pool (`std::thread` + `Mutex` +
+  `Condvar`, no async runtime, no new external crates).
+  `Job { id, input, output, target, options, status }`,
+  `JobStatus { Queued, Running, Done, Failed, Cancelled, Paused }`,
+  per-file `JobResult { job_id, input, output, bytes, duration_ms,
+  error, status }`, `BatchProgress` counts, `JobManagerConfig {
+  workers }`. The work function is a plain `Fn(&Job) ->
+  Result<u64, String>`; `JobManager::for_engine` wires it to
+  `Engine::convert`, so the engine's limits are enforced inside
+  every worker (a job over the limits fails with `LimitExceeded`,
+  never a crash, never a stopped batch).
+- Concurrency bound: a fixed number of worker threads (default
+  `min(available CPUs, 4)`, clamped 1..=8), each running at most
+  one job at a time — so at most `workers` full-resolution images
+  are ever in RAM. Worst case is `workers x 100 MP x 4 bytes`
+  (RGBA8) = 1.6 GiB at the default of 4; measured peak RSS for
+  the whole bench suite is 70 MiB (see `docs/BENCHMARKS.md`).
+- Pause / resume / cancel / retry, honestly scoped: `pause()`
+  pauses the queue (queued jobs become `Paused` and do not
+  start); a running decode/encode is never interrupted mid-call.
+  `resume()` re-queues paused jobs. `cancel(id)` cancels a queued
+  or paused job and returns `false` for a running one; `cancel_all()`
+  cancels every queued/paused job. `retry_failed()` re-queues
+  failed jobs (old results dropped); whether the retry succeeds is
+  up to the work function. A failed job is recorded in its
+  `JobResult` and never aborts the batch.
+- CLI: `batch` gains `--workers N` (1..=8) and `--sequential`
+  (the Phase 1 one-by-one loop, kept as the fallback for
+  `--workers 1`); both paths share the same input collection
+  and stem-collision rule, and both report converted/failed +
+  the failure list (`--json` included). New `openpixel bench`
+  command (`--iterations N`, `--quick` for a small-fixture smoke
+  run) prints the benchmark table with peak RSS. `scripts/test/
+  bench.sh` rebuilds release and runs it.
+- Benchmarks (real, this VM — see `docs/BENCHMARKS.md` for both
+  runs): JPEG decode ~3 ms, PNG encode ~25 ms, WebP encode
+  ~17 ms, AVIF encode ~9.3 s (ravif speed 4 — ~500x WebP),
+  large TIFF (2048x1536) ~75–96 ms, 12-file batch ~26–33 ms
+  total with 4 workers. Debug builds are not comparable (a full
+  debug bench run took ~224 s); the CLI test uses `--quick`.
+- Dependency versions pinned exactly (`=`), as before: no new
+  external crate entered the tree in Phase 6 — `openpixel-jobs`
+  uses only `openpixel-core` / `openpixel-formats` / `thiserror` /
+  `serde`, and the CLI's `bench` fixture generation reuses the
+  already-pinned `image` 0.25.10. `Cargo.lock` changed only by
+  the new `openpixel-jobs` package entry.
+- 171 tests pass (was 152).
+
 ## Phase 5 — what changed
 
 - `openpixel-metadata` is now a real workspace member (was a stub):
@@ -212,7 +263,7 @@ Application Layer
 | `DynamicImage` as canonical representation | image-rs already owns it; Phase 1 avoids inventing a second pixel buffer. Explicit RGB8/RGBA8/RGB16 etc. are surfaced via `ImageInfo.color_type`. | Phase 4 — a dedicated canonical struct with frames, ICC and metadata refs |
 | No Python runtime | Per the master prompt. The engine is Rust only. | Never |
 | Workspace members = core + CLI only | The other 9 crates exist as `src/lib.rs` stubs so the repo shape is visible, but they are not compiled yet — no fake completeness. | Their phase (see ROADMAP.md) |
-| Synchronous, sequential conversion | No worker pool yet; bounded concurrency is a Phase 6 job. Batch is sequential in Phase 1. | Phase 6 |
+| Synchronous, sequential conversion | No worker pool yet; bounded concurrency is a Phase 6 job. Batch is sequential in Phase 1. | Phase 6 — done: `openpixel-jobs` pool, `--workers` / `--sequential` on `batch` |
 
 ## Module map — `crates/openpixel-core/src/`
 
@@ -235,6 +286,10 @@ Application Layer
   APNG / WebP / TIFF frame and page handling), `orientation.rs`
   (EXIF 1-8 to pipeline operations), `policy.rs` (JPEG/PNG
   byte-level preservation splicing + CRC-32).
+- `openpixel-jobs/src/` — `JobManager` / `JobManagerConfig` /
+  `Job` / `JobStatus` / `JobResult` / `BatchProgress` /
+  `JobError` (Phase 6, see above), plus `peak_rss_bytes` /
+  `current_rss_bytes` (`/proc/self/status`, Linux).
 - `image.rs` — `ImageInfo`, `ConvertOptions`, `ConvertResult` (typed API, no codec details leak out). Phase 4 adds `ProcessOptions { convert, pipeline }`. Phase 5 adds metadata policy, frame selection and sRGB conversion to `ConvertOptions`, and warnings / preserved / dropped / orientation-applied to `ConvertResult`.
 - `security.rs` — `EngineConfig` + limits (`MAX_FILE_SIZE_BYTES` 100 MiB, `MAX_PIXELS` 100 MP, `MAX_DIMENSION` 16384), path validation, background-colour parsing.
 - `error.rs` — `OpenPixelError` (thiserror): typed, no silent failures.
@@ -258,8 +313,10 @@ contrast / saturation / blur / sharpen -> watermark -> flatten.
 The repeatable `--op` CLI flag (and a hand-built `Pipeline`)
 applies operations in exactly the order given instead.
 
-Missing after Phase 5 (honest): streaming/tiled large-image
-processing, timeouts, job cancellation (Phase 6); APNG / animated
+Missing after Phase 6 (honest): streaming/tiled large-image
+processing, processing timeouts (a pathological file can still
+take a long time inside one worker — Phase 6 bounds how many
+run at once, it does not time them out); APNG / animated
 WebP frame extraction beyond frame 0; metadata preservation to
 targets other than JPEG/PNG; ICC conversion for non-RGB profiles
 and 16-bit pixels; IPTC reading (XMP/EXIF/ICC only in Phase 5).

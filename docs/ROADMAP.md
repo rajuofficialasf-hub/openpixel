@@ -50,9 +50,21 @@
   (pure-Rust LittleCMS reimplementation — `lcms2` C crate not
   used, see `docs/CODECS.md`); new CLI commands `metadata`,
   `frames`, `extract-frame`. 152 tests pass (was 89).
-- [ ] **Phase 6 — Batch & Performance**: job manager, worker pool,
-  bounded concurrency, memory limits, benchmarks, cancellation,
-  retry, error recovery.
+- [x] **Phase 6 — Batch & Performance** (done 16 Nov 2026, verified
+  by coordinator): `openpixel-jobs`
+  crate (`JobManager` + bounded worker pool, default
+  `min(CPUs, 4)` workers capped at 8, `std::thread` only),
+  pause/resume/cancel/retry with honest mid-call limits, per-file
+  results, error recovery (a failed file never stops the batch),
+  engine limits enforced per job (`LimitExceeded`, not a crash);
+  `openpixel batch --workers N` / `--sequential` (old sequential
+  batch kept as fallback) and `openpixel bench` (`--quick` smoke
+  mode); `scripts/test/bench.sh`; real benchmark numbers in
+  `docs/BENCHMARKS.md` (AVIF encode ~9.3 s vs WebP ~17 ms for
+  1024x768 — the headline result). 171 tests pass (was 152).
+  `--pause-after N` was deliberately not added: in a
+  non-interactive CLI run there is nothing useful to do with a
+  paused queue except resume it immediately.
 - [ ] **Phase 7 — Web Application**: React + TypeScript + Vite +
   Tailwind, WASM worker processing, conversion + batch UI, settings.
 - [ ] **Phase 8 — Desktop Application**: Tauri 2, native file picker,
