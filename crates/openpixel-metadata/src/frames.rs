@@ -15,6 +15,20 @@ use crate::types::{AnimationInfo, FrameInfo};
 use openpixel_codecs::{DecodedImage, PixelFormat};
 use std::io::Cursor;
 
+/// Maximum frames a GIF / APNG / animated-WebP scan will enumerate
+/// (Phase 9). A file under the engine's 100 MiB limit can otherwise
+/// carry millions of tiny frames, growing the `FrameInfo` vec (and
+/// the scan time) without bound. 100 000 frames is far beyond any
+/// real animation; past it the scan stops and the note says so.
+const MAX_SCANNED_FRAMES: u32 = 100_000;
+
+/// Maximum GIF canvas pixels (same 100 MP as the engine's
+/// decompression-bomb guard). The GIF header allows 65 535 x 65 535,
+/// whose 17 GiB RGBA canvas would be allocated *before* the engine
+/// ever saw the dimensions — so the check lives here, before the
+/// allocation. Fixed in Phase 9.
+const MAX_GIF_CANVAS_PIXELS: u64 = 100_000_000;
+
 /// Frame information for one file's bytes, whatever its format.
 /// Non-animated formats return a single-frame `AnimationInfo`.
 pub fn animation_info(bytes: &[u8], format: openpixel_formats::ImageFormat) -> AnimationInfo {
@@ -80,10 +94,15 @@ pub fn gif_animation(bytes: &[u8]) -> MetadataResult<AnimationInfo> {
     let canvas_h = u32::from(decoder.height());
     let mut frames = Vec::new();
     let mut index = 0u32;
+    let mut capped = false;
     while let Some(frame) = decoder
         .read_next_frame()
         .map_err(|e| MetadataError::InvalidInput(format!("GIF frame {index} failed: {e}")))?
     {
+        if index >= MAX_SCANNED_FRAMES {
+            capped = true;
+            break;
+        }
         frames.push(FrameInfo {
             index,
             width: u32::from(frame.width),
@@ -106,9 +125,13 @@ pub fn gif_animation(bytes: &[u8]) -> MetadataResult<AnimationInfo> {
         frame_count: frames.len() as u32,
         loop_count,
         frames,
-        note: Some(format!(
-            "GIF {canvas_w}x{canvas_h} canvas: every frame is extractable"
-        )),
+        note: Some(if capped {
+            format!(
+                "GIF {canvas_w}x{canvas_h} canvas: every frame is extractable (frame scan stopped at the {MAX_SCANNED_FRAMES}-frame cap)"
+            )
+        } else {
+            format!("GIF {canvas_w}x{canvas_h} canvas: every frame is extractable")
+        }),
     })
 }
 
@@ -138,6 +161,13 @@ pub fn extract_gif_frame(bytes: &[u8], index: u32) -> MetadataResult<DecodedImag
             "GIF canvas is empty".to_string(),
         ));
     }
+    // Check BEFORE allocating the canvas: a 65 535 x 65 535 header
+    // would otherwise ask for a ~17 GiB RGBA buffer (Phase 9).
+    if width as u64 * height as u64 > MAX_GIF_CANVAS_PIXELS {
+        return Err(MetadataError::InvalidInput(format!(
+            "GIF canvas {width}x{height} exceeds the {MAX_GIF_CANVAS_PIXELS} pixel limit"
+        )));
+    }
     let mut canvas = vec![0u8; (width * height * 4) as usize];
     // Snapshot kept for DisposalMethod::Previous.
     let mut previous_snapshot: Option<Vec<u8>> = None;
@@ -146,6 +176,12 @@ pub fn extract_gif_frame(bytes: &[u8], index: u32) -> MetadataResult<DecodedImag
     let mut pending: Option<(u16, u16, u16, u16, gif::DisposalMethod)> = None;
     let mut current = 0u32;
     loop {
+        if current >= MAX_SCANNED_FRAMES && current != index {
+            return Err(MetadataError::FrameOutOfRange {
+                index,
+                count: current,
+            });
+        }
         let Some(frame) = decoder
             .read_next_frame()
             .map_err(|e| MetadataError::InvalidInput(format!("GIF frame {current} failed: {e}")))?
@@ -276,6 +312,13 @@ pub fn apng_info(bytes: &[u8]) -> AnimationInfo {
                 num_plays = Some(u32::from_be_bytes([data[4], data[5], data[6], data[7]]));
             }
             b"fcTL" if data.len() >= 26 => {
+                // Stop at the scan cap, and never record more frames
+                // than acTL declared (extra fcTL chunks are corrupt).
+                if frames.len() >= MAX_SCANNED_FRAMES as usize
+                    || num_frames.is_some_and(|n| frames.len() >= n as usize)
+                {
+                    break;
+                }
                 let w = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
                 let h = u32::from_be_bytes([data[8], data[9], data[10], data[11]]);
                 let x = u32::from_be_bytes([data[12], data[13], data[14], data[15]]);
@@ -354,6 +397,11 @@ pub fn webp_animation_info(bytes: &[u8]) -> AnimationInfo {
                 canvas_h = u24_le(&data[7..10]) + 1;
             }
             b"ANMF" if data.len() >= 16 => {
+                // Stop at the scan cap (Phase 9): ANMF chunks are
+                // otherwise unbounded in a crafted file.
+                if frames.len() >= MAX_SCANNED_FRAMES as usize {
+                    break;
+                }
                 let x = u24_le(&data[0..3]) * 2;
                 let y = u24_le(&data[3..6]) * 2;
                 let w = u24_le(&data[6..9]) + 1;
@@ -490,6 +538,20 @@ pub fn extract_tiff_page(bytes: &[u8], index: u32) -> MetadataResult<DecodedImag
     let (width, height) = decoder.dimensions().map_err(|e| {
         MetadataError::InvalidInput(format!("TIFF page {index} dimensions failed: {e}"))
     })?;
+    // Check BEFORE read_image allocates the pixels: a header
+    // claiming e.g. 100 000 x 100 000 would otherwise ask the TIFF
+    // decoder for a multi-gigabyte buffer (Phase 9). Same limits as
+    // the engine (16 384 px / side, 100 MP).
+    if width == 0
+        || height == 0
+        || width > 16_384
+        || height > 16_384
+        || width as u64 * height as u64 > 100_000_000
+    {
+        return Err(MetadataError::InvalidInput(format!(
+            "TIFF page {index} is {width}x{height}, exceeding the 16384 px / 100 MP limits"
+        )));
+    }
     let color_type = decoder.colortype().map_err(|e| {
         MetadataError::InvalidInput(format!("TIFF page {index} colour type failed: {e}"))
     })?;
@@ -845,5 +907,46 @@ mod tests {
     fn corrupt_tiff_page_count_is_an_error_not_a_panic() {
         assert!(tiff_page_count(b"II*\x00\x08\x00\x00\x00\xff\xff").is_err());
         assert!(tiff_page_count(b"not a tiff at all").is_err());
+    }
+
+    /// Phase 9: a GIF header claiming a 65 535 x 65 535 canvas must
+    /// be rejected before the ~17 GiB RGBA canvas is allocated.
+    #[test]
+    fn huge_gif_canvas_is_rejected_before_allocation() {
+        let mut gif = b"GIF89a".to_vec();
+        gif.extend_from_slice(&65_535u16.to_le_bytes()); // width
+        gif.extend_from_slice(&65_535u16.to_le_bytes()); // height
+        gif.extend_from_slice(&[0, 0, 0]); // packed, bg, aspect
+        gif.push(0x3B); // trailer
+        assert!(matches!(
+            extract_gif_frame(&gif, 0),
+            Err(MetadataError::InvalidInput(_))
+        ));
+    }
+
+    /// Phase 9: a TIFF page whose header claims dimensions over the
+    /// limits must be rejected before `read_image` allocates pixels.
+    #[test]
+    fn huge_tiff_page_is_rejected_before_decode() {
+        use crate::test_helpers::{build_tiff, longs, shorts, TiffEntry};
+        let bytes = build_tiff(
+            &[
+                TiffEntry::raw(256, 4, 1, longs(&[20_000], true)),
+                TiffEntry::raw(257, 4, 1, longs(&[20_000], true)),
+                // PhotometricInterpretation 1 (BlackIsZero), so the
+                // tiff decoder accepts the IFD and reaches dimensions().
+                TiffEntry::raw(262, 3, 1, shorts(&[1], true)),
+                // Strip tags, so the decoder accepts the IFD at all;
+                // the offsets point nowhere, but dimensions() is
+                // reached before any strip is read.
+                TiffEntry::raw(273, 4, 1, longs(&[0], true)),
+                TiffEntry::raw(278, 4, 1, longs(&[20_000], true)),
+                TiffEntry::raw(279, 4, 1, longs(&[0], true)),
+            ],
+            true,
+        );
+        assert_eq!(tiff_page_count(&bytes).unwrap(), 1);
+        let err = extract_tiff_page(&bytes, 0).unwrap_err();
+        assert!(err.to_string().contains("16384"), "unexpected error: {err}");
     }
 }

@@ -6,3 +6,9 @@ openpixel-out/
 apps/web/node_modules/
 apps/web/dist/
 apps/desktop/src-tauri/target/
+# Phase 9: cargo-fuzz build outputs (1+ GiB, ASAN-instrumented) and
+# per-run crash artifacts; the seed corpus in fuzz/corpus/ IS tracked.
+crates/openpixel-codecs/fuzz/target/
+crates/openpixel-codecs/fuzz/artifacts/
+# Phase 9: release packaging output (rebuilt by scripts/release/package-cli.sh).
+dist/

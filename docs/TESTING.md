@@ -86,6 +86,100 @@ Web app in `apps/web/` (React 19.3.1 + TypeScript 7.0.2 + Vite 8.3.8
   (5) keyboard-only: tab to the drop zone, Enter opens the picker;
   (6) GIF converts as first frame only, with the note shown.
 
+## Verified results — Phase 9, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0, Node v24 / npm 10.9.4
+
+Production QA. No new features except what QA required (six security
+fixes, all with regression tests — see `docs/SECURITY-AUDIT.md`).
+
+- `cargo fmt --all` + `cargo fmt --all -- --check` — pass.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passes.
+- `cargo test --workspace` — **176 passed, 0 failed** (was 171):
+  CLI 5 unit (new: batch skips oversize files without reading them)
+  + 4 integration, codecs 22, core 30 unit + 6 integration, formats
+  10, jobs 11, metadata **50** (was 47: new zlib-bomb tests,
+  huge-GIF-canvas and huge-TIFF-page rejection tests), pipeline 29,
+  + 3 doctests (jobs, metadata, pipeline). One failure was seen
+  once during the Phase 9 run and is environmental, not a code
+  failure: the `openpixel-metadata` doctest failed to link with
+  `ld terminated with signal 7 [Bus error]` while `/tmp` (512 MiB
+  tmpfs) was 100% full from two stale `cargo install` temp dirs
+  (321 MiB + 183 MiB); after deleting them the same doctest passes,
+  and the full suite then passes 176/176. The same failure mode is
+  already documented from Phase 8 (the Tauri sysroot was moved out
+  of `/tmp` for the same reason).
+- `cargo build --release` — succeeds, binary
+  `target/release/openpixel` (16 733 624 B).
+- Web: `npm test` — **17 passed, 0 failed** (unchanged); `npm run
+  build` passes (`dist/index.html` 0.63 kB, JS 362.29 kB, worker
+  0.73 kB).
+- Desktop frontend: `npm test` — **11 passed, 0 failed**
+  (unchanged); `npm run build` passes (JS 257.58 kB).
+- Desktop backend (own workspace, with the sysroot
+  `PKG_CONFIG_PATH`): `cargo test` — **16 passed, 0 failed**
+  (unchanged). The `.deb` / `.AppImage` were **not** rebuilt in
+  Phase 9 (they already exist from Phase 8 and the task forbade a
+  full Tauri rebuild unless cheap); the packaging script references
+  them, it does not reproduce them.
+- Fuzzing (new — `crates/openpixel-codecs/fuzz/`, cargo-fuzz 0.13.2
+  + nightly 1.102.0, installed in Phase 9): three targets, all
+  built clean (one unused-import warning fixed, not suppressed):
+  `fuzz_detect` **3 091 305 runs in 61 s, 0 crashes**;
+  `fuzz_metadata` **29 186 runs in 61 s, 0 crashes**;
+  `fuzz_decode` **5 067 runs in 121 s, 0 crashes** (slower — each
+  run can decode through dav1d / ravif / jxl-oxide). No artifacts
+  were produced (`fuzz/artifacts/` empty). Seed corpus in
+  `fuzz/corpus/<target>/` (PNG/JPEG/WebP/BMP/GIF incl. 3-frame
+  animation, TIFF, SVG, truncated PNG, garbage). See
+  `crates/openpixel-codecs/fuzz/README.md`.
+- Licence audit + SBOM (new): `scripts/release/generate-sbom.py`
+  (from `Cargo.lock` via `cargo metadata`) produced `sbom.json`
+  (**236 components**: 7 local workspace packages + 229 crates.io
+  packages) and `apps/desktop/src-tauri/sbom.json` (**570
+  components**). **Zero components lack a licence field in either
+  SBOM.** No copyleft-only licence: the only LGPL mention is
+  `r-efi` (two versions, 5.3.0 and 6.0.0) with `MIT OR Apache-2.0
+  OR LGPL-2.1-or-later` — the permissive options apply, so there is
+  no copyleft obligation. Licence breakdown (root): MIT OR
+  Apache-2.0 131, MIT 40, Apache-2.0 OR MIT 12, BSD-3-Clause 8,
+  MIT/Apache-2.0 8, BSD-2-Clause 6, rest permissive (Zlib, MPL-2.0
+  x1, 0BSD, CC0, Unlicense). `native/licenses/` completed in Phase
+  9: added `ravif-BSD-3-Clause.txt`, `rav1e-BSD-2-Clause.txt`,
+  `mp4parse-MPL-2.0.txt`, `exr-BSD-3-Clause.txt`,
+  `tintbox-MIT.txt` (copied from the vendored crate sources).
+- `cargo audit` (cargo-audit 0.23.0, installed in Phase 9 — the
+  first install attempt timed out at 280 s mid-compile and the
+  second failed when `/tmp` filled up; the successful install used
+  `TMPDIR=$HOME/tmp-cargo-install` to keep its build dir out of the
+  512 MiB `/tmp` tmpfs): root workspace — **0 vulnerabilities, 1
+  warning** (`paste` 1.0.15 unmaintained, RUSTSEC-2024-0436, no
+  fixed upgrade available; transitive proc-macro helper, no action
+  available). Desktop backend — **0 vulnerabilities, 3 warnings**:
+  the same `paste` warning, `proc-macro-error` 1.0.4 unmaintained
+  (RUSTSEC-2024-0370, no fixed upgrade), and `glib` 0.18.5
+  unsoundness in `VariantStrIter` (RUSTSEC-2024-0429, fixed in
+  >=0.20.0 — upgrading means bumping the gtk-rs stack, which is
+  future work, not a QA fix; the app does not use that iterator).
+  The desktop run also printed transient crates.io timeouts for the
+  yanked-check (`request could not be completed in the allotted
+  timeframe`) — the advisory scan itself still ran over all 570
+  dependencies.
+- Benchmarks: re-run, see `docs/BENCHMARKS.md` ("run 3, Phase 9"):
+  jpeg_decode 4.5 ms, png_encode 26.4 ms, webp_encode 16.5 ms,
+  avif_encode 10 898.7 ms, tiff_large 120.7 ms, batch_12 30.1 ms,
+  peak RSS 70.1 MiB. No code-attributable regression (see the
+  regression note there; the host CPU model differs from Phase 6
+  and the machine was loaded).
+- Release packaging: `scripts/release/package-cli.sh` produces
+  `dist/openpixel-0.1.0-linux-x86_64.tar.gz` (6 504 809 B — binary
+  + README + LICENSE + docs + `sbom.json` + `native/licenses/`)
+  with SHA-256 checksums (`dist/SHA256SUMS`). Verified by listing
+  the tarball contents.
+- Cross-platform: Linux verified (this run); Windows/macOS not
+  attempted — see `docs/BUILD.md` for what each would need.
+- Manual browser / desktop click-through checklists: still open
+  (unchanged from Phases 7/8 — no live-browser or live-GUI tooling
+  in this subagent session). Nothing in Phase 9 closes them.
+
 ## Verified results — Phase 8, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0, Node v24.22.1 / npm 10.9.4
 
 Desktop app in `apps/desktop/` (Tauri 2.12.4 backend + React 19.3.1 +
@@ -469,14 +563,20 @@ Re-run `cargo test --workspace` to reproduce.
 
 ## Not yet tested (later phases)
 
-- Fuzz tests (`cargo-fuzz` on detection + decode) — Phase 9.
+- Fuzz tests — **done in Phase 9** (`cargo-fuzz` on detection +
+  decode + metadata; see "Verified results — Phase 9" above and
+  `crates/openpixel-codecs/fuzz/README.md`). A longer fuzz run
+  (hours, more seeds per format) is still future work.
 - Large-image / memory benchmarks — done in Phase 6 (see
   `docs/BENCHMARKS.md`). Still open: APNG / animated WebP frame
   extraction beyond frame 0, metadata preservation to targets
   other than JPEG/PNG, ICC conversion for non-RGB profiles and
   16-bit pixels, IPTC reading, > 64 KiB ICC chunking test.
-- Corrupted-file corpus (`tests/corrupted-files/`) — folder exists,
-  corpus to be added in Phase 9.
+- Corrupted-file corpus (`tests/corrupted-files/`) — folder still
+  exists but is empty; the Phase 9 fuzz seed corpus lives in
+  `crates/openpixel-codecs/fuzz/corpus/` instead (small real files
+  + truncated PNG + garbage). A checked-in corrupted-file corpus
+  for the integration suite is still open.
 
 ## Test fixtures
 

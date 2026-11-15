@@ -37,18 +37,27 @@ Image input is untrusted input. Treat every file as hostile until proven otherwi
   bench suite). For very large images, run with `--workers 1`.
   A `ulimit` / cgroup cap for server mode is still not set — that
   remains a deployment decision, not an engine default.
-- **Fuzz testing:** not yet run. `cargo-fuzz` targets for `detect_format`
-  and the decode path are a Phase 9 requirement.
-- **SVG:** not implemented. When resvg lands (Phase 3), scripts and
-  external resources must be disabled and network access denied by
-  default — design constraint, not an afterthought.
+- **Fuzz testing:** done in Phase 9 — three `cargo-fuzz` targets
+  (`fuzz_detect`, `fuzz_decode`, `fuzz_metadata` under
+  `crates/openpixel-codecs/fuzz/`), 3.1 M + 29 k + 5 k runs, 0
+  crashes (see `docs/TESTING.md`, "Verified results — Phase 9").
+  The audit also fixed six findings the fuzz targets now cover
+  (see `docs/SECURITY-AUDIT.md`).
+- **SVG:** implemented in Phase 3 (resvg): scripts never execute,
+  external resources and network are disabled (`resources_dir`
+  stays `None`), and huge canvases are scaled to the limits before
+  rasterisation. Re-audited in Phase 9 (see
+  `docs/SECURITY-AUDIT.md`); a complexity cap (element count /
+  nesting) is still an accepted risk (A11).
 - **Metadata:** EXIF/ICC/XMP are not copied in Phase 1, so no metadata
   leaks through outputs *by accident* — but GPS stripping as a *policy*
   (preserve / strip / selected) is a Phase 5 feature.
-- **Native-library CVEs:** Phase 1 has no C codec, so there is nothing
-  to monitor yet. When libavif/libheif/libjxl land (Phase 3), add
-  `cargo audit` + native CVE monitoring and record versions in
-  `native/licenses/`.
+- **Native-library CVEs:** Phase 3 added one C library
+  (system libdav1d 1.4.1, AVIF decode). Phase 9 added `cargo audit`
+  + the SBOM (`sbom.json`, `scripts/release/generate-sbom.py`) and
+  completed the native licence texts in `native/licenses/`; see
+  `docs/TESTING.md` ("Verified results — Phase 9") for the audit
+  outcome. Re-run `cargo audit` after any dependency change.
 - **Temporary files:** Phase 1 writes only the final output (no temp
   files). Temp-dir isolation + cleanup is specified for the batch/job
   work in Phase 6.

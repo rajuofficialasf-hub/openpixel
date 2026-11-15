@@ -16,6 +16,42 @@ use flate2::read::ZlibDecoder;
 use openpixel_formats::ImageFormat;
 use std::io::Read;
 
+/// Cap on a single zlib-decompressed metadata block (PNG `iCCP`
+/// profile, `zTXt` / compressed `iTXt` XMP). The compressed input is
+/// already bounded by the engine's 100 MiB file limit, but zlib
+/// expansion can be ~1000x, so an uncapped `read_to_end` would let a
+/// few-KiB chunk allocate gigabytes (decompression bomb). Real ICC
+/// profiles are a few hundred KiB at most and XMP packets are far
+/// smaller than this; anything over the cap is treated as corrupt
+/// metadata (warning + drop), never as a crash. Fixed in Phase 9.
+const MAX_DECOMPRESSED_METADATA_BYTES: usize = 16 * 1024 * 1024;
+
+/// Decompress `decoder` with the cap above. Returns `None` (with a
+/// warning) when the stream errors or expands past the cap.
+fn read_decompressed_capped(
+    decoder: ZlibDecoder<&[u8]>,
+    what: &str,
+    warnings: &mut Vec<String>,
+) -> Option<Vec<u8>> {
+    let mut out = Vec::new();
+    match decoder
+        .take(MAX_DECOMPRESSED_METADATA_BYTES as u64 + 1)
+        .read_to_end(&mut out)
+    {
+        Ok(_) if out.len() > MAX_DECOMPRESSED_METADATA_BYTES => {
+            warnings.push(format!(
+                "{what} decompresses past the {MAX_DECOMPRESSED_METADATA_BYTES} byte limit; dropping it"
+            ));
+            None
+        }
+        Ok(_) => Some(out),
+        Err(e) => {
+            warnings.push(format!("{what} failed to decompress: {e}"));
+            None
+        }
+    }
+}
+
 /// Extract metadata from raw file bytes of the given (detected)
 /// format. Formats without a metadata container return an empty
 /// `Metadata` — never an error.
@@ -226,15 +262,8 @@ fn parse_png_iccp(data: &[u8], warnings: &mut Vec<String>) -> Option<Vec<u8>> {
         warnings.push("PNG iCCP chunk has an unknown compression method".to_string());
         return None;
     }
-    let mut decoder = ZlibDecoder::new(&rest[1..]);
-    let mut out = Vec::new();
-    match decoder.read_to_end(&mut out) {
-        Ok(_) => Some(out),
-        Err(e) => {
-            warnings.push(format!("PNG iCCP profile failed to decompress: {e}"));
-            None
-        }
-    }
+    let decoder = ZlibDecoder::new(&rest[1..]);
+    read_decompressed_capped(decoder, "PNG iCCP profile", warnings)
 }
 
 /// PNG text chunks carrying XMP (keyword `XML:com.adobe.xmp`).
@@ -258,15 +287,8 @@ fn parse_png_text_xmp(
             if &data[..nul] != KEYWORD || data.get(nul + 1) != Some(&0) {
                 return None;
             }
-            let mut decoder = ZlibDecoder::new(&data[nul + 2..]);
-            let mut out = Vec::new();
-            match decoder.read_to_end(&mut out) {
-                Ok(_) => Some(out),
-                Err(e) => {
-                    warnings.push(format!("PNG zTXt XMP failed to decompress: {e}"));
-                    None
-                }
-            }
+            let decoder = ZlibDecoder::new(&data[nul + 2..]);
+            read_decompressed_capped(decoder, "PNG zTXt XMP", warnings)
         }
         b"iTXt" => {
             // keyword NUL, compression flag, compression method,
@@ -290,15 +312,8 @@ fn parse_png_text_xmp(
             let trans_end = after_translated.iter().position(|&b| b == 0)?;
             let text = &after_translated[trans_end + 1..];
             if compressed == 1 {
-                let mut decoder = ZlibDecoder::new(text);
-                let mut out = Vec::new();
-                match decoder.read_to_end(&mut out) {
-                    Ok(_) => Some(out),
-                    Err(e) => {
-                        warnings.push(format!("PNG iTXt XMP failed to decompress: {e}"));
-                        None
-                    }
-                }
+                let decoder = ZlibDecoder::new(text);
+                read_decompressed_capped(decoder, "PNG iTXt XMP", warnings)
             } else {
                 Some(text.to_vec())
             }
@@ -546,5 +561,69 @@ mod tests {
         let meta = extract_metadata(b"BMxxxx", ImageFormat::Bmp);
         assert!(!meta.has_exif);
         assert!(meta.warnings.is_empty());
+    }
+
+    /// Phase 9: a zlib bomb in a PNG iCCP chunk (a few KiB of
+    /// compressed zeros expanding to > 16 MiB) must be dropped with
+    /// a warning, not decompressed without bound.
+    #[test]
+    fn iccp_zlib_bomb_is_dropped_not_decompressed() {
+        use flate2::{write::ZlibEncoder, Compression};
+        use std::io::Write;
+        let bomb = vec![0u8; 20 * 1024 * 1024];
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&bomb).unwrap();
+        let compressed = encoder.finish().unwrap();
+        assert!(
+            compressed.len() < 1024 * 1024,
+            "bomb fixture must compress small (got {} bytes)",
+            compressed.len()
+        );
+        let mut iccp = b"Bomb Profile\x00".to_vec();
+        iccp.push(0);
+        iccp.extend_from_slice(&compressed);
+        let mut warnings = Vec::new();
+        assert!(parse_png_iccp(&iccp, &mut warnings).is_none());
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("16") && w.contains("limit")),
+            "warnings: {warnings:?}"
+        );
+        // A normal profile still decompresses fine through the same path.
+        let icc = srgb_icc_for_test();
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&icc).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut iccp = b"Normal Profile\x00".to_vec();
+        iccp.push(0);
+        iccp.extend_from_slice(&compressed);
+        let mut warnings = Vec::new();
+        let back = parse_png_iccp(&iccp, &mut warnings).expect("normal profile decodes");
+        assert_eq!(back, icc);
+        assert!(warnings.is_empty(), "warnings: {warnings:?}");
+    }
+
+    /// Phase 9: the same cap applies to compressed XMP in zTXt.
+    #[test]
+    fn ztxt_zlib_bomb_is_dropped_not_decompressed() {
+        use flate2::{write::ZlibEncoder, Compression};
+        use std::io::Write;
+        let bomb = vec![0u8; 20 * 1024 * 1024];
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&bomb).unwrap();
+        let compressed = encoder.finish().unwrap();
+        let mut ztxt = b"XML:com.adobe.xmp\x00".to_vec();
+        ztxt.push(0);
+        ztxt.extend_from_slice(&compressed);
+        let ihdr = vec![0, 0, 0, 4, 0, 0, 0, 4, 8, 2, 0, 0, 0];
+        let png = png_with_chunks(&[(b"IHDR", ihdr), (b"zTXt", ztxt)]);
+        let meta = extract_metadata(&png, ImageFormat::Png);
+        assert!(!meta.has_xmp);
+        assert!(
+            meta.warnings.iter().any(|w| w.contains("limit")),
+            "warnings: {:?}",
+            meta.warnings
+        );
     }
 }

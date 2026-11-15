@@ -72,6 +72,45 @@ RSS: start 5.2 MiB, end 46.4 MiB, peak **70.2 MiB** (identical
 to run 1 — the peak is set by the AVIF encode + fixture buffers,
 not by run-to-run noise).
 
+## Results — run 3 (Phase 9 re-run), 16 Nov 2026 (`scripts/test/bench.sh 3`)
+
+| operation | mean ms | min ms | max ms |
+|---|---|---|---|
+| jpeg_decode | 4.5 | 2.8 | 7.7 |
+| png_encode | 26.4 | 24.9 | 27.5 |
+| webp_encode | 16.5 | 15.7 | 17.5 |
+| avif_encode | 10898.7 | 10574.8 | 11257.6 |
+| tiff_large | 120.7 | 98.7 | 151.1 |
+| batch_12 | 30.1 | 19.5 | 50.9 |
+| batch_12_per_file | 2.5 | 1.6 | 4.2 |
+
+RSS: start 5.2 MiB, end 46.0 MiB, peak **70.1 MiB**.
+
+Hardware this run: CPU reported as AMD EPYC 9D64 88-Core Processor
+(Phase 6 runs reported 9D25 — the shared VM host changed between
+phases), `nproc` = 4, RAM 7.7 GiB, Rust 1.100.0, release build
+(same profile). Only 385 MiB of RAM was free when the run started
+(the machine was heavily loaded by other tenants), so treat the
+absolute numbers with the usual shared-VM caution.
+
+### Regression check vs Phase 6
+
+No code in the conversion paths changed in Phase 9 (only security
+pre-checks that run before decode, and metadata caps), so no
+regression was expected — and none is attributable to the code:
+
+- `jpeg_decode` 4.5 ms vs 3.1/3.6, `png_encode` 26.4 vs 24.6/25.4,
+  `tiff_large` 120.7 vs 96.2/74.6: slower, but within the run-to-run
+  spread already seen in Phase 6 (e.g. `tiff_large` ranged
+  67.5–119.8 ms across its own two runs) and on a busier host with a
+  different CPU model — noise, not a regression.
+- `avif_encode` 10.9 s vs 9.3 s (~17% slower): same story — AVIF
+  was stable at ~9.3 s in both Phase 6 runs on the quieter host;
+  the Phase 9 host was loaded. The headline stands: AVIF encode is
+  still ~600x WebP encode on this machine.
+- `webp_encode` 16.5 ms and `batch_12` 30.1 ms are inside the Phase 6
+  ranges; peak RSS 70.1 MiB is identical to Phase 6 (70.2 MiB).
+
 ## What the numbers say
 
 - **AVIF encode is ~500x slower than WebP encode** on this
@@ -83,8 +122,10 @@ not by run-to-run noise).
   this codebase, and it is why
   the batch default target in examples is WebP, not AVIF.
   (Whether a faster AVIF encoder — e.g. a native libavif
-  encode path — is worth it is a Phase 9 decision, to be made
-  against these numbers, not assumed.)
+  encode path — is worth it was a Phase 9 decision: **not pursued
+  in Phase 9**. No faster encoder was adopted; AVIF stays ravif
+  speed 4, and the Phase 9 re-run confirms the cost (10.9 s on a
+  loaded host). A libavif encode path remains future work.)
 - **WebP is the fastest lossy target** here (~17 ms incl.
   decode); PNG encode (~25 ms) is close behind.
 - **The batch pool works:** 12 files in ~26–33 ms total with 4

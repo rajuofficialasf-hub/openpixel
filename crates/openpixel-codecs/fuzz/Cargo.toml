@@ -1,0 +1,45 @@
+[package]
+name = "openpixel-codecs-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+# Its own workspace root (empty table): this crate must not be
+# treated as a member of the engine workspace above it.
+[workspace]
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.openpixel-formats]
+path = "../../openpixel-formats"
+
+[dependencies.openpixel-codecs]
+path = ".."
+
+[dependencies.openpixel-metadata]
+path = "../../openpixel-metadata"
+
+[[bin]]
+name = "fuzz_detect"
+path = "fuzz_targets/fuzz_detect.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_decode"
+path = "fuzz_targets/fuzz_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_metadata"
+path = "fuzz_targets/fuzz_metadata.rs"
+test = false
+doc = false
+bench = false

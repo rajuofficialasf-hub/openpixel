@@ -65,6 +65,88 @@ sudo ./scripts/setup/ubuntu-24.04.sh   # installs libdav1d-dev (AVIF decode)
   (`~/.cargo` + `Cargo.lock`), except that the final binary links
   `libdav1d` dynamically at runtime.
 
+## Cross-platform build notes (Phase 9)
+
+Verified on **Linux x86_64, Ubuntu 24.04** only (see
+`docs/TESTING.md` for the exact verification runs). Everything below
+about Windows / macOS is **what is known and what would be needed —
+not attempted, not claimed.** No Windows or macOS build was run in
+any phase.
+
+### What is portable by construction
+
+- The engine, codecs, pipeline, metadata and jobs crates are pure
+  Rust + `std` except for one system C library (below). No
+  platform-specific code exists in the engine except two Linux-only
+  conveniences that degrade gracefully elsewhere:
+  `openpixel-jobs` RSS helpers read `/proc/self/status` on Linux and
+  return `None` on other platforms; the CLI bench reports peak RSS
+  only on Linux.
+- `Cargo.lock` pins every crate version exactly, so the same tree
+  resolves on any platform.
+
+### Linux (verified)
+
+- Rust 1.100.0, `libdav1d-dev` 1.4.1 (AVIF decode — the only system
+  library; `scripts/setup/ubuntu-24.04.sh`), Node v24 / npm 10.9.4
+  for the web/desktop frontends.
+- Desktop additionally needs WebKitGTK/GTK `-dev` packages; on this
+  VM they cannot install via apt (`libzstd-dev` pin conflict — see
+  `docs/DESKTOP.md`) and were worked around with a downloaded
+  sysroot (`scripts/setup/fetch-tauri-sysroot.sh`).
+- Outputs: CLI binary, web `dist/`, desktop `.deb` + `.AppImage`
+  (the AppImage step needs FUSE; on this VM it was produced by
+  running `linuxdeploy` by hand — see `docs/DESKTOP.md`).
+
+### macOS (not attempted)
+
+What would be needed: a Rust toolchain (rustup), Xcode Command Line
+Tools (C compiler for `dav1d-sys` and other build scripts), and a
+`libdav1d` for the target — Homebrew's `dav1d` package provides both
+the library and the pkg-config file `dav1d-sys` looks for, so
+`brew install dav1d` is the expected one-liner (not verified). The
+desktop app would additionally need the Tauri macOS prerequisites
+(Xcode, `tauri.conf.json` bundle targets `dmg`/`app` — currently
+only `deb`/`appimage` are configured) and an `.icns` icon (not
+present — Linux bundles do not need one). No macOS-specific code is
+expected: the engine has no Linux-only calls except the RSS helpers
+noted above.
+
+### Windows (not attempted)
+
+What would be needed: a Rust toolchain with the MSVC target
+(`rustup toolchain install stable-x86_64-pc-windows-msvc` plus the
+Visual Studio Build Tools C++ workload), and a `libdav1d` for
+`dav1d-sys` — the crate finds it via pkg-config, so a vcpkg
+`dav1d:x64-windows` install with `PKG_CONFIG_PATH` pointed at it is
+the expected route (not verified); the alternative is building
+dav1d from source. The desktop app would additionally need
+WebView2 (Tauri's Windows webview — the runtime is normally
+preinstalled on Windows 10/11) and `tauri.conf.json` bundle targets
+`msi`/`nsis` (not configured). Paths: the engine uses `std::path`
+throughout and the CLI/desktop tests cover Windows-style separators
+only in a frontend helper test — no Windows path handling has been
+exercised end to end. No Windows-specific code is expected.
+
+### WASM (not shipped — see `docs/WEB.md`)
+
+`openpixel-formats` builds to `wasm32-unknown-unknown`; the full
+engine does not (`dav1d-sys` needs a wasm32 libdav1d sysroot that
+does not exist here). A wasm32 engine build would need either a
+dav1d-free feature set or that sysroot, plus `wasm-pack`.
+
+### Release packaging
+
+- CLI: `scripts/release/package-cli.sh [VERSION]` builds the release
+  binary and produces `dist/openpixel-<version>-linux-x86_64.tar.gz`
+  (binary + README + LICENSE + docs + `sbom.json` +
+  `native/licenses/`) with SHA-256 checksums.
+- Desktop: `.deb` / `.AppImage` from `npm run tauri build` (Linux
+  only, see `docs/DESKTOP.md`); not rebuilt by the CLI packaging
+  script.
+- SBOM: `scripts/release/generate-sbom.py` (root workspace →
+  `sbom.json`; desktop backend → `apps/desktop/src-tauri/sbom.json`).
+
 ## Troubleshooting
 
 - `rustc: command not found` — source `$HOME/.cargo/env` or reopen the shell.

@@ -1,0 +1,3607 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-11-15T22:16:27Z",
+    "component": {
+      "type": "application",
+      "name": "openpixel-engine",
+      "version": "2.0.1"
+    },
+    "properties": [
+      {
+        "name": "openpixel:generator",
+        "value": "scripts/release/generate-sbom.py (cargo metadata from Cargo.lock)"
+      },
+      {
+        "name": "openpixel:system-dependency",
+        "value": "libdav1d 1.4.1 (system C library, apt) \u2014 AVIF decode; not a Cargo package, see native/licenses/"
+      }
+    ]
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/adler2@2.0.1",
+      "name": "adler2",
+      "version": "2.0.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "0BSD OR MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A simple clean-room implementation of the Adler-32 checksum",
+      "purl": "pkg:cargo/adler2@2.0.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ahash@0.8.12",
+      "name": "ahash",
+      "version": "0.8.12",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A non-cryptographic hash function using AES-NI for high performance",
+      "purl": "pkg:cargo/ahash@0.8.12"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/aligned@0.4.3",
+      "name": "aligned",
+      "version": "0.4.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A newtype with alignment of at least `A` bytes",
+      "purl": "pkg:cargo/aligned@0.4.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/aligned-vec@0.6.4",
+      "name": "aligned-vec",
+      "version": "0.6.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Aligned vector and box containers",
+      "purl": "pkg:cargo/aligned-vec@0.6.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/alloc-no-stdlib@2.0.4",
+      "name": "alloc-no-stdlib",
+      "version": "2.0.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "description": "A dynamic allocator that may be used with or without the stdlib. This allows a package with nostd to allocate memory dynamically and be used either with a custom allocator, items on the stack, or by a package that wishes to simply use Box<>. It also provides options to use calloc or a mutable global variable for pre-zeroed memory",
+      "purl": "pkg:cargo/alloc-no-stdlib@2.0.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/alloc-stdlib@0.2.4",
+      "name": "alloc-stdlib",
+      "version": "0.2.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "description": "A dynamic allocator example that may be used with the stdlib",
+      "purl": "pkg:cargo/alloc-stdlib@0.2.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/anstream@1.0.0",
+      "name": "anstream",
+      "version": "1.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "IO stream adapters for writing colored text that will gracefully degrade according to your terminal's capabilities.",
+      "purl": "pkg:cargo/anstream@1.0.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/anstyle@1.0.14",
+      "name": "anstyle",
+      "version": "1.0.14",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "ANSI text styling",
+      "purl": "pkg:cargo/anstyle@1.0.14"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/anstyle-parse@1.0.0",
+      "name": "anstyle-parse",
+      "version": "1.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Parse ANSI Style Escapes",
+      "purl": "pkg:cargo/anstyle-parse@1.0.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/anstyle-query@1.1.5",
+      "name": "anstyle-query",
+      "version": "1.1.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Look up colored console capabilities",
+      "purl": "pkg:cargo/anstyle-query@1.1.5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/anstyle-wincon@3.0.11",
+      "name": "anstyle-wincon",
+      "version": "3.0.11",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Styling legacy Windows terminals",
+      "purl": "pkg:cargo/anstyle-wincon@3.0.11"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/anyhow@1.0.104",
+      "name": "anyhow",
+      "version": "1.0.104",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Flexible concrete Error type built on std::error::Error",
+      "purl": "pkg:cargo/anyhow@1.0.104"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/arbitrary@1.5.0",
+      "name": "arbitrary",
+      "version": "1.5.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "The trait for generating structured data from unstructured data",
+      "purl": "pkg:cargo/arbitrary@1.5.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/arg_enum_proc_macro@0.3.4",
+      "name": "arg_enum_proc_macro",
+      "version": "0.3.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "A procedural macro compatible with clap arg_enum",
+      "purl": "pkg:cargo/arg_enum_proc_macro@0.3.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/arrayref@0.3.9",
+      "name": "arrayref",
+      "version": "0.3.9",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "description": "Macros to take array references of slices",
+      "purl": "pkg:cargo/arrayref@0.3.9"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/arrayvec@0.7.8",
+      "name": "arrayvec",
+      "version": "0.7.8",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A vector with fixed capacity, backed by an array (it can be stored on the stack too). Implements fixed capacity ArrayVec and ArrayString.",
+      "purl": "pkg:cargo/arrayvec@0.7.8"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/as-slice@0.2.1",
+      "name": "as-slice",
+      "version": "0.2.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "`AsSlice` and `AsMutSlice` traits",
+      "purl": "pkg:cargo/as-slice@0.2.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/autocfg@1.5.1",
+      "name": "autocfg",
+      "version": "1.5.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "Automatic cfg for Rust compiler features",
+      "purl": "pkg:cargo/autocfg@1.5.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/av-data@0.4.4",
+      "name": "av-data",
+      "version": "0.4.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Multimedia data structures",
+      "purl": "pkg:cargo/av-data@0.4.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/av-scenechange@0.14.1",
+      "name": "av-scenechange",
+      "version": "0.14.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Estimates frames in a video where a scenecut would be ideal",
+      "purl": "pkg:cargo/av-scenechange@0.14.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/av1-grain@0.2.5",
+      "name": "av1-grain",
+      "version": "0.2.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "description": "Helpers for generating and parsing AV1 film grain data",
+      "purl": "pkg:cargo/av1-grain@0.2.5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/avif-serialize@0.8.9",
+      "name": "avif-serialize",
+      "version": "0.8.9",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "description": "Minimal writer for AVIF header structure (MPEG/HEIF/MIAF/ISO-BMFF)",
+      "purl": "pkg:cargo/avif-serialize@0.8.9"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/base64@0.23.1",
+      "name": "base64",
+      "version": "0.23.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "encodes and decodes base64 as bytes or utf8",
+      "purl": "pkg:cargo/base64@0.23.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/bit_field@0.10.4",
+      "name": "bit_field",
+      "version": "0.10.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Simple bit field trait providing get_bit, get_bits, set_bit, and set_bits methods for Rust's integral types.",
+      "purl": "pkg:cargo/bit_field@0.10.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/bitflags@1.3.2",
+      "name": "bitflags",
+      "version": "1.3.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT/Apache-2.0"
+          }
+        }
+      ],
+      "description": "A macro to generate structures which behave like bitflags.\n",
+      "purl": "pkg:cargo/bitflags@1.3.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/bitflags@2.13.2",
+      "name": "bitflags",
+      "version": "2.13.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A macro to generate structures which behave like bitflags.\n",
+      "purl": "pkg:cargo/bitflags@2.13.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/bitreader@0.3.11",
+      "name": "bitreader",
+      "version": "0.3.11",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "BitReader helps reading individual bits from a slice of bytes.\n\nYou can read \"unusual\" numbers of bits from the byte slice, for example 13 bits\nat once. The reader internally keeps track of position within the buffer.\n",
+      "purl": "pkg:cargo/bitreader@0.3.11"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/bitstream-io@4.10.0",
+      "name": "bitstream-io",
+      "version": "4.10.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT/Apache-2.0"
+          }
+        }
+      ],
+      "description": "Library for reading/writing un-aligned values from/to streams in big-endian and little-endian formats.",
+      "purl": "pkg:cargo/bitstream-io@4.10.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/brotli-decompressor@5.0.3",
+      "name": "brotli-decompressor",
+      "version": "5.0.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause/MIT"
+          }
+        }
+      ],
+      "description": "A brotli decompressor that with an interface avoiding the rust stdlib. This makes it suitable for embedded devices and kernels. It is designed with a pluggable allocator so that the standard lib's allocator may be employed. The default build also includes a stdlib allocator and stream interface. Disable this with --features=no-stdlib. Alternatively, --features=unsafe turns off array bounds checks and memory initialization but provides a safe interface for the caller.  Without adding the --features=unsafe argument, all included code is safe. For compression in addition to this library, download https://github.com/dropbox/rust-brotli ",
+      "purl": "pkg:cargo/brotli-decompressor@5.0.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/built@0.8.1",
+      "name": "built",
+      "version": "0.8.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Provides a crate with information from the time it was built.",
+      "purl": "pkg:cargo/built@0.8.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/bumpalo@3.20.4",
+      "name": "bumpalo",
+      "version": "3.20.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A fast bump allocation arena for Rust.",
+      "purl": "pkg:cargo/bumpalo@3.20.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/byte-slice-cast@1.2.3",
+      "name": "byte-slice-cast",
+      "version": "1.2.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Safely cast bytes slices from/to slices of built-in fundamental numeric types",
+      "purl": "pkg:cargo/byte-slice-cast@1.2.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/bytemuck@1.25.2",
+      "name": "bytemuck",
+      "version": "1.25.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "Zlib OR Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "A crate for mucking around with piles of bytes.",
+      "purl": "pkg:cargo/bytemuck@1.25.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/bytemuck_derive@1.12.1",
+      "name": "bytemuck_derive",
+      "version": "1.12.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Zlib OR Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "derive proc-macros for `bytemuck`",
+      "purl": "pkg:cargo/bytemuck_derive@1.12.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/byteorder@1.5.0",
+      "name": "byteorder",
+      "version": "1.5.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Unlicense OR MIT"
+          }
+        }
+      ],
+      "description": "Library for reading/writing numbers in big-endian and little-endian.",
+      "purl": "pkg:cargo/byteorder@1.5.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/byteorder-lite@0.1.0",
+      "name": "byteorder-lite",
+      "version": "0.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Unlicense OR MIT"
+          }
+        }
+      ],
+      "description": "Library for reading/writing numbers in big-endian and little-endian.",
+      "purl": "pkg:cargo/byteorder-lite@0.1.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/bytes@1.12.1",
+      "name": "bytes",
+      "version": "1.12.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Types and traits for working with bytes",
+      "purl": "pkg:cargo/bytes@1.12.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/cc@1.11.2",
+      "name": "cc",
+      "version": "1.11.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A build-time dependency for Cargo build scripts to assist in invoking the native\nC compiler to compile native C code into a static archive to be linked into Rust\ncode.\n",
+      "purl": "pkg:cargo/cc@1.11.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/cfg-expr@0.20.11",
+      "name": "cfg-expr",
+      "version": "0.20.11",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A parser and evaluator for Rust `cfg()` expressions.",
+      "purl": "pkg:cargo/cfg-expr@0.20.11"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/cfg-if@1.0.5",
+      "name": "cfg-if",
+      "version": "1.0.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A macro to ergonomically define an item depending on a large number of #[cfg]\nparameters. Structured like an if-else chain, the first matching branch is the\nitem that gets emitted.\n",
+      "purl": "pkg:cargo/cfg-if@1.0.5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/clap@4.6.7",
+      "name": "clap",
+      "version": "4.6.7",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A simple to use, efficient, and full-featured Command Line Argument Parser",
+      "purl": "pkg:cargo/clap@4.6.7"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/clap_builder@4.6.7",
+      "name": "clap_builder",
+      "version": "4.6.7",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A simple to use, efficient, and full-featured Command Line Argument Parser",
+      "purl": "pkg:cargo/clap_builder@4.6.7"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/clap_derive@4.6.7",
+      "name": "clap_derive",
+      "version": "4.6.7",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Parse command line argument by defining a struct, derive crate.",
+      "purl": "pkg:cargo/clap_derive@4.6.7"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/clap_lex@1.1.1",
+      "name": "clap_lex",
+      "version": "1.1.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Minimal, flexible command line parser",
+      "purl": "pkg:cargo/clap_lex@1.1.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/color_quant@1.1.0",
+      "name": "color_quant",
+      "version": "1.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Color quantization library to reduce n colors to 256 colors.",
+      "purl": "pkg:cargo/color_quant@1.1.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/colorchoice@1.0.5",
+      "name": "colorchoice",
+      "version": "1.0.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Global override of color control",
+      "purl": "pkg:cargo/colorchoice@1.0.5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/crc32fast@1.5.5",
+      "name": "crc32fast",
+      "version": "1.5.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Fast, SIMD-accelerated CRC32 (IEEE) checksum computation",
+      "purl": "pkg:cargo/crc32fast@1.5.5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/crossbeam-deque@0.8.8",
+      "name": "crossbeam-deque",
+      "version": "0.8.8",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Concurrent work-stealing deque",
+      "purl": "pkg:cargo/crossbeam-deque@0.8.8"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/crossbeam-epoch@0.9.21",
+      "name": "crossbeam-epoch",
+      "version": "0.9.21",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Epoch-based garbage collection",
+      "purl": "pkg:cargo/crossbeam-epoch@0.9.21"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/crossbeam-utils@0.8.23",
+      "name": "crossbeam-utils",
+      "version": "0.8.23",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Utilities for concurrent programming",
+      "purl": "pkg:cargo/crossbeam-utils@0.8.23"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/crunchy@0.2.4",
+      "name": "crunchy",
+      "version": "0.2.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Crunchy unroller: deterministically unroll constant loops",
+      "purl": "pkg:cargo/crunchy@0.2.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/data-url@0.3.2",
+      "name": "data-url",
+      "version": "0.3.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Processing of data: URL according to WHATWG\u2019s Fetch Standard",
+      "purl": "pkg:cargo/data-url@0.3.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/dav1d@0.11.1",
+      "name": "dav1d",
+      "version": "0.11.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "libdav1d bindings",
+      "purl": "pkg:cargo/dav1d@0.11.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/dav1d-sys@0.8.3",
+      "name": "dav1d-sys",
+      "version": "0.8.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "FFI bindings to dav1d",
+      "purl": "pkg:cargo/dav1d-sys@0.8.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/either@1.19.0",
+      "name": "either",
+      "version": "1.19.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "The enum `Either` with variants `Left` and `Right` is a general purpose sum type with two cases.\n",
+      "purl": "pkg:cargo/either@1.19.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/equator@0.4.2",
+      "name": "equator",
+      "version": "0.4.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Composable assertion library",
+      "purl": "pkg:cargo/equator@0.4.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/equator-macro@0.4.2",
+      "name": "equator-macro",
+      "version": "0.4.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Composable assertion library",
+      "purl": "pkg:cargo/equator-macro@0.4.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/equivalent@1.0.3",
+      "name": "equivalent",
+      "version": "1.0.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "Traits for key comparison in maps.",
+      "purl": "pkg:cargo/equivalent@1.0.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/errno@0.3.15",
+      "name": "errno",
+      "version": "0.3.15",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Cross-platform interface to the `errno` variable.",
+      "purl": "pkg:cargo/errno@0.3.15"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/euclid@0.22.14",
+      "name": "euclid",
+      "version": "0.22.14",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Geometry primitives",
+      "purl": "pkg:cargo/euclid@0.22.14"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/exr@1.74.3",
+      "name": "exr",
+      "version": "1.74.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "description": "Read and write OpenEXR files without any unsafe code",
+      "purl": "pkg:cargo/exr@1.74.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/fallible_collections@0.4.9",
+      "name": "fallible_collections",
+      "version": "0.4.9",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT/Apache-2.0"
+          }
+        }
+      ],
+      "description": "a crate which adds fallible allocation api to std collections",
+      "purl": "pkg:cargo/fallible_collections@0.4.9"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/fastrand@2.5.0",
+      "name": "fastrand",
+      "version": "2.5.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "A simple and fast random number generator",
+      "purl": "pkg:cargo/fastrand@2.5.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/fax@0.2.7",
+      "name": "fax",
+      "version": "0.2.7",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Decoder and Encoder for CCITT Group 3 and 4 bi-level image encodings used by fax machines TIFF and PDF.",
+      "purl": "pkg:cargo/fax@0.2.7"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/fdeflate@0.3.7",
+      "name": "fdeflate",
+      "version": "0.3.7",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Fast specialized deflate implementation",
+      "purl": "pkg:cargo/fdeflate@0.3.7"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/find-msvc-tools@0.1.15",
+      "name": "find-msvc-tools",
+      "version": "0.1.15",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Find windows-specific tools, read MSVC versions from the registry and from COM interfaces",
+      "purl": "pkg:cargo/find-msvc-tools@0.1.15"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/flate2@1.1.11",
+      "name": "flate2",
+      "version": "1.1.11",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "DEFLATE compression and decompression exposed as Read/BufRead/Write streams.\nSupports miniz_oxide and multiple zlib implementations. Supports zlib, gzip,\nand raw deflate streams.\n",
+      "purl": "pkg:cargo/flate2@1.1.11"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/float-cmp@0.9.0",
+      "name": "float-cmp",
+      "version": "0.9.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Floating point approximate comparison traits",
+      "purl": "pkg:cargo/float-cmp@0.9.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/font-types@0.12.7",
+      "name": "font-types",
+      "version": "0.12.7",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Scalar types used in fonts.",
+      "purl": "pkg:cargo/font-types@0.12.7"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/fontconfig-parser@0.5.8",
+      "name": "fontconfig-parser",
+      "version": "0.5.8",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "fontconfig file parser in pure Rust",
+      "purl": "pkg:cargo/fontconfig-parser@0.5.8"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/fontdb@0.24.0",
+      "name": "fontdb",
+      "version": "0.24.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "A simple, in-memory font database with CSS-like queries.",
+      "purl": "pkg:cargo/fontdb@0.24.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/getrandom@0.3.4",
+      "name": "getrandom",
+      "version": "0.3.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A small cross-platform library for retrieving random data from system source",
+      "purl": "pkg:cargo/getrandom@0.3.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/getrandom@0.4.3",
+      "name": "getrandom",
+      "version": "0.4.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A small cross-platform library for retrieving random data from system source",
+      "purl": "pkg:cargo/getrandom@0.4.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/gif@0.14.2",
+      "name": "gif",
+      "version": "0.14.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "GIF de- and encoder",
+      "purl": "pkg:cargo/gif@0.14.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/half@2.7.1",
+      "name": "half",
+      "version": "2.7.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Half-precision floating point f16 and bf16 types for Rust implementing the IEEE 754-2008 standard binary16 and bfloat16 types.",
+      "purl": "pkg:cargo/half@2.7.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/harfrust@0.12.0",
+      "name": "harfrust",
+      "version": "0.12.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "A complete HarfBuzz shaping algorithm port to Rust.",
+      "purl": "pkg:cargo/harfrust@0.12.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/hashbrown@0.13.2",
+      "name": "hashbrown",
+      "version": "0.13.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A Rust port of Google's SwissTable hash map",
+      "purl": "pkg:cargo/hashbrown@0.13.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/hashbrown@0.17.1",
+      "name": "hashbrown",
+      "version": "0.17.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A Rust port of Google's SwissTable hash map",
+      "purl": "pkg:cargo/hashbrown@0.17.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/heck@0.5.0",
+      "name": "heck",
+      "version": "0.5.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "heck is a case conversion library.",
+      "purl": "pkg:cargo/heck@0.5.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/image@0.25.10",
+      "name": "image",
+      "version": "0.25.10",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Imaging library. Provides basic image processing and encoders/decoders for common image formats.",
+      "purl": "pkg:cargo/image@0.25.10"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/image-webp@0.2.4",
+      "name": "image-webp",
+      "version": "0.2.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "WebP encoding and decoding in pure Rust",
+      "purl": "pkg:cargo/image-webp@0.2.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/imagesize@0.15.0",
+      "name": "imagesize",
+      "version": "0.15.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Quick probing of image dimensions without loading the entire file.",
+      "purl": "pkg:cargo/imagesize@0.15.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/imgref@1.12.3",
+      "name": "imgref",
+      "version": "1.12.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "CC0-1.0 OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A basic 2-dimensional slice for safe and convenient handling of pixel buffers with width, height & stride",
+      "purl": "pkg:cargo/imgref@1.12.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/indexmap@2.14.2",
+      "name": "indexmap",
+      "version": "2.14.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "A hash table with consistent order and fast iteration.",
+      "purl": "pkg:cargo/indexmap@2.14.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/interpolate_name@0.2.4",
+      "name": "interpolate_name",
+      "version": "0.2.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Simple procedural macro attribute for repetitive tests",
+      "purl": "pkg:cargo/interpolate_name@0.2.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/is_terminal_polyfill@1.70.2",
+      "name": "is_terminal_polyfill",
+      "version": "1.70.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Polyfill for `is_terminal` stdlib feature for use with older MSRVs",
+      "purl": "pkg:cargo/is_terminal_polyfill@1.70.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/itertools@0.14.0",
+      "name": "itertools",
+      "version": "0.14.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Extra iterator adaptors, iterator methods, free functions, and macros.",
+      "purl": "pkg:cargo/itertools@0.14.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/itoa@1.0.19",
+      "name": "itoa",
+      "version": "1.0.19",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Fast integer primitive to string conversion",
+      "purl": "pkg:cargo/itoa@1.0.19"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jobserver@0.1.35",
+      "name": "jobserver",
+      "version": "0.1.35",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "An implementation of the GNU Make jobserver for Rust.\n",
+      "purl": "pkg:cargo/jobserver@0.1.35"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jpeg2k@0.11.0",
+      "name": "jpeg2k",
+      "version": "0.11.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT/Apache-2.0"
+          }
+        }
+      ],
+      "description": "JPEG 2000 image loader.",
+      "purl": "pkg:cargo/jpeg2k@0.11.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jxl-bitstream@1.1.0",
+      "name": "jxl-bitstream",
+      "version": "1.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "JPEG XL bitstream reader, part of jxl-oxide",
+      "purl": "pkg:cargo/jxl-bitstream@1.1.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jxl-coding@1.0.1",
+      "name": "jxl-coding",
+      "version": "1.0.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "JPEG XL entropy decoder, part of jxl-oxide.",
+      "purl": "pkg:cargo/jxl-coding@1.0.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jxl-color@0.11.0",
+      "name": "jxl-color",
+      "version": "0.11.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "JPEG XL color management functions, part of jxl-oxide.",
+      "purl": "pkg:cargo/jxl-color@0.11.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jxl-frame@0.13.3",
+      "name": "jxl-frame",
+      "version": "0.13.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "JPEG XL frame data representation, part of jxl-oxide",
+      "purl": "pkg:cargo/jxl-frame@0.13.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jxl-grid@0.6.2",
+      "name": "jxl-grid",
+      "version": "0.6.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Sample grid implementation for jxl-oxide",
+      "purl": "pkg:cargo/jxl-grid@0.6.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jxl-image@0.13.0",
+      "name": "jxl-image",
+      "version": "0.13.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "JPEG XL image header representation, part of jxl-oxide",
+      "purl": "pkg:cargo/jxl-image@0.13.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jxl-jbr@0.2.1",
+      "name": "jxl-jbr",
+      "version": "0.2.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "JPEG bitstream reconstruction from JPEG XL bitstream",
+      "purl": "pkg:cargo/jxl-jbr@0.2.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jxl-modular@0.11.3",
+      "name": "jxl-modular",
+      "version": "0.11.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "JPEG XL Modular image decoder, part of jxl-oxide",
+      "purl": "pkg:cargo/jxl-modular@0.11.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jxl-oxide@0.12.6",
+      "name": "jxl-oxide",
+      "version": "0.12.6",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "JPEG XL decoder written in pure Rust",
+      "purl": "pkg:cargo/jxl-oxide@0.12.6"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jxl-oxide-common@1.0.0",
+      "name": "jxl-oxide-common",
+      "version": "1.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Common helpers for jxl-oxide",
+      "purl": "pkg:cargo/jxl-oxide-common@1.0.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jxl-render@0.12.4",
+      "name": "jxl-render",
+      "version": "0.12.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "JPEG XL image renderer, part of jxl-oxide",
+      "purl": "pkg:cargo/jxl-render@0.12.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jxl-threadpool@1.0.0",
+      "name": "jxl-threadpool",
+      "version": "1.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Internal crate of jxl-oxide to abstract over thread pool implementation",
+      "purl": "pkg:cargo/jxl-threadpool@1.0.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/jxl-vardct@0.11.1",
+      "name": "jxl-vardct",
+      "version": "0.11.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "JPEG XL VarDCT frame representation, part of jxl-oxide",
+      "purl": "pkg:cargo/jxl-vardct@0.11.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/kurbo@0.13.1",
+      "name": "kurbo",
+      "version": "0.13.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "A 2D curves library",
+      "purl": "pkg:cargo/kurbo@0.13.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/lebe@0.5.3",
+      "name": "lebe",
+      "version": "0.5.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "description": "Tiny, dead simple, high performance endianness conversions with a generic API",
+      "purl": "pkg:cargo/lebe@0.5.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/libc@0.2.191",
+      "name": "libc",
+      "version": "0.2.191",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Raw FFI bindings to platform libraries like libc.",
+      "purl": "pkg:cargo/libc@0.2.191"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/libfuzzer-sys@0.4.13",
+      "name": "libfuzzer-sys",
+      "version": "0.4.13",
+      "licenses": [
+        {
+          "license": {
+            "id": "(MIT OR Apache-2.0) AND NCSA"
+          }
+        }
+      ],
+      "description": "A wrapper around LLVM's libFuzzer runtime.",
+      "purl": "pkg:cargo/libfuzzer-sys@0.4.13"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/linux-raw-sys@0.12.1",
+      "name": "linux-raw-sys",
+      "version": "0.12.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "Generated bindings for Linux's userspace API",
+      "purl": "pkg:cargo/linux-raw-sys@0.12.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/log@0.4.35",
+      "name": "log",
+      "version": "0.4.35",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A lightweight logging facade for Rust\n",
+      "purl": "pkg:cargo/log@0.4.35"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/loop9@0.1.5",
+      "name": "loop9",
+      "version": "0.1.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Tiny helper function to visit every pixel in the image together with its neighboring pixels. Duplicates pixels on the edges.",
+      "purl": "pkg:cargo/loop9@0.1.5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/maybe-rayon@0.1.1",
+      "name": "maybe-rayon",
+      "version": "0.1.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Either acts as rayon or creates a single-threaded facade",
+      "purl": "pkg:cargo/maybe-rayon@0.1.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/memchr@2.8.3",
+      "name": "memchr",
+      "version": "2.8.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "Unlicense OR MIT"
+          }
+        }
+      ],
+      "description": "Provides extremely fast (uses SIMD on x86_64, aarch64 and wasm32) routines for\n1, 2 or 3 byte search and single substring search.\n",
+      "purl": "pkg:cargo/memchr@2.8.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/memmap2@0.9.12",
+      "name": "memmap2",
+      "version": "0.9.12",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Cross-platform Rust API for memory-mapped file IO",
+      "purl": "pkg:cargo/memmap2@0.9.12"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/miniz_oxide@0.8.9",
+      "name": "miniz_oxide",
+      "version": "0.8.9",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Zlib OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "DEFLATE compression and decompression library rewritten in Rust based on miniz",
+      "purl": "pkg:cargo/miniz_oxide@0.8.9"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/miniz_oxide@0.9.1",
+      "name": "miniz_oxide",
+      "version": "0.9.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Zlib OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "DEFLATE compression and decompression library rewritten in Rust based on miniz",
+      "purl": "pkg:cargo/miniz_oxide@0.9.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/moxcms@0.8.1",
+      "name": "moxcms",
+      "version": "0.8.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Simple Color Management in Rust",
+      "purl": "pkg:cargo/moxcms@0.8.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/mp4parse@0.17.0",
+      "name": "mp4parse",
+      "version": "0.17.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MPL-2.0"
+          }
+        }
+      ],
+      "description": "Parser for ISO base media file format (mp4)",
+      "purl": "pkg:cargo/mp4parse@0.17.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/multiversion@0.8.1",
+      "name": "multiversion",
+      "version": "0.8.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Easy function multiversioning",
+      "purl": "pkg:cargo/multiversion@0.8.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/multiversion-macros@0.8.1",
+      "name": "multiversion-macros",
+      "version": "0.8.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Implementation crate for multiversion",
+      "purl": "pkg:cargo/multiversion-macros@0.8.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/new_debug_unreachable@1.0.6",
+      "name": "new_debug_unreachable",
+      "version": "1.0.6",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "panic in debug, intrinsics::unreachable() in release (fork of debug_unreachable)",
+      "purl": "pkg:cargo/new_debug_unreachable@1.0.6"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/no_std_io2@0.9.4",
+      "name": "no_std_io2",
+      "version": "0.9.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "The bare essentials of std::io for use in no_std. Alloc support is optional.",
+      "purl": "pkg:cargo/no_std_io2@0.9.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/nom@8.0.0",
+      "name": "nom",
+      "version": "8.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "A byte-oriented, zero-copy, parser combinators library",
+      "purl": "pkg:cargo/nom@8.0.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/noop_proc_macro@0.3.0",
+      "name": "noop_proc_macro",
+      "version": "0.3.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "No-op proc_macro, literally does nothing",
+      "purl": "pkg:cargo/noop_proc_macro@0.3.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/num-bigint@0.4.8",
+      "name": "num-bigint",
+      "version": "0.4.8",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Big integer implementation for Rust",
+      "purl": "pkg:cargo/num-bigint@0.4.8"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/num-derive@0.4.2",
+      "name": "num-derive",
+      "version": "0.4.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Numeric syntax extensions",
+      "purl": "pkg:cargo/num-derive@0.4.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/num-integer@0.1.47",
+      "name": "num-integer",
+      "version": "0.1.47",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Integer traits and functions",
+      "purl": "pkg:cargo/num-integer@0.1.47"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/num-rational@0.4.2",
+      "name": "num-rational",
+      "version": "0.4.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Rational numbers implementation for Rust",
+      "purl": "pkg:cargo/num-rational@0.4.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/num-traits@0.2.19",
+      "name": "num-traits",
+      "version": "0.2.19",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Numeric traits for generic mathematics",
+      "purl": "pkg:cargo/num-traits@0.2.19"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/once_cell@1.21.4",
+      "name": "once_cell",
+      "version": "1.21.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Single assignment cells and lazy values.",
+      "purl": "pkg:cargo/once_cell@1.21.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/once_cell_polyfill@1.70.2",
+      "name": "once_cell_polyfill",
+      "version": "1.70.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Polyfill for `OnceCell` stdlib feature for use with older MSRVs",
+      "purl": "pkg:cargo/once_cell_polyfill@1.70.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/openjp2@0.7.2",
+      "name": "openjp2",
+      "version": "0.7.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "description": "Rust port of Openjpeg.",
+      "purl": "pkg:cargo/openjp2@0.7.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/openjp2-ctypes@0.7.2",
+      "name": "openjp2-ctypes",
+      "version": "0.7.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "description": "C-ABI mirror types shared by the openjp2 core and the openjp2-capi crate.",
+      "purl": "pkg:cargo/openjp2-ctypes@0.7.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/openpixel@0.1.0?local",
+      "name": "openpixel",
+      "version": "0.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "OpenPixel CLI \u2014 info, convert, formats, capabilities (Phase 1)",
+      "purl": null,
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "local path package"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/openpixel-codecs@0.1.0?local",
+      "name": "openpixel-codecs",
+      "version": "0.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "OpenPixel codecs \u2014 Codec/Decoder/Encoder traits, image-rs adapters, native Phase 3 codecs, dynamic registry (Phase 2)",
+      "purl": null,
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "local path package"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/openpixel-core@0.1.0?local",
+      "name": "openpixel-core",
+      "version": "0.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "OpenPixel Core \u2014 unified engine over the dynamic codec registry (Phase 2)",
+      "purl": null,
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "local path package"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/openpixel-formats@0.1.0?local",
+      "name": "openpixel-formats",
+      "version": "0.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "OpenPixel formats \u2014 format identity, magic-byte detection, discovery and capability data (Phase 2)",
+      "purl": null,
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "local path package"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/openpixel-jobs@0.1.0?local",
+      "name": "openpixel-jobs",
+      "version": "0.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "OpenPixel Jobs \u2014 bounded worker pool for batch conversion: pause/resume/cancel/retry, per-file results, error recovery (Phase 6)",
+      "purl": null,
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "local path package"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/openpixel-metadata@0.1.0?local",
+      "name": "openpixel-metadata",
+      "version": "0.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "OpenPixel Metadata \u2014 EXIF/ICC/XMP reading, metadata policies, orientation normalisation, animation frame info/extraction, ICC colour conversion (Phase 5)",
+      "purl": null,
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "local path package"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/openpixel-pipeline@0.1.0?local",
+      "name": "openpixel-pipeline",
+      "version": "0.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "OpenPixel processing pipeline \u2014 composable resize/crop/rotate/colour/watermark operations over DecodedImage (Phase 4)",
+      "purl": null,
+      "externalReferences": [
+        {
+          "type": "vcs",
+          "url": "local path package"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/paste@1.0.15",
+      "name": "paste",
+      "version": "1.0.15",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Macros for all your token pasting needs",
+      "purl": "pkg:cargo/paste@1.0.15"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/pastey@0.1.1",
+      "name": "pastey",
+      "version": "0.1.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Macros for all your token pasting needs. Successor of paste.",
+      "purl": "pkg:cargo/pastey@0.1.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/pico-args@0.5.0",
+      "name": "pico-args",
+      "version": "0.5.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "An ultra simple CLI arguments parser.",
+      "purl": "pkg:cargo/pico-args@0.5.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/pin-project-lite@0.2.17",
+      "name": "pin-project-lite",
+      "version": "0.2.17",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "A lightweight version of pin-project written with declarative macros.\n",
+      "purl": "pkg:cargo/pin-project-lite@0.2.17"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/pkg-config@0.3.34",
+      "name": "pkg-config",
+      "version": "0.3.34",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A library to run the pkg-config system tool at build time in order to be used in\nCargo build scripts.\n",
+      "purl": "pkg:cargo/pkg-config@0.3.34"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/png@0.18.1",
+      "name": "png",
+      "version": "0.18.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "PNG decoding and encoding library in pure Rust",
+      "purl": "pkg:cargo/png@0.18.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/polycool@0.4.0",
+      "name": "polycool",
+      "version": "0.4.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Polynomial root-finding",
+      "purl": "pkg:cargo/polycool@0.4.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ppv-lite86@0.2.21",
+      "name": "ppv-lite86",
+      "version": "0.2.21",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Cross-platform cryptography-oriented low-level SIMD library.",
+      "purl": "pkg:cargo/ppv-lite86@0.2.21"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/proc-macro2@1.0.107",
+      "name": "proc-macro2",
+      "version": "1.0.107",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A substitute implementation of the compiler's `proc_macro` API to decouple token-based libraries from the procedural macro use case.",
+      "purl": "pkg:cargo/proc-macro2@1.0.107"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/profiling@1.0.18",
+      "name": "profiling",
+      "version": "1.0.18",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "This crate provides a very thin abstraction over other profiler crates.",
+      "purl": "pkg:cargo/profiling@1.0.18"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/profiling-procmacros@1.0.18",
+      "name": "profiling-procmacros",
+      "version": "1.0.18",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "This crate provides a very thin abstraction over other profiler crates.",
+      "purl": "pkg:cargo/profiling-procmacros@1.0.18"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/pxfm@0.1.30",
+      "name": "pxfm",
+      "version": "0.1.30",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Fast and accurate math",
+      "purl": "pkg:cargo/pxfm@0.1.30"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/qoi@0.4.1",
+      "name": "qoi",
+      "version": "0.4.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT/Apache-2.0"
+          }
+        }
+      ],
+      "description": "VERY fast encoder/decoder for QOI (Quite Okay Image) format",
+      "purl": "pkg:cargo/qoi@0.4.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/quick-error@2.0.1",
+      "name": "quick-error",
+      "version": "2.0.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT/Apache-2.0"
+          }
+        }
+      ],
+      "description": "    A macro which makes error types pleasant to write.\n",
+      "purl": "pkg:cargo/quick-error@2.0.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/quote@1.0.47",
+      "name": "quote",
+      "version": "1.0.47",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Quasi-quoting macro quote!(...)",
+      "purl": "pkg:cargo/quote@1.0.47"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/r-efi@5.3.0",
+      "name": "r-efi",
+      "version": "5.3.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0 OR LGPL-2.1-or-later"
+          }
+        }
+      ],
+      "description": "UEFI Reference Specification Protocol Constants and Definitions",
+      "purl": "pkg:cargo/r-efi@5.3.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/r-efi@6.0.0",
+      "name": "r-efi",
+      "version": "6.0.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0 OR LGPL-2.1-or-later"
+          }
+        }
+      ],
+      "description": "UEFI Reference Specification Protocol Constants and Definitions",
+      "purl": "pkg:cargo/r-efi@6.0.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rand@0.9.5",
+      "name": "rand",
+      "version": "0.9.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Random number generators and other randomness functionality.\n",
+      "purl": "pkg:cargo/rand@0.9.5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rand_chacha@0.9.0",
+      "name": "rand_chacha",
+      "version": "0.9.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "ChaCha random number generator\n",
+      "purl": "pkg:cargo/rand_chacha@0.9.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rand_core@0.9.5",
+      "name": "rand_core",
+      "version": "0.9.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Core random number generator traits and tools for implementation.\n",
+      "purl": "pkg:cargo/rand_core@0.9.5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rav1e@0.8.1",
+      "name": "rav1e",
+      "version": "0.8.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "description": "The fastest and safest AV1 encoder",
+      "purl": "pkg:cargo/rav1e@0.8.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/ravif@0.13.0",
+      "name": "ravif",
+      "version": "0.13.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "description": "rav1e-based pure Rust library for encoding images in AVIF format (powers the `cavif` tool)",
+      "purl": "pkg:cargo/ravif@0.13.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rayon@1.12.0",
+      "name": "rayon",
+      "version": "1.12.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Simple work-stealing parallelism for Rust",
+      "purl": "pkg:cargo/rayon@1.12.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rayon-core@1.13.0",
+      "name": "rayon-core",
+      "version": "1.13.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Core APIs for Rayon",
+      "purl": "pkg:cargo/rayon-core@1.13.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/read-fonts@0.41.0",
+      "name": "read-fonts",
+      "version": "0.41.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Reading OpenType font files.",
+      "purl": "pkg:cargo/read-fonts@0.41.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/resvg@0.48.1",
+      "name": "resvg",
+      "version": "0.48.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "An SVG rendering library.",
+      "purl": "pkg:cargo/resvg@0.48.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rgb@0.8.53",
+      "name": "rgb",
+      "version": "0.8.53",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "`struct RGB/RGBA/etc.` for sharing pixels between crates + convenience methods for color manipulation.\nAllows no-copy high-level interoperability. Also adds common convenience methods and implements standard Rust traits to make `RGB`/`RGBA` pixels and slices first-class Rust objects.",
+      "purl": "pkg:cargo/rgb@0.8.53"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/roxmltree@0.20.0",
+      "name": "roxmltree",
+      "version": "0.20.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Represent an XML as a read-only tree.",
+      "purl": "pkg:cargo/roxmltree@0.20.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/roxmltree@0.21.2",
+      "name": "roxmltree",
+      "version": "0.21.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Represent an XML as a read-only tree.",
+      "purl": "pkg:cargo/roxmltree@0.21.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rustix@1.1.6",
+      "name": "rustix",
+      "version": "1.1.6",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "Safe Rust bindings to POSIX/Unix/Linux/Winsock-like syscalls",
+      "purl": "pkg:cargo/rustix@1.1.6"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/rustversion@1.0.23",
+      "name": "rustversion",
+      "version": "1.0.23",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Conditional compilation according to rustc compiler version",
+      "purl": "pkg:cargo/rustversion@1.0.23"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/serde@1.0.229",
+      "name": "serde",
+      "version": "1.0.229",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A generic serialization/deserialization framework",
+      "purl": "pkg:cargo/serde@1.0.229"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/serde_core@1.0.229",
+      "name": "serde_core",
+      "version": "1.0.229",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Serde traits only, with no support for derive -- use the `serde` crate instead",
+      "purl": "pkg:cargo/serde_core@1.0.229"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/serde_derive@1.0.229",
+      "name": "serde_derive",
+      "version": "1.0.229",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Macros 1.1 implementation of #[derive(Serialize, Deserialize)]",
+      "purl": "pkg:cargo/serde_derive@1.0.229"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/serde_json@1.0.154",
+      "name": "serde_json",
+      "version": "1.0.154",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A JSON serialization file format",
+      "purl": "pkg:cargo/serde_json@1.0.154"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/serde_spanned@1.1.3",
+      "name": "serde_spanned",
+      "version": "1.1.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Serde-compatible spanned Value",
+      "purl": "pkg:cargo/serde_spanned@1.1.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/shlex@2.0.1",
+      "name": "shlex",
+      "version": "2.0.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Split a string into shell words, like Python's shlex.",
+      "purl": "pkg:cargo/shlex@2.0.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/simd-adler32@0.3.10",
+      "name": "simd-adler32",
+      "version": "0.3.10",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "A SIMD-accelerated Adler-32 hash algorithm implementation.",
+      "purl": "pkg:cargo/simd-adler32@0.3.10"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/simd_helpers@0.1.0",
+      "name": "simd_helpers",
+      "version": "0.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Helpers to write more compact simd code",
+      "purl": "pkg:cargo/simd_helpers@0.1.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/simplecss@0.2.2",
+      "name": "simplecss",
+      "version": "0.2.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "A simple CSS 2 parser and selector.",
+      "purl": "pkg:cargo/simplecss@0.2.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/siphasher@1.0.4",
+      "name": "siphasher",
+      "version": "1.0.4",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "SipHash-2-4 and SipHash-1-3 keyed hash functions in pure Rust, with 64-bit and 128-bit output and no_std support",
+      "purl": "pkg:cargo/siphasher@1.0.4"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/skrifa@0.44.0",
+      "name": "skrifa",
+      "version": "0.44.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Metadata reader and glyph scaler for OpenType fonts.",
+      "purl": "pkg:cargo/skrifa@0.44.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/slotmap@1.1.1",
+      "name": "slotmap",
+      "version": "1.1.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Zlib"
+          }
+        }
+      ],
+      "description": "Slotmap data structure",
+      "purl": "pkg:cargo/slotmap@1.1.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/smallvec@1.16.5",
+      "name": "smallvec",
+      "version": "1.16.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "'Small vector' optimization: store up to a small number of items on the stack",
+      "purl": "pkg:cargo/smallvec@1.16.5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/stable_deref_trait@1.2.1",
+      "name": "stable_deref_trait",
+      "version": "1.2.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "An unsafe marker trait for types like Box and Rc that dereference to a stable address even when moved, and hence can be used with libraries such as owning_ref and rental.\n",
+      "purl": "pkg:cargo/stable_deref_trait@1.2.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/static_assertions@1.1.0",
+      "name": "static_assertions",
+      "version": "1.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Compile-time assertions to ensure that invariants are met.",
+      "purl": "pkg:cargo/static_assertions@1.1.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/strict-num@0.1.1",
+      "name": "strict-num",
+      "version": "0.1.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "A collection of bounded numeric types",
+      "purl": "pkg:cargo/strict-num@0.1.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/strsim@0.11.1",
+      "name": "strsim",
+      "version": "0.11.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Implementations of string similarity metrics. Includes Hamming, Levenshtein,\nOSA, Damerau-Levenshtein, Jaro, Jaro-Winkler, and S\u00f8rensen-Dice.\n",
+      "purl": "pkg:cargo/strsim@0.11.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/svgtypes@0.16.2",
+      "name": "svgtypes",
+      "version": "0.16.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "SVG types parser.",
+      "purl": "pkg:cargo/svgtypes@0.16.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/syn@2.0.119",
+      "name": "syn",
+      "version": "2.0.119",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Parser for Rust source code",
+      "purl": "pkg:cargo/syn@2.0.119"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/syn@3.0.10",
+      "name": "syn",
+      "version": "3.0.10",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Parser for Rust source code",
+      "purl": "pkg:cargo/syn@3.0.10"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/system-deps@7.0.8",
+      "name": "system-deps",
+      "version": "7.0.8",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Discover and configure system dependencies from declarative dependencies in Cargo.toml",
+      "purl": "pkg:cargo/system-deps@7.0.8"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/target-features@0.1.6",
+      "name": "target-features",
+      "version": "0.1.6",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Rust compiler target feature database",
+      "purl": "pkg:cargo/target-features@0.1.6"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/target-lexicon@0.13.5",
+      "name": "target-lexicon",
+      "version": "0.13.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 WITH LLVM-exception"
+          }
+        }
+      ],
+      "description": "LLVM target triple types",
+      "purl": "pkg:cargo/target-lexicon@0.13.5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/tempfile@3.27.0",
+      "name": "tempfile",
+      "version": "3.27.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A library for managing temporary files and directories.",
+      "purl": "pkg:cargo/tempfile@3.27.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/thiserror@2.0.21",
+      "name": "thiserror",
+      "version": "2.0.21",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "derive(Error)",
+      "purl": "pkg:cargo/thiserror@2.0.21"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/thiserror-impl@2.0.21",
+      "name": "thiserror-impl",
+      "version": "2.0.21",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Implementation detail of the `thiserror` crate",
+      "purl": "pkg:cargo/thiserror-impl@2.0.21"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/tiff@0.11.3",
+      "name": "tiff",
+      "version": "0.11.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "TIFF decoding and encoding library in pure Rust",
+      "purl": "pkg:cargo/tiff@0.11.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/tintbox@0.5.0",
+      "name": "tintbox",
+      "version": "0.5.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "A pure-Rust, full-parity reimplementation of Little CMS (lcms2) \u2014 the ICC color-management engine. Memory-safe, no C, verified bit-identical to lcms2 by differential testing.",
+      "purl": "pkg:cargo/tintbox@0.5.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/tiny-skia@0.12.0",
+      "name": "tiny-skia",
+      "version": "0.12.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "description": "A tiny Skia subset ported to Rust.",
+      "purl": "pkg:cargo/tiny-skia@0.12.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/tiny-skia-path@0.12.0",
+      "name": "tiny-skia-path",
+      "version": "0.12.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "description": "A tiny-skia Bezier path implementation",
+      "purl": "pkg:cargo/tiny-skia-path@0.12.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/tinyvec@1.13.3",
+      "name": "tinyvec",
+      "version": "1.13.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "Zlib OR Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "`tinyvec` provides 100% safe vec-like data structures.",
+      "purl": "pkg:cargo/tinyvec@1.13.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/toml@1.2.1+spec-1.1.0",
+      "name": "toml",
+      "version": "1.2.1+spec-1.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A native Rust encoder and decoder of TOML-formatted files and streams. Provides\nimplementations of the standard Serialize/Deserialize traits for TOML data to\nfacilitate deserializing and serializing Rust structures.\n",
+      "purl": "pkg:cargo/toml@1.2.1+spec-1.1.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/toml_datetime@1.1.3+spec-1.1.0",
+      "name": "toml_datetime",
+      "version": "1.1.3+spec-1.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A TOML-compatible datetime type",
+      "purl": "pkg:cargo/toml_datetime@1.1.3+spec-1.1.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/toml_parser@1.1.5+spec-1.1.0",
+      "name": "toml_parser",
+      "version": "1.1.5+spec-1.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Yet another format-preserving TOML parser.",
+      "purl": "pkg:cargo/toml_parser@1.1.5+spec-1.1.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/toml_writer@1.2.0+spec-1.1.0",
+      "name": "toml_writer",
+      "version": "1.2.0+spec-1.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "A low-level interface for writing out TOML\n",
+      "purl": "pkg:cargo/toml_writer@1.2.0+spec-1.1.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/tracing@0.1.44",
+      "name": "tracing",
+      "version": "0.1.44",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Application-level tracing for Rust.\n",
+      "purl": "pkg:cargo/tracing@0.1.44"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/tracing-core@0.1.36",
+      "name": "tracing-core",
+      "version": "0.1.36",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Core primitives for application-level tracing.\n",
+      "purl": "pkg:cargo/tracing-core@0.1.36"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/unicode-bidi@0.3.18",
+      "name": "unicode-bidi",
+      "version": "0.3.18",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Implementation of the Unicode Bidirectional Algorithm",
+      "purl": "pkg:cargo/unicode-bidi@0.3.18"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/unicode-ident@1.0.27",
+      "name": "unicode-ident",
+      "version": "1.0.27",
+      "licenses": [
+        {
+          "license": {
+            "id": "(MIT OR Apache-2.0) AND Unicode-3.0"
+          }
+        }
+      ],
+      "description": "Determine whether characters have the XID_Start or XID_Continue properties according to Unicode Standard Annex #31",
+      "purl": "pkg:cargo/unicode-ident@1.0.27"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/unicode-script@0.5.9",
+      "name": "unicode-script",
+      "version": "0.5.9",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "This crate exposes the Unicode `Script` and `Script_Extension` properties from [UAX #24](http://www.unicode.org/reports/tr24/)\n",
+      "purl": "pkg:cargo/unicode-script@0.5.9"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/unicode-vo@0.1.0",
+      "name": "unicode-vo",
+      "version": "0.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT/Apache-2.0"
+          }
+        }
+      ],
+      "description": "Unicode vertical orientation detection",
+      "purl": "pkg:cargo/unicode-vo@0.1.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/usvg@0.48.1",
+      "name": "usvg",
+      "version": "0.48.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "An SVG simplification library.",
+      "purl": "pkg:cargo/usvg@0.48.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/utf8parse@0.2.2",
+      "name": "utf8parse",
+      "version": "0.2.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "Table-driven UTF-8 parser",
+      "purl": "pkg:cargo/utf8parse@0.2.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/v_frame@0.3.9",
+      "name": "v_frame",
+      "version": "0.3.9",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause"
+          }
+        }
+      ],
+      "description": "Video Frame data structures, originally part of rav1e",
+      "purl": "pkg:cargo/v_frame@0.3.9"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/version-compare@0.2.1",
+      "name": "version-compare",
+      "version": "0.2.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "Rust library to easily compare version numbers with no specific format, and test against various comparison operators.",
+      "purl": "pkg:cargo/version-compare@0.2.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/version_check@0.9.5",
+      "name": "version_check",
+      "version": "0.9.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT/Apache-2.0"
+          }
+        }
+      ],
+      "description": "Tiny crate to check the version of the installed/running rustc.",
+      "purl": "pkg:cargo/version_check@0.9.5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/wasip2@1.0.4+wasi-0.2.12",
+      "name": "wasip2",
+      "version": "1.0.4+wasi-0.2.12",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "WASIp2 API bindings for Rust",
+      "purl": "pkg:cargo/wasip2@1.0.4+wasi-0.2.12"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/wasm-bindgen@0.2.130",
+      "name": "wasm-bindgen",
+      "version": "0.2.130",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Easy support for interacting between JS and Rust.\n",
+      "purl": "pkg:cargo/wasm-bindgen@0.2.130"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/wasm-bindgen-macro@0.2.130",
+      "name": "wasm-bindgen-macro",
+      "version": "0.2.130",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Definition of the `#[wasm_bindgen]` attribute, an internal dependency\n",
+      "purl": "pkg:cargo/wasm-bindgen-macro@0.2.130"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/wasm-bindgen-macro-support@0.2.130",
+      "name": "wasm-bindgen-macro-support",
+      "version": "0.2.130",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Implementation APIs for the `#[wasm_bindgen]` attribute",
+      "purl": "pkg:cargo/wasm-bindgen-macro-support@0.2.130"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/wasm-bindgen-shared@0.2.130",
+      "name": "wasm-bindgen-shared",
+      "version": "0.2.130",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Shared support between wasm-bindgen and wasm-bindgen cli, an internal\ndependency.\n",
+      "purl": "pkg:cargo/wasm-bindgen-shared@0.2.130"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/weezl@0.1.12",
+      "name": "weezl",
+      "version": "0.1.12",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Fast LZW compression and decompression.",
+      "purl": "pkg:cargo/weezl@0.1.12"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/windows-link@0.2.1",
+      "name": "windows-link",
+      "version": "0.2.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Linking for Windows",
+      "purl": "pkg:cargo/windows-link@0.2.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/windows-sys@0.61.2",
+      "name": "windows-sys",
+      "version": "0.61.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0"
+          }
+        }
+      ],
+      "description": "Rust for Windows",
+      "purl": "pkg:cargo/windows-sys@0.61.2"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/winnow@1.0.5",
+      "name": "winnow",
+      "version": "1.0.5",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "A byte-oriented, zero-copy, parser combinators library",
+      "purl": "pkg:cargo/winnow@1.0.5"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/wit-bindgen@0.57.1",
+      "name": "wit-bindgen",
+      "version": "0.57.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "Rust bindings generator and runtime support for WIT and the component model.\nUsed when compiling Rust programs to the component model.\n",
+      "purl": "pkg:cargo/wit-bindgen@0.57.1"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/xmlwriter@0.1.0",
+      "name": "xmlwriter",
+      "version": "0.1.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "A simple, streaming XML writer.",
+      "purl": "pkg:cargo/xmlwriter@0.1.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/y4m@0.8.0",
+      "name": "y4m",
+      "version": "0.8.0",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "YUV4MPEG2 (.y4m) Encoder/Decoder.",
+      "purl": "pkg:cargo/y4m@0.8.0"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/zerocopy@0.8.63",
+      "name": "zerocopy",
+      "version": "0.8.63",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause OR Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "Zerocopy makes zero-cost memory manipulation effortless. We write \"unsafe\" so you don't have to.",
+      "purl": "pkg:cargo/zerocopy@0.8.63"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/zerocopy-derive@0.8.63",
+      "name": "zerocopy-derive",
+      "version": "0.8.63",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-2-Clause OR Apache-2.0 OR MIT"
+          }
+        }
+      ],
+      "description": "Custom derive for traits from the zerocopy crate",
+      "purl": "pkg:cargo/zerocopy-derive@0.8.63"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/zlib-rs@0.6.8",
+      "name": "zlib-rs",
+      "version": "0.6.8",
+      "licenses": [
+        {
+          "license": {
+            "id": "Zlib"
+          }
+        }
+      ],
+      "description": "A memory-safe zlib implementation written in rust",
+      "purl": "pkg:cargo/zlib-rs@0.6.8"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/zmij@1.0.23",
+      "name": "zmij",
+      "version": "1.0.23",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "description": "A double-to-string conversion algorithm based on Schubfach and xjb",
+      "purl": "pkg:cargo/zmij@1.0.23"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/zune-core@0.5.3",
+      "name": "zune-core",
+      "version": "0.5.3",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0 OR Zlib"
+          }
+        }
+      ],
+      "description": "Core utilities for image processing in the zune family of crates",
+      "purl": "pkg:cargo/zune-core@0.5.3"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/zune-inflate@0.2.54",
+      "name": "zune-inflate",
+      "version": "0.2.54",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0 OR Zlib"
+          }
+        }
+      ],
+      "description": "A heavily optimized deflate decompressor in Pure Rust",
+      "purl": "pkg:cargo/zune-inflate@0.2.54"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/zune-jpeg@0.5.15",
+      "name": "zune-jpeg",
+      "version": "0.5.15",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0 OR Zlib"
+          }
+        }
+      ],
+      "description": "A fast, correct and safe jpeg decoder",
+      "purl": "pkg:cargo/zune-jpeg@0.5.15"
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:cargo/zune-jpegxl@0.5.2",
+      "name": "zune-jpegxl",
+      "version": "0.5.2",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT OR Apache-2.0 OR Zlib"
+          }
+        }
+      ],
+      "description": "A simple, fast and fully safe modular jxl encoder",
+      "purl": "pkg:cargo/zune-jpegxl@0.5.2"
+    }
+  ]
+}

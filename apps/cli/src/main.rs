@@ -786,6 +786,25 @@ fn collect_batch_inputs(
     let mut inputs = Vec::new();
     let mut failures = Vec::new();
     for input in entries {
+        // Size-gate BEFORE reading: the engine's 100 MiB limit is
+        // enforced in `Engine::read_input`, but this function used to
+        // `fs::read` every file first (to detect its format), so a
+        // multi-gigabyte file in the batch directory was loaded into
+        // memory whole and the limit never applied. Fixed in Phase 9:
+        // oversize files are reported as failures, never read.
+        if let Ok(meta) = fs::metadata(&input) {
+            if meta.len() > openpixel_core::security::MAX_FILE_SIZE_BYTES {
+                failures.push(BatchFailure {
+                    input: input.clone(),
+                    error: format!(
+                        "file is {} bytes, over the {} byte input limit",
+                        meta.len(),
+                        openpixel_core::security::MAX_FILE_SIZE_BYTES
+                    ),
+                });
+                continue;
+            }
+        }
         // Skip files we cannot even detect — report, don't crash the batch.
         let bytes = match fs::read(&input) {
             Ok(b) => b,
@@ -1249,6 +1268,45 @@ mod tests {
             WatermarkPosition::Center
         );
         assert!(parse_watermark_position("middle").is_err());
+    }
+
+    /// Phase 9: batch collection must not `fs::read` a file over
+    /// the 100 MiB input limit just to detect its format — it is
+    /// reported as a failure without being read.
+    #[test]
+    fn batch_collection_skips_oversize_files_without_reading() {
+        let dir = tempfile::tempdir().unwrap();
+        // One small real PNG (detectable).
+        let small = dir.path().join("small.png");
+        image::RgbaImage::new(4, 4).save(&small).unwrap();
+        // One sparse file over the limit (set_len: no 101 MiB write).
+        let big_path = dir.path().join("big.png");
+        let big = std::fs::File::create(&big_path).unwrap();
+        big.set_len(openpixel_core::security::MAX_FILE_SIZE_BYTES + 1)
+            .unwrap();
+        drop(big);
+        let cli = Cli {
+            json: false,
+            quiet: false,
+            verbose: false,
+            command: Commands::Info {
+                input: PathBuf::new(),
+            },
+        };
+        let (inputs, failures) = collect_batch_inputs(&cli, dir.path()).unwrap();
+        assert_eq!(inputs, vec![small]);
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0].input, big_path);
+        assert!(
+            failures[0].error.contains("over the"),
+            "error: {}",
+            failures[0].error
+        );
+        // The sparse file was never read or rewritten.
+        assert_eq!(
+            std::fs::metadata(&big_path).unwrap().len(),
+            openpixel_core::security::MAX_FILE_SIZE_BYTES + 1
+        );
     }
 }
 

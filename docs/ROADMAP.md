@@ -93,9 +93,26 @@
   what is still missing: Windows/macOS installers, arbitrary rotation
   in the UI). Rust workspace unchanged at 171 tests; backend has its
   own test suite (see `docs/TESTING.md`).
-- [ ] **Phase 9 — Production QA**: security audit, fuzz tests,
-  cross-platform tests, licence audit + SBOM, performance testing,
-  release packaging.
+- [x] **Phase 9 — Production QA** (done 16 Nov 2026, verified by
+  coordinator):
+  security audit over the whole codebase (6 findings fixed: unbounded
+  zlib decompression in PNG metadata, GIF canvas allocated before the
+  limit check, TIFF page decoded before the limit check, CLI batch
+  reading files without a size limit, unbounded GIF/APNG/WebP frame
+  scans, engine `read_input` TOCTOU — see `docs/SECURITY-AUDIT.md`;
+  no timeouts and no RSS cap remain accepted risks), cargo-fuzz
+  targets for detection + decode + metadata
+  (`crates/openpixel-codecs/fuzz/`, nightly + libfuzzer), licence
+  audit + CycloneDX SBOMs (`sbom.json`, 236 components;
+  `apps/desktop/src-tauri/sbom.json`, 570 components; native licence
+  texts completed in `native/licenses/`), benchmark re-run (see
+  `docs/BENCHMARKS.md`), cross-platform build notes
+  (`docs/BUILD.md` — Linux verified, Windows/macOS not attempted),
+  release packaging (`scripts/release/package-cli.sh`,
+  `scripts/release/generate-sbom.py`). Rust workspace 176 tests
+  (was 171); web `npm test` 17 passed, desktop `npm test` 11 passed,
+  desktop backend `cargo test` 16 passed (see `docs/TESTING.md` for
+  the full Phase 9 verification table).
 
 Each phase: small milestones, tests with every feature, stop-and-report
 before the next phase. No phase claims a format it has not implemented

@@ -99,10 +99,16 @@ impl Engine {
             }
         })?;
         check_file_size(meta.len(), &self.config)?;
-        fs::read(path).map_err(|e| OpenPixelError::Io {
+        let bytes = fs::read(path).map_err(|e| OpenPixelError::Io {
             path: path.to_path_buf(),
             source: e,
-        })
+        })?;
+        // Re-check after the read: the file may have grown between
+        // the metadata check and the read (TOCTOU), and a symlink
+        // target may report a different size than what was read.
+        // Fixed in Phase 9.
+        check_file_size(bytes.len() as u64, &self.config)?;
+        Ok(bytes)
     }
 
     /// Read a file, detect its format by signature and decode it to

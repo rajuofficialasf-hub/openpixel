@@ -8,6 +8,10 @@ members = [
     "crates/openpixel-jobs",
     "apps/cli",
 ]
+# Phase 9: the cargo-fuzz crate has its own workspace (it builds
+# with nightly + libfuzzer-sys) and must not be picked up by
+# `cargo test --workspace` / `cargo build --workspace`.
+exclude = ["crates/openpixel-codecs/fuzz"]
 resolver = "2"
 
 [workspace.package]

@@ -26,6 +26,36 @@ Application Layer
                             (evaluated in CODECS.md, wired in Phase 3)
 ```
 
+## Phase 9 — what changed (draft — coordinator verifies and commits)
+
+- No new features and no public API changes. Production QA only:
+  six security fixes in the engine/metadata/CLI (unbounded zlib
+  decompression in PNG metadata, GIF canvas allocated before the
+  limit check, TIFF page decoded before the limit check, CLI batch
+  reading files without a size limit, unbounded GIF/APNG/WebP
+  frame scans, engine `read_input` TOCTOU) — see
+  `docs/SECURITY-AUDIT.md` for each finding, its severity and its
+  disposition, including the accepted risks (no processing timeouts,
+  no RSS cap, output-symlink following, input symlinks / special
+  files, SVG complexity).
+- `cargo-fuzz` targets for detection, decode and metadata under
+  `crates/openpixel-codecs/fuzz/` (own workspace, excluded from the
+  root workspace; needs nightly + libfuzzer). No engine code changed
+  shape for fuzzing: `fuzz_decode` mirrors the engine's own
+  dimensions-then-decode order and limits.
+- Licence audit + SBOM: `sbom.json` (root workspace, 236
+  components) and `apps/desktop/src-tauri/sbom.json` (570), generated
+  by `scripts/release/generate-sbom.py` from `Cargo.lock`;
+  `cargo audit` clean of vulnerabilities (see `docs/TESTING.md`).
+  `native/licenses/` completed for the linked native codecs.
+- Benchmarks re-run (see `docs/BENCHMARKS.md`): no
+  code-attributable regression; AVIF is ~600x WebP and stays ravif
+  speed 4 (a libavif encode path was considered and not pursued).
+- Cross-platform notes in `docs/BUILD.md` (Linux verified;
+  Windows/macOS not attempted) and CLI release packaging in
+  `scripts/release/package-cli.sh`. Rust workspace: 176 tests
+  (was 171).
+
 ## Phase 8 — what changed (draft — coordinator verifies and commits)
 
 - `apps/desktop/` is now a real app (was an empty placeholder):
