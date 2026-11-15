@@ -136,8 +136,8 @@ fn run(cli: &Cli, engine: &Engine) -> Result<(), openpixel_core::OpenPixelError>
                 println!("{}", serde_json::to_string_pretty(&caps).unwrap());
             } else {
                 println!(
-                    "{:<10} {:<7} {:<7} {:<6} {:<9} {}",
-                    "format", "decode", "encode", "alpha", "anim", "status"
+                    "{:<10} {:<7} {:<7} {:<6} {:<9} status",
+                    "format", "decode", "encode", "alpha", "anim"
                 );
                 for c in &caps {
                     println!(
