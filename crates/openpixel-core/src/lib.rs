@@ -30,6 +30,7 @@
 pub mod engine;
 pub mod error;
 pub mod image;
+pub mod processing;
 pub mod security;
 
 pub use engine::{default_output_path, Engine};
@@ -44,4 +45,5 @@ pub use openpixel_metadata::{AnimationInfo, FrameInfo, Metadata, MetadataField, 
 pub use openpixel_pipeline::{
     Operation, Pipeline, PipelineError, PipelineSpec, WatermarkPosition, WatermarkSpec,
 };
+pub use processing::{EngineHealth, HealthDetail, OptimizeLevel, ProcessingEngine};
 pub use security::EngineConfig;

@@ -216,12 +216,20 @@ The dav1d-free WASM engine (see `docs/WEB.md` for the design and
   -p openpixel-core -p openpixel-wasm --target
   wasm32-unknown-unknown --all-targets --no-default-features
   -- -D warnings` passes.
-- `cargo test --workspace` — **195 passed, 0 failed** (was
-  182): formats 10, codecs 28 + 3 adapter round-trips, core 35
-  + 6 integration, jobs 11 + 3, metadata 50, pipeline 29, wasm
-  8, CLI 5 + 4 integration, plus 3 doc-tests. `cargo test -p openpixel-core
+- `cargo test --workspace` — **245 passed, 0 failed** (was
+  205 before Studio Phase 1; 195 at the WASM follow-up): formats
+  10, codecs 28 + 3 adapter round-trips, core 48 + 6 integration,
+  jobs 14 + 3, metadata 50, pipeline 29, wasm 11, CLI 5 + 4
+  integration, security 12, api 3, pdf 12 + 4 merge/split
+  integration, plus 3 doc-tests. `cargo test -p openpixel-core
   -p openpixel-codecs --no-default-features` also passes
   (68 tests: the dav1d-free registry on the native target).
+  Studio Phase 1 also added: `cargo deny check licenses` ok
+  (allow-list in `deny.toml`), `cargo check -p openpixel-wasm
+  --target wasm32-unknown-unknown` and `cargo check -p
+  openpixel-pdf --target wasm32-unknown-unknown` both green,
+  and the PDFium render prototype (`--features pdfium`) renders
+  a real 3-page PDF to PNGs — see `LICENSE_AUDIT.md`.
 - `cargo build --release` — succeeds.
 - NOT yet run in a real browser (no Chromium/Playwright in this
   environment): the WASM conversion flows in the UI — drop a
@@ -374,8 +382,11 @@ report: `docs/E2E.md`. Runners: `scripts/test/cli-e2e.sh` (CLI),
   clicks were performed: the desktop click-through items (1)–(8)
   stay OPEN; the Tauri commands behind them are unit-tested.
 - **Regression — all green, counts unchanged:** `cargo test
-  --workspace` **195 passed, 0 failed**; clippy `-D warnings`
-  passes; `cargo fmt --check` passes; web `npm test` **28/28**,
+  --workspace` **195 passed, 0 failed** (at the time of that
+  regression run — the current count after Studio Phase 1 is
+  **245 passed, 0 failed**, see the workspace line above);
+  clippy `-D warnings` passes; `cargo fmt --check` passes; web
+  `npm test` **28/28** (now **49/49** after the Resize tab),
   oxlint 0 warnings/errors; desktop `npm test` **11/11**, oxlint 0
   warnings/errors; desktop backend `cargo test` **16/16**; release
   rebuild + `bench --quick` smoke succeeds.

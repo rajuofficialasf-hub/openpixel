@@ -1,5 +1,6 @@
 use crate::error::{OpenPixelError, Result};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 /// Phase 1 security limits (engineering targets, enforced in the engine).
 /// Tune in `EngineConfig`; never remove them silently.
@@ -8,6 +9,23 @@ pub const MAX_PIXELS: u64 = 100_000_000; // 100 MP — decompression-bomb guard
 /// Single source of truth lives in `openpixel-formats`; re-exported here
 /// so Phase 1 callers (`security::MAX_DIMENSION`) still compile.
 pub use openpixel_formats::MAX_DIMENSION;
+
+/// Default wall-clock limit for one decode/encode call (Studio
+/// Phase 1, closes Phase 9 accepted risk A8): 5 minutes. Enforced
+/// where a `'static` closure is available — the jobs pool (via
+/// `JobManager::for_engine`, which reads this value) and the CLI.
+/// The engine itself cannot spawn the timeout thread from a `&self`
+/// method (the closure would borrow `self`), so `Engine` enforces
+/// only the RSS pre-flight check; see `Engine::check_resource_limits`.
+pub const DEFAULT_PROCESSING_TIMEOUT: Duration = Duration::from_secs(300);
+/// Default process RSS cap (Studio Phase 1, closes Phase 9 accepted
+/// risk A9 as a pre-flight check, Linux only): 2 GiB. The jobs
+/// documentation bounds the worst case at 1.6 GiB (4 workers x
+/// 100 MP x 4 bytes), so a 2 GiB cap leaves headroom for legitimate
+/// batches while refusing to start work on an already-bloated
+/// process. This is not a cgroup — a deployment that needs a hard
+/// cap should use `ulimit` / cgroup limits.
+pub const DEFAULT_MAX_RSS_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -18,6 +36,11 @@ pub struct EngineConfig {
     pub default_jpeg_quality: u8,
     /// Background used when flattening alpha for formats without it.
     pub default_background: [u8; 3],
+    /// Wall-clock limit for one decode/encode call. Read by the
+    /// jobs pool and the CLI (see `DEFAULT_PROCESSING_TIMEOUT`).
+    pub processing_timeout: Duration,
+    /// Process RSS cap in bytes (pre-flight check, Linux only).
+    pub max_rss_bytes: u64,
 }
 
 impl Default for EngineConfig {
@@ -28,6 +51,8 @@ impl Default for EngineConfig {
             max_dimension: MAX_DIMENSION,
             default_jpeg_quality: 85,
             default_background: [255, 255, 255],
+            processing_timeout: DEFAULT_PROCESSING_TIMEOUT,
+            max_rss_bytes: DEFAULT_MAX_RSS_BYTES,
         }
     }
 }

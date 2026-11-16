@@ -62,32 +62,14 @@ pub mod manager;
 pub mod types;
 
 pub use error::JobError;
-pub use manager::{default_workers, JobManager, JobManagerConfig, WorkFn, MAX_WORKERS};
-pub use types::{BatchProgress, Job, JobResult, JobStatus};
+pub use manager::{default_workers, JobHandler, JobManager, JobManagerConfig, WorkFn, MAX_WORKERS};
+pub use types::{BatchProgress, Job, JobKind, JobResult, JobStatus};
 
-/// Peak resident set size of this process in bytes, read from
-/// `/proc/self/status` (`VmHWM`, Linux only). Returns `None` on
-/// non-Linux platforms or when the field cannot be read. Used by the
-/// `openpixel bench` command; `/usr/bin/time` is not installed on
-/// this VM, so the benchmark measures RSS itself instead of relying
-/// on an external tool.
-pub fn peak_rss_bytes() -> Option<u64> {
-    read_status_kib("VmHWM").map(|kib| kib * 1024)
-}
+/// Peak resident set size of this process in bytes (Linux only).
+/// Re-exported from `openpixel-security` — there is one RSS reader
+/// in the codebase, not one per crate.
+pub use openpixel_security::peak_rss_bytes;
 
-/// Current resident set size of this process in bytes (Linux only,
-/// `/proc/self/status` `VmRSS`).
-pub fn current_rss_bytes() -> Option<u64> {
-    read_status_kib("VmRSS").map(|kib| kib * 1024)
-}
-
-fn read_status_kib(field: &str) -> Option<u64> {
-    let status = std::fs::read_to_string("/proc/self/status").ok()?;
-    for line in status.lines() {
-        if let Some(rest) = line.strip_prefix(field) {
-            let num: String = rest.chars().filter(|c| c.is_ascii_digit()).collect();
-            return num.parse::<u64>().ok();
-        }
-    }
-    None
-}
+/// Current resident set size of this process in bytes (Linux only).
+/// Re-exported from `openpixel-security`.
+pub use openpixel_security::current_rss_bytes;

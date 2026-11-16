@@ -208,6 +208,21 @@ scope for a QA phase; it remains the top item for a future
 hardening pass. The web worker is the exception: it has a 120 s
 timeout (see above).
 
+**Mitigated in Studio Phase 1 (16 Nov 2026) — partial, not a
+full fix.** `openpixel-security::run_with_timeout` enforces a
+wall-clock limit (default 300 s, `EngineConfig::processing_timeout`)
+wherever a `'static` closure exists: the jobs pool
+(`JobManager::for_engine` reads the engine's timeout) and any
+custom `JobHandler`. On timeout the caller gets a `TimedOut`
+error, but the worker thread is **detached, not killed** — a
+thread cannot be killed safely in-process, so a pathological
+decode keeps running in the background until it finishes. True
+kill needs process isolation (Phase 8 backend). Direct
+`Engine::convert` calls still have no timeout (the `&self`
+borrow cannot move into a worker thread); the RSS pre-flight
+check below is what bounds those. Status: A8 is mitigated for
+batch jobs, open for single synchronous calls.
+
 ### A9 — No RSS / cgroup cap
 
 Pixel limits bound decoded buffers, but there is no OS-level memory
@@ -216,6 +231,18 @@ default 4 workers; measured peak RSS for the whole bench suite is
 70 MiB (`docs/BENCHMARKS.md`). For very large images, run with
 `--workers 1`. A deployment cap (`ulimit` / cgroup) is a deployment
 decision, not an engine default.
+
+**Mitigated in Studio Phase 1 (16 Nov 2026) — partial.** `Engine`
+now runs an RSS pre-flight check (`check_resource_limits`, default
+cap 2 GiB, `EngineConfig::max_rss_bytes`) at the top of every
+convert/process call, and `openpixel-security` exposes
+`current_rss_bytes` / `peak_rss_bytes` (Linux `/proc/self/status`;
+a no-op elsewhere). This is a *pre-flight* check, not a hard
+cgroup: a single decode can still grow past the cap mid-call, and
+the check reads the process-wide RSS, so concurrent workers share
+the budget. A deployment cap (`ulimit` / cgroup) is still the
+real enforcement for a server. Status: A9 is mitigated for the
+common case, open as a hard guarantee.
 
 ### A10 — Input symlinks and special files
 

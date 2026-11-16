@@ -1,5 +1,5 @@
 use crate::error::{JobError, Result};
-use crate::types::{BatchProgress, Job, JobResult, JobStatus};
+use crate::types::{BatchProgress, Job, JobKind, JobResult, JobStatus};
 use openpixel_core::{ConvertOptions, Engine, ImageFormat};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -15,6 +15,19 @@ use std::time::{Duration, Instant};
 /// The engine's own limits (`EngineConfig`) are enforced inside the
 /// work function (see [`JobManager::for_engine`]).
 pub type WorkFn = dyn Fn(&Job) -> std::result::Result<u64, String> + Send + Sync;
+
+/// A handler for one kind of job (Studio Phase 1). The pool is
+/// generic over the *mechanics* (queue, workers, pause/resume/
+/// cancel/retry); the handler decides what a job of its kind
+/// means. Image jobs keep using plain [`WorkFn`] closures;
+/// PDF/OCR/document jobs in later phases implement this trait so
+/// the pool can route and describe them without knowing their
+/// payloads. `run` receives the whole [`Job`] (including `kind`
+/// and `params`) and returns the output size in bytes, like `WorkFn`.
+pub trait JobHandler: Send + Sync {
+    fn kind(&self) -> JobKind;
+    fn run(&self, job: &Job) -> std::result::Result<u64, String>;
+}
 
 /// Maximum workers the pool will ever run. The default is smaller
 /// (see [`default_workers`]); this is the hard clamp on a caller's
@@ -36,19 +49,35 @@ pub struct JobManagerConfig {
     /// Worker threads. Clamped to 1..=`MAX_WORKERS` by the manager;
     /// 0 is rejected with [`JobError::InvalidWorkerCount`].
     pub workers: usize,
+    /// Wall-clock limit for one job, enforced by running the work
+    /// on a timeout thread (see `openpixel-security::run_with_timeout`).
+    /// `None` means no pool-level timeout — the work runs until it
+    /// finishes. `JobManager::for_engine` fills this in from the
+    /// engine's `EngineConfig::processing_timeout` when it is `None`,
+    /// so engine-backed pools always have a timeout.
+    pub processing_timeout: Option<Duration>,
 }
 
 impl Default for JobManagerConfig {
     fn default() -> Self {
         Self {
             workers: default_workers(),
+            processing_timeout: None,
         }
     }
 }
 
 impl JobManagerConfig {
     pub fn with_workers(workers: usize) -> Self {
-        Self { workers }
+        Self {
+            workers,
+            processing_timeout: None,
+        }
+    }
+
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.processing_timeout = Some(timeout);
+        self
     }
 }
 
@@ -80,6 +109,8 @@ impl State {
 struct Shared {
     state: Mutex<State>,
     condvar: Condvar,
+    /// Pool-level per-job timeout (see `JobManagerConfig`).
+    processing_timeout: Option<Duration>,
 }
 
 /// Bounded worker pool for batch conversion.
@@ -105,6 +136,7 @@ impl JobManager {
         let shared = Arc::new(Shared {
             state: Mutex::new(State::new()),
             condvar: Condvar::new(),
+            processing_timeout: config.processing_timeout,
         });
         let mut handles = Vec::with_capacity(config.workers);
         for _ in 0..config.workers {
@@ -120,12 +152,31 @@ impl JobManager {
         })
     }
 
+    /// Build a pool running `handler` for every job (Studio Phase 1).
+    /// The handler's `kind()` describes what it serves; the pool
+    /// itself stays kind-agnostic.
+    pub fn new_with_handler(
+        config: JobManagerConfig,
+        handler: Arc<dyn JobHandler>,
+    ) -> Result<Self> {
+        Self::new(config, Arc::new(move |job: &Job| handler.run(job)))
+    }
+
     /// Build a pool that converts each job through `engine`
     /// (`engine.convert`). The engine's limits are enforced per job
     /// inside the worker: a job over the file-size / pixel /
     /// dimension limits fails with `LimitExceeded` and is recorded
-    /// as `Failed` — the pool keeps going.
+    /// as `Failed` — the pool keeps going. The engine's
+    /// `processing_timeout` (default 300 s) bounds each job unless
+    /// the caller set `config.processing_timeout` explicitly.
     pub fn for_engine(config: JobManagerConfig, engine: Arc<Engine>) -> Result<Self> {
+        let timeout = config
+            .processing_timeout
+            .unwrap_or(engine.config().processing_timeout);
+        let config = JobManagerConfig {
+            processing_timeout: Some(timeout),
+            ..config
+        };
         Self::new(
             config,
             Arc::new(move |job: &Job| {
@@ -150,9 +201,16 @@ impl JobManager {
         target: ImageFormat,
         options: ConvertOptions,
     ) -> u64 {
+        self.submit_job(Job::new(input, output, target, options))
+    }
+
+    /// Submit a pre-built job of any kind (Studio Phase 1). The
+    /// job's `id` is assigned here and its status is reset to
+    /// `Queued`. Returns the id.
+    pub fn submit_job(&self, mut job: Job) -> u64 {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
-        let mut job = Job::new(input, output, target, options);
         job.id = id;
+        job.status = JobStatus::Queued;
         let mut state = self.shared.state.lock().expect("job state lock poisoned");
         state.jobs.insert(id, job);
         state.queue.push_back(id);
@@ -400,7 +458,32 @@ fn worker_loop(shared: &Arc<Shared>, work: &Arc<WorkFn>) {
             }
         };
         let started = Instant::now();
-        let outcome = work(&job);
+        // Pool-level timeout (Studio Phase 1, risk A8): when set,
+        // the work runs on a timeout thread and a job that overruns
+        // it fails with a timeout message instead of hanging the
+        // pool. The worker thread is detached on timeout (see
+        // `openpixel-security::run_with_timeout`) — the job is
+        // recorded Failed and the pool carries on.
+        let outcome = match shared.processing_timeout {
+            Some(timeout) => {
+                let work = Arc::clone(work);
+                // The closure owns its copy: `job` itself is still
+                // needed below for the result record.
+                let job_for_work = job.clone();
+                match openpixel_security::run_with_timeout(timeout, move || work(&job_for_work)) {
+                    Ok(result) => result,
+                    Err(openpixel_security::TimeoutError::TimedOut(d)) => Err(format!(
+                        "processing timed out after {}s (limit {}s)",
+                        d.as_secs(),
+                        timeout.as_secs()
+                    )),
+                    Err(openpixel_security::TimeoutError::WorkerPanicked) => {
+                        Err("processing worker panicked".to_string())
+                    }
+                }
+            }
+            None => work(&job),
+        };
         let duration_ms = started.elapsed().as_millis() as u64;
         let mut state = shared.state.lock().expect("job state lock poisoned");
         state.running = state.running.saturating_sub(1);
@@ -684,5 +767,84 @@ mod tests {
         assert!(!manager.wait_timeout(Duration::from_millis(100)));
         manager.resume();
         assert!(manager.wait_timeout(Duration::from_secs(10)));
+    }
+
+    // Studio Phase 1 — generalisation: a handler serves a non-image
+    // job through the same pool, and a slow job times out instead
+    // of hanging the pool.
+
+    struct PdfHandler;
+
+    impl JobHandler for PdfHandler {
+        fn kind(&self) -> JobKind {
+            JobKind::Pdf
+        }
+
+        fn run(&self, job: &Job) -> std::result::Result<u64, String> {
+            assert_eq!(job.kind, JobKind::Pdf);
+            assert_eq!(job.params["operation"], "merge");
+            Ok(1234)
+        }
+    }
+
+    #[test]
+    fn handler_trait_serves_a_non_image_job() {
+        let manager =
+            JobManager::new_with_handler(JobManagerConfig::with_workers(1), Arc::new(PdfHandler))
+                .unwrap();
+        let (input, output, target, options) = test_job("doc.pdf");
+        let job = Job::new(input, output, target, options)
+            .with_kind(JobKind::Pdf, serde_json::json!({"operation": "merge"}));
+        let id = manager.submit_job(job);
+        manager.wait_all();
+        assert_eq!(manager.job(id).unwrap().status, JobStatus::Done);
+        assert_eq!(manager.results()[0].bytes, 1234);
+        assert_eq!(manager.job(id).unwrap().kind, JobKind::Pdf);
+    }
+
+    #[test]
+    fn pool_timeout_fails_a_slow_job_without_killing_the_pool() {
+        let work: Arc<WorkFn> = Arc::new(|job: &Job| {
+            if job.input.to_string_lossy().contains("slow") {
+                std::thread::sleep(Duration::from_secs(5));
+            }
+            Ok(1)
+        });
+        let config = JobManagerConfig::with_workers(1).with_timeout(Duration::from_millis(150));
+        let manager = JobManager::new(config, work).unwrap();
+        let (i1, o1, t1, c1) = test_job("slow.png");
+        let slow = manager.submit(i1, o1, t1, c1);
+        let (i2, o2, t2, c2) = test_job("fast.png");
+        let fast = manager.submit(i2, o2, t2, c2);
+        manager.wait_all();
+        assert_eq!(manager.job(slow).unwrap().status, JobStatus::Failed);
+        assert!(
+            manager.results()[0]
+                .error
+                .as_deref()
+                .unwrap_or("")
+                .contains("timed out"),
+            "failure must say timed out: {:?}",
+            manager.results()[0].error
+        );
+        assert_eq!(manager.job(fast).unwrap().status, JobStatus::Done);
+        assert_eq!(manager.progress().done, 1);
+    }
+
+    #[test]
+    fn job_kind_and_params_round_trip_and_old_json_still_parses() {
+        let (input, output, target, options) = test_job("doc.pdf");
+        let job = Job::new(input, output, target, options)
+            .with_kind(JobKind::Pdf, serde_json::json!({"operation": "split"}));
+        let json = serde_json::to_string(&job).unwrap();
+        let back: Job = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.kind, JobKind::Pdf);
+        assert_eq!(back.params["operation"], "split");
+        // Job JSON written before Phase 1 (no kind/params fields)
+        // still parses, defaulting to an image job.
+        let old = r#"{"id":1,"input":"a.png","output":"b.webp","target":"webp","options":{"quality":null,"png_compression":null,"background":[255,255,255],"preserve_metadata":false,"metadata_policy":null,"selected_frame":null,"convert_to_srgb":false},"status":"Queued"}"#;
+        let old_job: Job = serde_json::from_str(old).unwrap();
+        assert_eq!(old_job.kind, JobKind::Image);
+        assert!(old_job.params.is_null());
     }
 }

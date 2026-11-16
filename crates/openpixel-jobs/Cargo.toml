@@ -8,8 +8,10 @@ description = "OpenPixel Jobs — bounded worker pool for batch conversion: paus
 [dependencies]
 openpixel-core = { path = "../openpixel-core" }
 openpixel-formats = { path = "../openpixel-formats" }
+openpixel-security = { path = "../openpixel-security" }
 thiserror.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 image.workspace = true

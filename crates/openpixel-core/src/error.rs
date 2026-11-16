@@ -33,6 +33,9 @@ pub enum OpenPixelError {
     #[error("security limit exceeded: {0}")]
     LimitExceeded(String),
 
+    #[error("internal error: {0}")]
+    Internal(String),
+
     #[error("invalid argument: {0}")]
     InvalidArgument(String),
 

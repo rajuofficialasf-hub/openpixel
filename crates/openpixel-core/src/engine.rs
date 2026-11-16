@@ -88,6 +88,26 @@ impl Engine {
         self.registry.capability(format)
     }
 
+    /// Pre-flight resource check (Studio Phase 1, risk A9): refuse
+    /// to start work when the process RSS is already over the
+    /// configured cap (Linux only; a no-op elsewhere). Called at
+    /// the top of every public convert/process entry point. The
+    /// processing timeout (A8) cannot be enforced from a `&self`
+    /// method — a timeout thread needs a `'static` closure, and
+    /// `&self` is borrowed — so it is enforced by the jobs pool
+    /// (`JobManager::for_engine` reads `config.processing_timeout`)
+    /// and the CLI instead.
+    fn check_resource_limits(&self) -> Result<()> {
+        openpixel_security::check_rss_cap(self.config.max_rss_bytes).map_err(|e| match e {
+            openpixel_security::SecurityError::RssCapExceeded { current, cap } => {
+                OpenPixelError::LimitExceeded(format!(
+                    "resident memory {current} bytes exceeds the cap of {cap} bytes — close other work or raise max_rss_bytes"
+                ))
+            }
+            other => OpenPixelError::Internal(other.to_string()),
+        })
+    }
+
     fn read_input(&self, path: &Path) -> Result<Vec<u8>> {
         let meta = fs::metadata(path).map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -352,6 +372,7 @@ impl Engine {
         target: ImageFormat,
         options: &ConvertOptions,
     ) -> Result<ConvertResult> {
+        self.check_resource_limits()?;
         let (source_format, img, bytes) = self.read_decode_frame(input, options.selected_frame)?;
         let metadata = extract_metadata(&bytes, source_format);
         let anim = animation_info(&bytes, source_format);
@@ -386,6 +407,7 @@ impl Engine {
         target: ImageFormat,
         options: &ConvertOptions,
     ) -> Result<(ConvertResult, Vec<u8>)> {
+        self.check_resource_limits()?;
         let (source_format, img) = self.decode_bytes(bytes, options.selected_frame)?;
         let metadata = extract_metadata(bytes, source_format);
         let anim = animation_info(bytes, source_format);
@@ -417,6 +439,7 @@ impl Engine {
         target: ImageFormat,
         options: &ProcessOptions,
     ) -> Result<(ConvertResult, Vec<u8>)> {
+        self.check_resource_limits()?;
         let (source_format, img) = self.decode_bytes(bytes, options.convert.selected_frame)?;
         let metadata = extract_metadata(bytes, source_format);
         let anim = animation_info(bytes, source_format);
@@ -473,6 +496,7 @@ impl Engine {
         options: &ProcessOptions,
         target_bytes: u64,
     ) -> Result<(TargetSizeOutcome, Vec<u8>)> {
+        self.check_resource_limits()?;
         if target_bytes == 0 {
             return Err(OpenPixelError::InvalidArgument(
                 "target size must be at least 1 byte".to_string(),
@@ -637,6 +661,7 @@ impl Engine {
         target: ImageFormat,
         options: &ProcessOptions,
     ) -> Result<ConvertResult> {
+        self.check_resource_limits()?;
         let (source_format, img, bytes) =
             self.read_decode_frame(input, options.convert.selected_frame)?;
         let metadata = extract_metadata(&bytes, source_format);

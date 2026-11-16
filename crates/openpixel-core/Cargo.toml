@@ -7,6 +7,7 @@ description = "OpenPixel Core — unified engine over the dynamic codec registry
 
 [dependencies]
 openpixel-formats = { path = "../openpixel-formats" }
+openpixel-security = { path = "../openpixel-security" }
 # `default-features = false`: the `native-avif` feature below decides
 # whether the AVIF codec (dav1d, no wasm32 build) is registered — see
 # `openpixel-codecs/Cargo.toml`. Without this, feature unification

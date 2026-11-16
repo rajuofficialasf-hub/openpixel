@@ -58,10 +58,45 @@ Raju approves starting.
 - Merge + split of a real multi-page PDF works via the new
   crate (test, not a demo).
 - Licence Registry has a row for lopdf (+ PDFium if adopted).
+**Done 16 Nov 2026 — all exit criteria met:**
+- `cargo test --workspace` **245 passed, 0 failed** (205 + 40:
+  pdf 12 + 4 integration, security 12, api 3, core +13, jobs
+  +3); web `npm test` 49/49, lint 0; clippy `-D warnings`
+  clean; `cargo fmt --check` clean; CLI e2e exit 0 (fixtures
+  regenerated after a /tmp wipe — the script does not generate
+  them itself); `cargo deny check licenses` ok; wasm32 checks
+  green for `openpixel-wasm` **and** `openpixel-pdf`.
+- Merge (3+2 → 5 pages, text verified in output) and split
+  (ranges, single pages, re-merge) work on real lopdf-generated
+  PDFs, cross-checked with `pdfinfo`.
+- `LICENSE_AUDIT.md` has rows for lopdf (MIT, `=0.47.0`) and
+  PDFium (BSD-3-Clause, chromium/8152, sha256 on record).
+- **PDFium prototype: WORKED.** The example rendered a real
+  3-page PDF to three genuine PNGs (200×259 px, text visible).
+  Two environment findings: the GitHub *API* is rate-limited
+  for unauthenticated calls from the shared egress IP, so the
+  prototype resolves the latest release via the
+  `/releases/latest` HTML redirect; `tar` needs
+  `--no-same-owner` in this container. PDFium is adopted for
+  Phase 2 rendering (dynamic `libpdfium.so`, never committed).
+- **Design decisions taken during implementation** (kept here
+  so they are not re-derived): timeout enforced in the jobs
+  pool, not in `Engine` methods (`&self` cannot move into a
+  `'static` worker thread; `CodecRegistry` is not Clone);
+  worker threads are detached on timeout, never killed;
+  `openpixel-pdf` takes `openpixel-core` with
+  `default-features = false` and `getrandom` with `wasm_js`
+  so it builds for wasm32.
 **Honest unknowns:** whether lopdf covers the page ops cleanly
 on real-world PDFs (malformed files, object streams, encryption);
 whether the `openpixel-jobs` generalisation stays small or
 needs a redesign (prototype first, decide on evidence).
+**Answers after Phase 1:** lopdf's `Document` API has no
+built-in merge — the page-graph copier works on generated
+PDFs, but real-world files (object streams, encryption,
+annotations) are untested until Phase 2 fixtures arrive; the
+jobs generalisation stayed additive and small (byte-identical
+batch behaviour verified by CLI e2e §6).
 
 ## Phase 2 — Core PDF Features (first user-facing PDF)
 

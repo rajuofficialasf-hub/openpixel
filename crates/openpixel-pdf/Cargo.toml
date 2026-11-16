@@ -1,0 +1,36 @@
+[package]
+name = "openpixel-pdf"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OpenPixel PDF engine — document detection, merge/split/page ops, PDFium render prototype (Studio Phase 1 foundation)"
+
+[dependencies]
+openpixel-core = { path = "../openpixel-core", default-features = false }
+openpixel-formats = { path = "../openpixel-formats" }
+# Feature activation only: lopdf -> rand -> getrandom 0.4 needs
+# the `wasm_js` feature to compile for wasm32-unknown-unknown
+# (getrandom is not supported on wasm32 by default). The feature
+# is target-gated — a no-op on native targets — and this crate
+# never calls getrandom directly. Without it the pdf crate cannot
+# be part of the CI wasm32 check.
+getrandom = { version = "=0.4.3", features = ["wasm_js"] }
+lopdf.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+image.workspace = true
+tempfile = "=3.27.0"
+
+[features]
+default = []
+# Native PDF rendering via PDFium (dynamic libpdfium binary — see
+# LICENSE_AUDIT.md for provenance). Off by default: the prototype
+# in examples/pdfium_render.rs enables it explicitly, and the
+# `pdfium` test module is compiled only with this feature.
+pdfium = ["dep:pdfium-render"]
+
+[dependencies.pdfium-render]
+workspace = true
+optional = true

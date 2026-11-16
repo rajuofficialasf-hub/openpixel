@@ -6,6 +6,10 @@
 # - Uploads the resulting binaries / installers as workflow artifacts
 #   (actions/upload-artifact). Nothing is published: there is no
 #   release-creation step, no upload to any store, no deploy.
+# - Studio Phase 1 added a fourth job, wasm-and-licenses: a
+#   wasm32 build check (openpixel-wasm + openpixel-pdf) and a
+#   `cargo deny check licenses` run (deny.toml — AGPL/GPL/LGPL
+#   are a hard no).
 # - This workflow first ran 16 Nov 2026 (run 43832448184): Linux and
 #   macOS jobs all passed; both Windows jobs failed on missing
 #   pkg-config for dav1d-sys — fixed by installing pkgconfiglite
@@ -335,3 +339,43 @@ jobs:
           path: apps/web/dist
           if-no-files-found: error
           retention-days: 30
+
+  # ------------------------------------------- Wasm32 + licence checks
+  # Studio Phase 1: the web app's engine must keep building for
+  # wasm32, and no copyleft licence may enter the tree.
+  # - The WASM crate builds the engine dav1d-free
+  #   (default-features = false), so it compiles for wasm32
+  #   without the native dav1d build tools.
+  # - The PDF crate is pure Rust (lopdf) and must also stay
+  #   wasm32-clean (its getrandom dep carries the wasm_js
+  #   feature for that reason — see
+  #   crates/openpixel-pdf/Cargo.toml).
+  # - cargo-deny enforces deny.toml: AGPL/GPL/LGPL are a hard no
+  #   (see LICENSE_AUDIT.md). It runs on the licence check only;
+  #   advisories/bans are not part of this job.
+  wasm-and-licenses:
+    name: Wasm32 + cargo-deny (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }} + wasm32 target
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check wasm32 (WASM engine + PDF crate)
+        run: |
+          cargo check -p openpixel-wasm --target wasm32-unknown-unknown
+          cargo check -p openpixel-pdf --target wasm32-unknown-unknown
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@cargo-deny
+
+      - name: Check licences
+        run: cargo deny check licenses

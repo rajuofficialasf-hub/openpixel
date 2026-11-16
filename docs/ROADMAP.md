@@ -144,9 +144,11 @@
   AVIF is honestly unavailable in WASM (no wasm32 libdav1d) and
   the engine reports it as such. Verified in Node: `wasm-pack
   test --node` 2/2 and a standalone script converting a real PNG
-  to 7 formats with re-detection. Rust workspace 195 tests (was
-  182); web `npm test` 28 passed (was 17). See `docs/WEB.md` and
-  `docs/TESTING.md`. Still open: a real-browser click-through of
+  to 7 formats with re-detection. Rust workspace 195 tests at
+  that point (was 182); web `npm test` 28 passed (was 17). Current
+  counts after Studio Phase 1 (16 Nov 2026): Rust workspace **245
+  passed, 0 failed**; web `npm test` **49/49**. See `docs/WEB.md`
+  and `docs/TESTING.md`. Still open: a real-browser click-through of
   the WASM conversion flows (no browser tooling in this session).
 - [x] **Windows/macOS builds** (CI + installers) — done 16 Nov 2026
   (follow-up item 3): `.github/workflows/release.yml` ("Build")

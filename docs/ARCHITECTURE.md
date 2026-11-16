@@ -451,3 +451,81 @@ Phase 1 builds on Linux x86_64 (verified here). The code uses only
 `std` + pure-Rust crates, so Windows/macOS/Linux builds need no
 platform-specific code yet. Native codecs in Phase 3 will add
 per-platform setup scripts under `scripts/setup/` and `native/build/`.
+
+## Studio Phase 1 — Unified Core Architecture (16 Nov 2026)
+
+The Studio expansion (see `docs/IMPLEMENTATION_ROADMAP.md`) adds
+document engines alongside the image engine without touching
+image behaviour. Phase 1 is the foundation:
+
+- **`ProcessingEngine` trait** (`openpixel-core/src/processing.rs`):
+  `validate / inspect / process / optimize / export /
+  health_check`, with engine-specific `Options` / `Info` /
+  `Output` associated types. The image `Engine` implements it;
+  `PdfEngine` is the second implementation. A method that is not
+  implemented yet returns `NotImplemented` honestly — never a
+  silent no-op. Note: `Engine` also has an inherent file-based
+  `process(input, output, …)`, so trait calls must be fully
+  qualified (`<Engine as ProcessingEngine>::process(…)`).
+- **`openpixel-security`** (promoted from stub): `TempWorkspace`
+  (isolated temp dir, auto-cleanup on drop, traversal rejection),
+  `run_with_timeout` (thread + channel + `recv_timeout`; on
+  timeout the caller gets `TimedOut` but the worker thread is
+  detached, not killed — true kill needs process isolation,
+  Phase 8), RSS helpers (`current_rss_bytes` /
+  `peak_rss_bytes`, Linux `/proc/self/status`), and PDF
+  sanitisation (`scan_pdf_bytes` — byte scan for `/JavaScript`,
+  `/JS`, `/AA`, `/OpenAction`, `/Launch`, `/EmbeddedFiles`,
+  `/Filespec` with a delimiter check; first line of defence
+  only, it cannot see inside compressed streams).
+- **`openpixel-api`** (promoted from stub): shared `/api/v1`
+  request/response types, job types and error shapes — types
+  only, no server, no HTTP. One `JobStatus` in the codebase
+  (re-exported from `openpixel-jobs`).
+- **`openpixel-jobs` generalised**: `JobKind` (Image/Pdf/Ocr/
+  Document, default Image), `Job.params`, `JobHandler` trait and
+  `JobManager::new_with_handler` / `submit_job`; `Job::new` and
+  `submit` signatures unchanged, and old job JSON (without `kind`
+  / `params`) still parses (`#[serde(default)]`). The timeout is
+  enforced in the worker loop when `JobManagerConfig
+  .processing_timeout` is set (`for_engine` fills it from the
+  engine config). Guard: existing batch behaviour is
+  byte-identical — batch tests + CLI e2e §6 pass unchanged.
+- **`EngineConfig` gains `processing_timeout` (default 300 s)
+  and `max_rss_bytes` (default 2 GiB)**. The engine enforces
+  only the RSS pre-flight check synchronously
+  (`check_resource_limits` at the top of `convert` /
+  `convert_bytes` / `process` / `process_bytes` /
+  `process_to_size_bytes`); the timeout lives where a `'static`
+  closure exists (jobs pool). On wasm32 the timeout runs inline
+  (no threads, no timeout — documented).
+- **`openpixel-pdf`**: `DocumentFormat` detection
+  (signature-first: `%PDF-`, `{\rtf`, ZIP central-directory
+  entry names + stored `mimetype` for Office/EPUB/ODF, HTML
+  leading tag, UTF-8 fallback for TXT; CSV is extension-only),
+  `PdfEngine` with validate/inspect/merge/split. Merge/split
+  deep-copy page object graphs with remapped ids and resolve
+  inherited attributes (`/Resources`, `/MediaBox`, `/CropBox`,
+  `/Rotate`) from the source page tree. Honest limits: page
+  labels, outlines and `/Info` are not carried over; `optimize`
+  is `NotImplemented` until Phase 3. lopdf `=0.47.0` (MIT).
+  PDFium render is a prototype only
+  (`examples/pdfium_render.rs`, feature `pdfium`, off by
+  default): verified 16 Nov 2026 — prebuilt libpdfium
+  chromium/8152 from bblanchon/pdfium-binaries rendered a real
+  3-page PDF to three genuine PNGs. The binary is downloaded
+  at prototype time into `target/pdfium/` (never committed);
+  provenance + sha256 in `LICENSE_AUDIT.md`.
+- **Licence registry** (`LICENSE_AUDIT.md`, repo root) and
+  **CI** (`.github/workflows/release.yml`, job
+  `wasm-and-licenses`): wasm32 checks for `openpixel-wasm` and
+  `openpixel-pdf`, plus `cargo deny check licenses` against the
+  allow-list in `deny.toml` (AGPL/GPL/LGPL excluded). Two
+  wasm32 findings, both fixed in Phase 1: `openpixel-pdf` takes
+  `openpixel-core` with `default-features = false` (no dav1d
+  on wasm32), and its `getrandom` dep carries the `wasm_js`
+  feature (lopdf → rand → getrandom needs it on wasm32).
+- **Counts after Phase 1:** `cargo test --workspace` **245
+  passed, 0 failed** (was 205); web `npm test` 49/49; clippy
+  `-D warnings` clean; `cargo fmt --check` clean; CLI e2e
+  exit 0; `cargo deny check licenses` ok.

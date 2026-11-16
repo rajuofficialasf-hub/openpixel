@@ -6,6 +6,9 @@ members = [
     "crates/openpixel-pipeline",
     "crates/openpixel-metadata",
     "crates/openpixel-jobs",
+    "crates/openpixel-security",
+    "crates/openpixel-api",
+    "crates/openpixel-pdf",
     "crates/openpixel-wasm",
     "apps/cli",
 ]
@@ -68,6 +71,18 @@ gif = "=0.14.2"
 tiff = "=0.11.3"
 flate2 = "=1.1.11"
 tintbox = "=0.5.0"
+# Studio Phase 1 — PDF engine (pinned exact — see
+# docs/EXISTING_PROJECT_AUDIT.md §14 and LICENSE_AUDIT.md):
+# lopdf 0.47.0 is pure Rust (MIT), the manipulation library for
+# merge/split/pages/metadata. pdfium-render 0.9.5 is the Rust
+# binding (MIT OR Apache-2.0) to PDFium (BSD-3-Clause) for native
+# PDF rendering / text extraction — it needs a libpdfium binary
+# (dynamic link, never static), which is NOT in this workspace
+# build by default: it is an optional dependency of
+# `openpixel-pdf` behind the `pdfium` feature, used by the
+# prototype in `crates/openpixel-pdf/examples/pdfium_render.rs`.
+lopdf = "=0.47.0"
+pdfium-render = "=0.9.5"
 
 [profile.release]
 opt-level = 3
