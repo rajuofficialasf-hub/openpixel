@@ -154,12 +154,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # NOTE: one pattern per line — brace expansion {a,b} is NOT
+          # expanded by actions/upload-artifact. Run 43840542449
+          # proved it: both Windows installers existed
+          # (bundle/msi/OpenPixel_0.1.0_x64_en-US.msi 8.68 MiB and
+          # bundle/nsis/OpenPixel_0.1.0_x64-setup.exe 5.95 MiB) yet
+          # the single pattern **/*.{msi,exe} matched NOTHING and
+          # the step "succeeded" with if-no-files-found: warn, so
+          # no desktop artifact was uploaded on any OS.
           - os: ubuntu-24.04
-            bundle-glob: "apps/desktop/src-tauri/target/release/bundle/**/*.{deb,AppImage}"
+            bundle-glob: |
+              apps/desktop/src-tauri/target/release/bundle/**/*.deb
+              apps/desktop/src-tauri/target/release/bundle/**/*.AppImage
           - os: windows-latest
-            bundle-glob: "apps/desktop/src-tauri/target/release/bundle/**/*.{msi,exe}"
+            bundle-glob: |
+              apps/desktop/src-tauri/target/release/bundle/**/*.msi
+              apps/desktop/src-tauri/target/release/bundle/**/*.exe
           - os: macos-latest
-            bundle-glob: "apps/desktop/src-tauri/target/release/bundle/**/*.{dmg,app}"
+            bundle-glob: |
+              apps/desktop/src-tauri/target/release/bundle/**/*.dmg
+              apps/desktop/src-tauri/target/release/bundle/**/*.app
     steps:
       - name: Check out
         uses: actions/checkout@v4
