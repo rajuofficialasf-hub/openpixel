@@ -662,7 +662,10 @@ mod tests {
             .any(|c| c.format_id == "png" && c.can_decode && c.can_encode));
         assert!(caps
             .iter()
-            .any(|c| c.format_id == "heic" && !c.can_decode && !c.can_encode));
+            .any(|c| c.format_id == "heic" && c.can_decode && c.can_encode));
+        assert!(caps
+            .iter()
+            .any(|c| c.format_id == "raw" && !c.can_decode && !c.can_encode));
         assert!(caps
             .iter()
             .any(|c| c.format_id == "svg" && c.can_decode && !c.can_encode));
@@ -771,8 +774,8 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let png = fixture_png(dir.path());
         let eng = engine();
-        let out = dir.path().join("out.heic");
-        assert!(do_convert(&eng, &png, &out, "heic", &ConvertRequest::default()).is_err());
+        let out = dir.path().join("out.psd");
+        assert!(do_convert(&eng, &png, &out, "psd", &ConvertRequest::default()).is_err());
         assert!(!out.exists());
         let missing = dir.path().join("nope.png");
         let out2 = dir.path().join("out2.png");
