@@ -90,3 +90,27 @@ one expected 404 in the console. Screenshots `10-nowasm-home.png`,
   + misleading "Conversion failed") was fixed in the same polish
   run: `probeImage` now throws a `ProbeError` carrying the sniffed
   format.
+
+## Live matrix (`live-matrix.mjs`) — every format on the deployed site
+
+Tests all 16 browser targets (from PNG) and all 18 decodable sources
+(to PNG) against the LIVE site (default `https://openpixel.pages.dev/`),
+one by one, verifying each downloaded output with `file` + `openpixel
+info`. Also checks the lying-extension case, PSD detection-only, and
+that AVIF is not offered as a browser target. 57 checks; first full run
+16 Nov 2026: **57/57 passed**.
+
+Run from this VM (the local Chromium cannot complete the egress proxy's
+auth flow, so it goes through the loopback forward proxy, which adds the
+preemptive auth from its own env — start both in the SAME exec, the
+token rotates per exec session):
+
+```
+cd apps/web/e2e
+(node egress-proxy.mjs > /tmp/op-e2e/egress-proxy.log 2>&1 &)
+node live-matrix.mjs
+```
+
+Fixtures are CLI-generated into `/tmp/op-e2e/live-in` (regenerate with
+`openpixel convert` from `rgba.png`/`checker-64.png` if `/tmp` was
+wiped). Results are written to `/tmp/op-e2e/live-matrix-results.json`.
