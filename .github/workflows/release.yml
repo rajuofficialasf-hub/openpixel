@@ -1,0 +1,247 @@
+# Build + test OpenPixel Engine on Linux, Windows and macOS.
+#
+# What this does (and does NOT do):
+# - Builds the CLI (cargo test --workspace + cargo build --release)
+#   and the Tauri desktop app (npm run tauri build) on all three OSes.
+# - Uploads the resulting binaries / installers as workflow artifacts
+#   (actions/upload-artifact). Nothing is published: there is no
+#   release-creation step, no upload to any store, no deploy.
+# - This workflow has NEVER RUN yet (added 16 Nov 2026, follow-up
+#   item 3). The first real Windows/macOS build happens when it runs
+#   on a GitHub runner or a real machine — see docs/BUILD.md.
+#
+# Triggers: pushes and PRs to main, plus manual dispatch.
+# Concurrency: one run per ref; a newer push cancels the older run.
+
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_TOOLCHAIN: "1.100.0"
+  NODE_VERSION: "24"
+
+jobs:
+  # ---------------------------------------------------------------- CLI
+  # Engine + CLI on all three OSes. The only system library the engine
+  # needs is libdav1d (AVIF decode, dav1d-sys); how it is obtained
+  # differs per OS — see the per-OS steps below.
+  cli:
+    name: CLI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            binary: openpixel
+          - os: windows-latest
+            binary: openpixel.exe
+          - os: macos-latest
+            binary: openpixel
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      # --- Linux: the standard Tauri/engine apt deps. The
+      # libzstd-dev pin conflict and the downloaded sysroot in
+      # scripts/setup/fetch-tauri-sysroot.sh are problems of THIS VM
+      # only — a clean GitHub runner installs the -dev packages
+      # directly (see docs/DESKTOP.md, "The libzstd-dev block").
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdav1d-dev
+
+      # --- Windows: vcpkg is preinstalled on windows-latest runners
+      # (VCPKG_INSTALLATION_ROOT). dav1d-sys finds libdav1d through
+      # pkg-config, so PKG_CONFIG_PATH points at vcpkg's pkgconfig
+      # dir. The MSVC C++ workload (linker) is preinstalled on the
+      # runner. Expected route — not yet verified by a real run.
+      - name: Install dav1d via vcpkg (Windows)
+        if: runner.os == 'Windows'
+        run: vcpkg install dav1d:x64-windows
+        env:
+          VCPKG_DEFAULT_TRIPLET: x64-windows
+
+      # --- macOS: Homebrew's dav1d provides the library and the
+      # dav1d.pc pkg-config file dav1d-sys looks for. Xcode Command
+      # Line Tools (C compiler) are preinstalled on macos-latest.
+      # Expected route — not yet verified by a real run.
+      - name: Install dav1d via Homebrew (macOS)
+        if: runner.os == 'macOS'
+        run: brew install dav1d pkg-config
+
+      - name: Check formatting (Linux only)
+        if: runner.os == 'Linux'
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (Linux only)
+        if: runner.os == 'Linux'
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test workspace
+        run: cargo test --workspace
+        env:
+          PKG_CONFIG_PATH: ${{ runner.os == 'Windows' && format('{0}/installed/x64-windows/lib/pkgconfig', env.VCPKG_INSTALLATION_ROOT) || '' }}
+
+      - name: Build release CLI
+        run: cargo build --release
+        env:
+          PKG_CONFIG_PATH: ${{ runner.os == 'Windows' && format('{0}/installed/x64-windows/lib/pkgconfig', env.VCPKG_INSTALLATION_ROOT) || '' }}
+
+      - name: Upload CLI binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: openpixel-cli-${{ runner.os }}-${{ runner.arch }}
+          path: target/release/${{ matrix.binary }}
+          if-no-files-found: error
+          retention-days: 30
+
+  # ------------------------------------------------------------- Desktop
+  # Tauri desktop app (apps/desktop). Needs the same libdav1d as the
+  # CLI plus each platform's Tauri prerequisites:
+  # - Linux: WebKitGTK/GTK -dev packages (standard apt install on a
+  #   clean runner — no sysroot workaround needed here).
+  # - Windows: WebView2 runtime is preinstalled on windows-latest.
+  # - macOS: Xcode CLT preinstalled; bundle targets dmg/app need an
+  #   .icns icon (apps/desktop/src-tauri/icons/icon.icns).
+  # Build command is the repo's own script: "tauri": "tauri" in
+  # apps/desktop/package.json, i.e. `npm run tauri build`.
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            bundle-glob: "apps/desktop/src-tauri/target/release/bundle/**/*.{deb,AppImage}"
+          - os: windows-latest
+            bundle-glob: "apps/desktop/src-tauri/target/release/bundle/**/*.{msi,exe}"
+          - os: macos-latest
+            bundle-glob: "apps/desktop/src-tauri/target/release/bundle/**/*.{dmg,app}"
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install Rust ${{ env.RUST_TOOLCHAIN }}
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      # --- Linux: standard Tauri 2 prerequisites (see docs/DESKTOP.md
+      # "System libraries"). No sysroot workaround on a clean runner.
+      - name: Install system deps (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdav1d-dev libwebkit2gtk-4.1-dev \
+            libappindicator3-dev librsvg2-dev patchelf \
+            libgtk-3-dev libsoup-3.0-dev
+
+      - name: Install dav1d via vcpkg (Windows)
+        if: runner.os == 'Windows'
+        run: vcpkg install dav1d:x64-windows
+        env:
+          VCPKG_DEFAULT_TRIPLET: x64-windows
+
+      - name: Install dav1d via Homebrew (macOS)
+        if: runner.os == 'macOS'
+        run: brew install dav1d pkg-config
+
+      - name: Install frontend deps
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Test frontend
+        working-directory: apps/desktop
+        run: npm test
+
+      # NOTE (Linux): the .AppImage step needs FUSE at bundle time;
+      # on this VM it was produced by hand with linuxdeploy (see
+      # docs/DESKTOP.md). If the runner lacks FUSE the AppImage
+      # bundle may fail while the .deb succeeds — that is a known
+      # open item, not a silent pass: the step fails loudly.
+      - name: Build desktop installers
+        working-directory: apps/desktop
+        run: npm run tauri build
+        env:
+          PKG_CONFIG_PATH: ${{ runner.os == 'Windows' && format('{0}/installed/x64-windows/lib/pkgconfig', env.VCPKG_INSTALLATION_ROOT) || '' }}
+
+      # warn (not error) if a bundle is missing: the build step above
+      # is the real gate; a missing AppImage on a FUSE-less runner
+      # must not hide a successful .deb.
+      - name: Upload desktop installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: openpixel-desktop-${{ runner.os }}-${{ runner.arch }}
+          path: ${{ matrix.bundle-glob }}
+          if-no-files-found: warn
+          retention-days: 30
+
+  # ----------------------------------------------------------------- Web
+  # Web app (apps/web): unit tests + production build, Linux only —
+  # the web app has no platform-specific output.
+  web:
+    name: Web (ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install Node ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Test
+        working-directory: apps/web
+        run: npm test
+
+      - name: Build
+        working-directory: apps/web
+        run: npm run build
+
+      - name: Upload web dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: openpixel-web-dist
+          path: apps/web/dist
+          if-no-files-found: error
+          retention-days: 30

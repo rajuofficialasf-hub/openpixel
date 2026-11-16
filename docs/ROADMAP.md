@@ -130,7 +130,7 @@
   Rust workspace 182 tests (was 176). See `docs/CODECS.md` and
   `docs/TESTING.md`.
 
-## Follow-ups (approved 16 Nov 2026 — HEIC and WASM done; the rest open)
+## Follow-ups (approved 16 Nov 2026 — HEIC, WASM and Windows/macOS builds done; E2E still open)
 
 - [x] **WASM engine** (dav1d-free build so the web app can convert
   natively) — done 16 Nov 2026 (follow-up item 2): `native-avif`
@@ -148,7 +148,29 @@
   182); web `npm test` 28 passed (was 17). See `docs/WEB.md` and
   `docs/TESTING.md`. Still open: a real-browser click-through of
   the WASM conversion flows (no browser tooling in this session).
-- [ ] **Windows/macOS builds** (CI + installers).
+- [x] **Windows/macOS builds** (CI + installers) — done 16 Nov 2026
+  (follow-up item 3): `.github/workflows/release.yml` ("Build")
+  builds the CLI and the Tauri desktop app on `ubuntu-24.04`,
+  `windows-latest` and `macos-latest` plus the web app on Ubuntu
+  (push/PR to `main`, manual dispatch; build + `upload-artifact`
+  only — no release is created, nothing is published). Pinned
+  actions (`actions/checkout@v4`, `dtolnay/rust-toolchain@v1`
+  with toolchain 1.100.0, `Swatinem/rust-cache@v2`,
+  `actions/setup-node@v4`, `actions/upload-artifact@v4`);
+  per-platform dav1d via apt (Linux), vcpkg (Windows) and
+  Homebrew (macOS). YAML parses and `actionlint` 1.7.7 reports no
+  findings. `tauri.conf.json` bundle targets are now `deb`,
+  `appimage`, `msi`, `nsis`, `dmg`, `app`, with a generated
+  `icons/icon.icns` for macOS; the Linux `.deb` + `.AppImage`
+  still build with the new config. Cross-compiles attempted on
+  this VM: `cargo check` for `x86_64-pc-windows-gnu`,
+  `x86_64-apple-darwin` and `aarch64-apple-darwin` all fail only
+  at `dav1d-sys` (pkg-config not configured for
+  cross-compilation); the dav1d-free `--no-default-features`
+  check passes on Windows and macOS targets. **Still open: no
+  Windows/macOS installer has been produced — the workflow has
+  never run; the first real build happens on a GitHub runner or
+  a real machine.** See `docs/BUILD.md` and `docs/TESTING.md`.
 - [ ] **Full end-to-end testing** (real browser + desktop
   click-through).
 
