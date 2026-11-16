@@ -92,9 +92,9 @@ function App() {
           OpenPixel Engine — Phase 7 web app. No server, no upload, no account. {WASM_STATUS.detail}
         </p>
         <p className="mt-1">
-          In-browser conversion: PNG / JPEG / WebP / BMP output. For TIFF, AVIF, JXL, SVG, EXR,
-          HDR, JPEG 2000, TGA, ICO, PNM and QOI, use the native CLI (<code>openpixel convert</code>
-          ).
+          In-browser conversion: PNG / JPEG / WebP / BMP output via the browser canvas, plus
+          TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF via the built-in WASM engine
+          (when built). For AVIF, use the native CLI (<code>openpixel convert</code>).
         </p>
       </footer>
     </div>

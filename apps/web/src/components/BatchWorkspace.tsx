@@ -2,13 +2,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import JSZip from 'jszip'
 import {
   BROWSER_DECODABLE,
-  browserEncodableFormats,
+  BROWSER_ENCODABLE,
+  formatById,
   formatBytes,
   formatLabel,
   outputFileName,
 } from '../lib/capabilities'
 import { convertImage, probeImage } from '../lib/convert'
 import type { Settings } from '../lib/settings'
+import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
 import { DropZone } from './DropZone'
 
 type ItemStatus = 'queued' | 'probing' | 'ready' | 'converting' | 'done' | 'failed' | 'skipped'
@@ -50,6 +52,14 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
   const [zipping, setZipping] = useState(false)
   const [zipError, setZipError] = useState<string | null>(null)
   const itemsRef = useRef<BatchItem[]>([])
+  // The WASM engine's format support, loaded once on mount. `null`
+  // while loading and when the module is absent — batch works
+  // identically either way, just with fewer formats offered.
+  const wasmSupport = useWasmSupport()
+  const decodableFormats = mergeFormatLists(BROWSER_DECODABLE, wasmSupport?.decode)
+  const encodableFormats = mergeFormatLists(BROWSER_ENCODABLE, wasmSupport?.encode)
+    .map((id) => formatById(id))
+    .filter((c): c is NonNullable<typeof c> => c !== undefined && c.can_encode)
 
   useEffect(() => {
     itemsRef.current = items
@@ -87,8 +97,8 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
                   sourceFormat: info.format,
                   width: info.width,
                   height: info.height,
-                  status: BROWSER_DECODABLE.includes(info.format) ? 'ready' : 'skipped',
-                  error: BROWSER_DECODABLE.includes(info.format)
+                  status: decodableFormats.includes(info.format) ? 'ready' : 'skipped',
+                  error: decodableFormats.includes(info.format)
                     ? null
                     : `${formatLabel(info.format)} cannot be decoded in this browser — use the native CLI.`,
                 }
@@ -105,7 +115,7 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
         )
       }
     }
-  }, [])
+  }, [decodableFormats])
 
   const convertAll = useCallback(async () => {
     if (running) return
@@ -197,7 +207,7 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
       <DropZone
         inputId="batch-files"
         label="Drop images here for batch conversion"
-        hint="PNG, JPEG, WebP, GIF, BMP, SVG, AVIF (browser-dependent). Nothing is uploaded."
+        hint="PNG, JPEG, WebP, GIF, BMP, SVG, AVIF (browser-dependent) — plus TIFF, QOI, HEIC, JXL and JPEG 2000 when the WASM engine is built. Nothing is uploaded."
         multiple
         accept="image/*"
         onFiles={addFiles}
@@ -219,7 +229,7 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
                 onChange={(e) => setTargetFormat(e.target.value)}
                 className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
               >
-                {browserEncodableFormats().map((t) => (
+                {encodableFormats.map((t) => (
                   <option key={t.format_id} value={t.format_id}>
                     {formatLabel(t.format_id)}
                   </option>
@@ -254,7 +264,7 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
 
           <p role="status" aria-live="polite" className="text-sm text-slate-600 dark:text-slate-400">
             {items.length} file{items.length === 1 ? '' : 's'} — {doneCount} converted, {failedCount}{' '}
-            failed, {skippedCount} skipped (browser cannot decode)
+            failed, {skippedCount} skipped (cannot decode in this browser)
           </p>
           {zipError && (
             <p role="alert" className="text-sm text-red-700 dark:text-red-400">

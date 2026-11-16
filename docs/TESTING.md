@@ -141,6 +141,94 @@ HEVC/AV1 encoder at all).
   round-trip test now enforces HEIF re-detection instead of
   skipping it.
 
+## Verified results — WASM engine, follow-up item 2, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0, Node v24.22.1 / npm 10.9.4, wasm-pack 0.15.1
+
+The dav1d-free WASM engine (see `docs/WEB.md` for the design and
+`docs/BUILD.md` for the build notes). Baseline: Item 1 commit
+(`cargo test --workspace` 182 passed).
+
+- Feature-gating: `native-avif` on `openpixel-codecs` (on by
+  default, re-exported by `openpixel-core`); `avif-native`
+  removed from the shared `image` workspace dependency. Native
+  behaviour unchanged — AVIF still decodes/encodes in every
+  native build.
+- `cargo build -p openpixel-formats -p openpixel-codecs
+  -p openpixel-core --target wasm32-unknown-unknown
+  --no-default-features` — succeeds. The only wasm32 blocker in
+  the whole tree was dav1d; every other codec (ravif, resvg,
+  jxl-oxide, jpeg2k, heifer, image-rs, tintbox) builds as-is.
+- Engine byte API (`Engine::decode_bytes` /
+  `get_image_info_bytes` / `convert_bytes`, via a shared
+  `encode_to_bytes` tail): 5 new native tests (byte round-trips,
+  byte info matching file info, unknown-format rejection,
+  AVIF round-trip with the feature on / unavailable without it).
+  The file-based API is unchanged; the three call sites and the
+  `EncodeRequest` struct were refactored to pass the output path
+  separately.
+- `cargo test -p openpixel-wasm` — **8 passed, 0 failed**
+  (native): detect / info / convert across 8 formats + JXL /
+  HEIC / HEIF / JPEG 2000, rejection of unknown sources and
+  targets, capability honesty about AVIF, discovery mismatch,
+  background-colour parsing.
+- `wasm-pack test --node` — **2 passed, 0 failed** in the real
+  WASM runtime (Node): PNG → JPEG (q80) and PNG → WebP with
+  re-detection as the target, JPEG magic bytes checked on the
+  returned bytes, AVIF honestly unavailable, 21 capabilities.
+- Standalone verification
+  (`crates/openpixel-wasm/scripts/verify-node.mjs`, importing the
+  built `--target nodejs` package as a JS consumer would) —
+  **17/17 checks pass**: version, detect, info (64×64),
+  capabilities (21, AVIF unavailable), supported formats, and
+  real conversions of the 64×64 fixture PNG to JPEG (837 B),
+  WebP (134 B), PNG (175 B), TIFF (12 498 B), QOI (1 032 B),
+  HEIC (563 B) and JXL (435 B), each re-detected as its target;
+  AVIF and unknown-byte conversions throw with the honest
+  reason. Outputs in `/tmp/openpixel-wasm-verify-out/`.
+- `wasm-pack build --target web --release` — succeeds
+  (`apps/web/public/wasm/`: `openpixel_wasm.js` 14 513 B,
+  `openpixel_wasm_bg.wasm` **7 288 565 B** after `wasm-opt`,
+  plus `.d.ts`). First attempt failed downloading binaryen
+  (transient); `wasm-opt` 130 was installed from the binaryen
+  release tarball to `~/.cargo/bin/wasm-opt` and the rebuild
+  found it there. Unoptimised `.wasm` is 9 162 803 B.
+- Web: `npm test` **28 passed, 0 failed** (was 17: 10 new
+  `wasm-engine.test.ts` tests + 1 HEIC/HEIF test; 2 stale
+  Phase 7 assertions that still listed HEIC/HEIF as planned
+  were corrected to the Item 1 reality — the checked-in
+  `capabilities.json` already listed them as implemented).
+  `npm run build` passes (tsc + Vite), `npm run lint`
+  (oxlint) 0 warnings/errors. Production build serves over
+  plain HTTP (`vite preview`): `/` 200,
+  `/wasm/openpixel_wasm.js` 200, `/wasm/openpixel_wasm_bg.wasm`
+  200. `npm run generate:capabilities` re-run: 21 formats, no
+  diff (native registry unchanged).
+- `cargo fmt --all -- --check` passes.
+  `cargo clippy --workspace --all-targets -- -D warnings`
+  passes (one real error found and fixed on the way:
+  `clippy::field-reassign-with-default` in the wasm binding's
+  `ConvertOptions` construction — struct literal now used).
+  `cargo clippy -p openpixel-formats -p openpixel-codecs
+  -p openpixel-core -p openpixel-wasm --target
+  wasm32-unknown-unknown --all-targets --no-default-features
+  -- -D warnings` passes.
+- `cargo test --workspace` — **195 passed, 0 failed** (was
+  182): formats 10, codecs 28 + 3 adapter round-trips, core 35
+  + 6 integration, jobs 11 + 3, metadata 50, pipeline 29, wasm
+  8, CLI 5 + 4 integration, plus 3 doc-tests. `cargo test -p openpixel-core
+  -p openpixel-codecs --no-default-features` also passes
+  (68 tests: the dav1d-free registry on the native target).
+- `cargo build --release` — succeeds.
+- NOT yet run in a real browser (no Chromium/Playwright in this
+  environment): the WASM conversion flows in the UI — drop a
+  TIFF/QOI/HEIC file and convert it, convert a PNG to TIFF/QOI/
+  HEIC/JXL, confirm the "Converted with the built-in WASM
+  engine" note appears, confirm the canvas path still handles
+  PNG→JPEG, confirm the WASM module's absence (rename
+  `public/wasm/`) falls back to canvas-only with no error.
+  Same for a real-browser check that the 7.3 MB module loads
+  over plain HTTP without a COOP/COEP header (plain
+  `wasm32-unknown-unknown`, no threads, so none is needed).
+
 ## Verified results — Phase 9, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0, Node v24 / npm 10.9.4
 
 Production QA. No new features except what QA required (six security

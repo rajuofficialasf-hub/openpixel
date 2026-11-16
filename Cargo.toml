@@ -6,6 +6,7 @@ members = [
     "crates/openpixel-pipeline",
     "crates/openpixel-metadata",
     "crates/openpixel-jobs",
+    "crates/openpixel-wasm",
     "apps/cli",
 ]
 # Phase 9: the cargo-fuzz crate has its own workspace (it builds
@@ -23,10 +24,14 @@ license = "MIT OR Apache-2.0"
 # Phase 3: avif (ravif encode) + avif-native (dav1d decode, needs
 # system libdav1d-dev — see scripts/setup/ubuntu-24.04.sh),
 # hdr + exr (pure Rust, built into image-rs).
-# Phase 4: versions pinned exactly (=) — see docs/CODECS.md and
-# docs/ARCHITECTURE.md. `cargo update` must stay explicit; a caret
-# range silently moving a codec is not acceptable for this engine.
-image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png", "bmp", "gif", "tiff", "webp", "tga", "ico", "pnm", "qoi", "avif", "avif-native", "hdr", "exr"] }
+# WASM (follow-up item 2, 16 Nov 2026): `avif-native` is NOT in this
+# list. The dav1d C library has no wasm32 build, so AVIF decode is
+# opt-in through the `native-avif` cargo feature on
+# `openpixel-codecs` (on by default for native builds, off for
+# wasm32). `avif` (ravif encode, pure Rust) stays here; if a future
+# wasm32 build shows ravif itself cannot compile, move it under the
+# feature too — see docs/BUILD.md ("WASM").
+image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png", "bmp", "gif", "tiff", "webp", "tga", "ico", "pnm", "qoi", "avif", "hdr", "exr"] }
 thiserror = "=2.0.21"
 serde = { version = "=1.0.229", features = ["derive"] }
 serde_json = "=1.0.154"
@@ -47,6 +52,13 @@ jpeg2k = { version = "=0.11.0", default-features = false, features = ["image"] }
 # 1.23.3-1 has no matching -dev package and the system heif-enc ships
 # no HEVC/AV1 encoder at all.
 heifer = "=0.5.1"
+# WASM bindings (follow-up item 2, 16 Nov 2026, pinned exact).
+# wasm-pack reads the crate's wasm-bindgen version from the lockfile
+# and fetches the matching wasm-bindgen CLI itself, so these pins
+# only need to be mutually compatible (verified 16 Nov 2026:
+# wasm-bindgen 0.2.130 + wasm-bindgen-test 0.3.80 + wasm-pack 0.15.1).
+wasm-bindgen = "=0.2.130"
+serde-wasm-bindgen = "=0.6.5"
 # Phase 5 metadata & animation (pinned exact — see docs/CODECS.md):
 # gif/tiff/flate2 were already transitive deps of image-rs 0.25.10
 # at these exact versions; tintbox is a pure-Rust LittleCMS

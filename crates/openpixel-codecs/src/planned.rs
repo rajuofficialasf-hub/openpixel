@@ -72,5 +72,23 @@ pub fn planned_capabilities() -> Vec<FormatCapability> {
         "TBD",
         "planned — not implemented",
     );
+    // WASM (follow-up item 2): without the `native-avif` feature the
+    // AVIF codec is not registered, so the registry must still say
+    // AVIF exists — as unavailable in this build — rather than
+    // silently dropping it from the capability list. Native builds
+    // (feature on) register the real codec, so this entry is skipped
+    // there and AVIF never appears twice.
+    #[cfg(not(feature = "native-avif"))]
+    add(
+        F::Avif,
+        true,
+        false,
+        true,
+        false,
+        false,
+        "ravif 0.13 (encode) + system dav1d 1.4.1 (decode)",
+        "BSD-3-Clause (ravif) + BSD-2-Clause (rav1e, dav1d) + MPL-2.0 (mp4parse)",
+        "not available in this build — AVIF needs the native libdav1d decoder (feature `native-avif`); use the native CLI or desktop app",
+    );
     v
 }

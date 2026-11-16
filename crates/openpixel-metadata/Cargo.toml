@@ -7,7 +7,10 @@ description = "OpenPixel Metadata — EXIF/ICC/XMP reading, metadata policies, o
 
 [dependencies]
 openpixel-formats = { path = "../openpixel-formats" }
-openpixel-codecs = { path = "../openpixel-codecs" }
+# `default-features = false`: must not re-enable the `native-avif`
+# (dav1d) feature by unification when `openpixel-core` is built for
+# wasm32 with `--no-default-features` — see `openpixel-codecs`.
+openpixel-codecs = { path = "../openpixel-codecs", default-features = false }
 openpixel-pipeline = { path = "../openpixel-pipeline" }
 gif.workspace = true
 tiff.workspace = true

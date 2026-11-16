@@ -30,11 +30,21 @@ describe('capabilities — generated from the engine, never hand-written', () =>
   })
 
   it('marks the planned formats as not decodable/encodable', () => {
-    for (const id of ['heic', 'heif', 'apng', 'raw', 'psd']) {
+    // HEIC/HEIF left this list in follow-up item 1 (16 Nov 2026):
+    // pure-Rust heifer implements them now. What remains planned
+    // is APNG, RAW and PSD.
+    for (const id of ['apng', 'raw', 'psd']) {
       const cap = formatById(id)
       expect(cap).toBeDefined()
       expect(cap?.can_decode).toBe(false)
       expect(cap?.can_encode).toBe(false)
+    }
+  })
+
+  it('marks HEIC/HEIF as implemented (follow-up item 1)', () => {
+    for (const id of ['heic', 'heif']) {
+      expect(formatById(id)?.can_decode).toBe(true)
+      expect(formatById(id)?.can_encode).toBe(true)
     }
   })
 
@@ -44,7 +54,7 @@ describe('capabilities — generated from the engine, never hand-written', () =>
     expect(svg?.can_encode).toBe(false)
   })
 
-  it('marks the 16 engine-implemented formats as decodable', () => {
+  it('marks the 18 engine-implemented formats as decodable', () => {
     const implemented = [
       'jpeg',
       'png',
@@ -62,6 +72,9 @@ describe('capabilities — generated from the engine, never hand-written', () =>
       'hdr',
       'exr',
       'jpeg2000',
+      // HEIC/HEIF implemented by follow-up item 1 (16 Nov 2026).
+      'heic',
+      'heif',
     ]
     for (const id of implemented) {
       expect(formatById(id)?.can_decode).toBe(true)
@@ -75,7 +88,9 @@ describe('browser conversion options — generated from the capability data', ()
       expect(cap.can_encode).toBe(true)
     }
     expect(encodableFormats().map((c) => c.format_id)).not.toContain('svg')
-    expect(encodableFormats().map((c) => c.format_id)).not.toContain('heic')
+    // HEIC *is* engine-encodable since follow-up item 1 — the
+    // browser just cannot encode it, which is what
+    // `browserEncodableFormats()` (not this list) expresses.
   })
 
   it('browser-encodable targets are a subset of engine-encodable ones', () => {

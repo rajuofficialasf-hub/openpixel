@@ -1,0 +1,28 @@
+[package]
+name = "openpixel-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OpenPixel WASM bindings — detect / info / convert over the dav1d-free engine build for wasm32-unknown-unknown (follow-up item 2)"
+
+[lib]
+# cdylib: what wasm-pack packages. rlib: lets `cargo test` run the
+# unit tests natively without a wasm target.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# `default-features = false` is the whole point: it switches the
+# engine to its dav1d-free registry (`native-avif` off), so this
+# crate builds for wasm32-unknown-unknown. AVIF is reported as
+# unavailable by the registry in this build, never claimed to work.
+openpixel-core = { path = "../openpixel-core", default-features = false }
+openpixel-formats = { path = "../openpixel-formats" }
+wasm-bindgen.workspace = true
+serde.workspace = true
+serde-wasm-bindgen.workspace = true
+
+[dev-dependencies]
+# Only the tests serialise to JSON strings (asserting on the JS-side
+# shape); the library itself returns JsValue via serde-wasm-bindgen.
+serde_json.workspace = true
+wasm-bindgen-test = "=0.3.80"

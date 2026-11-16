@@ -128,12 +128,38 @@ throughout and the CLI/desktop tests cover Windows-style separators
 only in a frontend helper test — no Windows path handling has been
 exercised end to end. No Windows-specific code is expected.
 
-### WASM (not shipped — see `docs/WEB.md`)
+### WASM (shipped — follow-up item 2, 16 Nov 2026; see `docs/WEB.md`)
 
-`openpixel-formats` builds to `wasm32-unknown-unknown`; the full
-engine does not (`dav1d-sys` needs a wasm32 libdav1d sysroot that
-does not exist here). A wasm32 engine build would need either a
-dav1d-free feature set or that sysroot, plus `wasm-pack`.
+The engine builds to `wasm32-unknown-unknown` as a **dav1d-free**
+build. The AVIF codec is the only one with a C dependency
+(`dav1d-sys` via `image`'s `avif-native` feature), so it is gated
+behind the `native-avif` cargo feature on `openpixel-codecs`
+(on by default; `openpixel-core` re-exports it as its own
+`native-avif` feature). A wasm32 build uses
+`--no-default-features`, which drops `AvifCodec` from the registry
+— the registry then lists AVIF as unavailable (planned entry with
+the reason in `status`) instead of silently dropping it. Every
+other codec is pure Rust and builds for wasm32, including ravif
+(AVIF encode — unused without the codec), resvg, jxl-oxide,
+jpeg2k and heifer; verified with
+`cargo build -p openpixel-formats -p openpixel-codecs -p openpixel-core --target wasm32-unknown-unknown --no-default-features`.
+
+`crates/openpixel-wasm` (wasm-bindgen 0.2.130, wasm-pack 0.15.1)
+exposes detect / discover / info / capabilities /
+supported_formats / convert / version over the byte-based engine
+API (`Engine::decode_bytes` / `get_image_info_bytes` /
+`convert_bytes`, added for this — the file-based engine is
+unchanged). Build it with `npm run build:wasm` from `apps/web`
+(wasm-pack `--target web --release` into `apps/web/public/wasm/`;
+needs `wasm-opt` from binaryen for the optimisation step —
+wasm-pack downloads it, or finds a `wasm-opt` on `PATH`; the
+first download attempt here failed transiently, the retry found
+the `~/.cargo/bin/wasm-opt` installed from the binaryen release).
+The generated package is git-ignored (`public/wasm/.gitignore`
+contains `*`); a checkout without it runs the canvas path only.
+Native behaviour is unchanged: `cargo test --workspace` and
+`cargo build --release` still run with all native codecs
+(including AVIF).
 
 ### Release packaging
 

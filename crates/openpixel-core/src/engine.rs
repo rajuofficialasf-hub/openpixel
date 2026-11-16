@@ -172,18 +172,20 @@ impl Engine {
         let anim = animation_info(&bytes, source_format);
         let (img, orientation_applied, warnings, srgb_converted) =
             self.prepare_image(&img, &metadata, &anim, source_format, options, true)?;
-        self.encode_and_write(EncodeRequest {
-            image: &img,
-            source_format,
-            input_bytes: bytes.len() as u64,
-            target,
+        self.encode_and_write(
+            EncodeRequest {
+                image: &img,
+                source_format,
+                input_bytes: bytes.len() as u64,
+                target,
+                options,
+                metadata: &metadata,
+                warnings,
+                orientation_applied,
+                converted_to_srgb: srgb_converted,
+            },
             output,
-            options,
-            metadata: &metadata,
-            warnings,
-            orientation_applied,
-            converted_to_srgb: srgb_converted,
-        })
+        )
     }
 
     /// Shared decode path: read -> signature detect -> registry
@@ -204,15 +206,31 @@ impl Engine {
         frame: Option<u32>,
     ) -> Result<(ImageFormat, DecodedImage, Vec<u8>)> {
         let bytes = self.read_input(path)?;
-        let format = detect_format(&bytes);
+        let (format, img) = self.decode_bytes(&bytes, frame)?;
+        Ok((format, img, bytes))
+    }
+
+    /// Decode from in-memory bytes — the same pipeline as
+    /// [`Engine::read_decode_frame`] without touching the filesystem.
+    /// This is the entry point the WASM bindings use (a browser has no
+    /// filesystem for the engine to read from), and the file-based
+    /// methods above delegate to it. The engine security limits apply
+    /// here too: oversize input is rejected before any codec runs.
+    pub fn decode_bytes(
+        &self,
+        bytes: &[u8],
+        frame: Option<u32>,
+    ) -> Result<(ImageFormat, DecodedImage)> {
+        check_file_size(bytes.len() as u64, &self.config)?;
+        let format = detect_format(bytes);
         if format == ImageFormat::Unknown {
             return Err(OpenPixelError::UnknownFormat);
         }
         if let Some(n) = frame {
             if n > 0 {
-                let img = self.decode_selected_frame(format, &bytes, n)?;
+                let img = self.decode_selected_frame(format, bytes, n)?;
                 check_dimensions(img.width, img.height, &self.config)?;
-                return Ok((format, img, bytes));
+                return Ok((format, img));
             }
         }
         let codec = self.registry.get(format).ok_or_else(|| {
@@ -229,11 +247,11 @@ impl Engine {
         // Header-only dimensions where the codec supports it, then a
         // full decode for colour type / alpha — Phase 2 trades a decode
         // for correctness; header-only colour info lands in Phase 4.
-        let (width, height) = codec.dimensions(&bytes)?;
+        let (width, height) = codec.dimensions(bytes)?;
         check_dimensions(width, height, &self.config)?;
-        let img = codec.decode(&bytes)?;
+        let img = codec.decode(bytes)?;
         check_dimensions(img.width, img.height, &self.config)?;
-        Ok((format, img, bytes))
+        Ok((format, img))
     }
 
     /// Decode a non-first frame / page. GIF and TIFF are fully
@@ -263,12 +281,31 @@ impl Engine {
 
     pub fn get_image_info(&self, path: &Path) -> Result<ImageInfo> {
         let (format, img, bytes) = self.read_and_decode(path)?;
-        let metadata = extract_metadata(&bytes, format);
+        self.image_info_from_decoded(format, &img, &bytes)
+    }
+
+    /// [`Engine::get_image_info`] for in-memory bytes — the entry
+    /// point the WASM bindings use. Same metadata / frame reporting,
+    /// no filesystem access.
+    pub fn get_image_info_bytes(&self, bytes: &[u8]) -> Result<ImageInfo> {
+        let (format, img) = self.decode_bytes(bytes, None)?;
+        self.image_info_from_decoded(format, &img, bytes)
+    }
+
+    /// Shared body of [`Engine::get_image_info`] and
+    /// [`Engine::get_image_info_bytes`].
+    fn image_info_from_decoded(
+        &self,
+        format: ImageFormat,
+        img: &DecodedImage,
+        bytes: &[u8],
+    ) -> Result<ImageInfo> {
+        let metadata = extract_metadata(bytes, format);
         // Real frame counts for the animated / multi-page formats;
         // the plain decode's first-frame values for everything else.
         let (is_animated, frame_count, note) = match format {
             ImageFormat::Gif | ImageFormat::Png | ImageFormat::Webp | ImageFormat::Tiff => {
-                let anim = animation_info(&bytes, format);
+                let anim = animation_info(bytes, format);
                 let count = if anim.frame_count > 0 {
                     Some(anim.frame_count)
                 } else {
@@ -319,12 +356,45 @@ impl Engine {
         let anim = animation_info(&bytes, source_format);
         let (img, orientation_applied, warnings, srgb_converted) =
             self.prepare_image(&img, &metadata, &anim, source_format, options, false)?;
-        self.encode_and_write(EncodeRequest {
+        self.encode_and_write(
+            EncodeRequest {
+                image: &img,
+                source_format,
+                input_bytes: bytes.len() as u64,
+                target,
+                options,
+                metadata: &metadata,
+                warnings,
+                orientation_applied,
+                converted_to_srgb: srgb_converted,
+            },
+            output,
+        )
+    }
+
+    /// [`Engine::convert`] for in-memory bytes — the entry point the
+    /// WASM bindings use. Same pipeline (detect -> decode -> metadata
+    /// policy / orientation / sRGB preparation -> encode -> output
+    /// validation), but the encoded bytes are returned to the caller
+    /// instead of written to a file, and `ConvertResult::output_path`
+    /// is empty because there is no file. The engine security limits
+    /// (input size, dimensions) apply exactly as for files.
+    pub fn convert_bytes(
+        &self,
+        bytes: &[u8],
+        target: ImageFormat,
+        options: &ConvertOptions,
+    ) -> Result<(ConvertResult, Vec<u8>)> {
+        let (source_format, img) = self.decode_bytes(bytes, options.selected_frame)?;
+        let metadata = extract_metadata(bytes, source_format);
+        let anim = animation_info(bytes, source_format);
+        let (img, orientation_applied, warnings, srgb_converted) =
+            self.prepare_image(&img, &metadata, &anim, source_format, options, false)?;
+        self.encode_to_bytes(EncodeRequest {
             image: &img,
             source_format,
             input_bytes: bytes.len() as u64,
             target,
-            output,
             options,
             metadata: &metadata,
             warnings,
@@ -362,18 +432,20 @@ impl Engine {
         // pixels, so a crop/rotate means what the user sees.
         let processed = options.pipeline.apply(&img)?;
         check_dimensions(processed.width, processed.height, &self.config)?;
-        self.encode_and_write(EncodeRequest {
-            image: &processed,
-            source_format,
-            input_bytes: bytes.len() as u64,
-            target,
+        self.encode_and_write(
+            EncodeRequest {
+                image: &processed,
+                source_format,
+                input_bytes: bytes.len() as u64,
+                target,
+                options: &options.convert,
+                metadata: &metadata,
+                warnings,
+                orientation_applied,
+                converted_to_srgb: srgb_converted,
+            },
             output,
-            options: &options.convert,
-            metadata: &metadata,
-            warnings,
-            orientation_applied,
-            converted_to_srgb: srgb_converted,
-        })
+        )
     }
 
     /// Alias for [`Engine::process`], named after what it does for
@@ -500,17 +572,45 @@ impl Engine {
     }
 
     /// Shared tail of `convert` / `process` / `extract_frame_to_path`:
+    /// target capability check -> output path validation -> encode
+    /// via the target codec -> metadata splicing per the policy
+    /// (JPEG/PNG only; anything dropped is warned about) -> output
+    /// validation (re-detect what was written) -> write the file.
+    /// The encoding itself lives in [`Engine::encode_to_bytes`];
+    /// this wrapper only adds the filesystem steps.
+    fn encode_and_write(&self, req: EncodeRequest<'_>, output: &Path) -> Result<ConvertResult> {
+        validate_output_path(output)?;
+        if let Some(parent) = output.parent() {
+            if !parent.as_os_str().is_empty() {
+                fs::create_dir_all(parent).map_err(|e| OpenPixelError::Io {
+                    path: parent.to_path_buf(),
+                    source: e,
+                })?;
+            }
+        }
+        let (mut result, out) = self.encode_to_bytes(req)?;
+        fs::write(output, &out).map_err(|e| OpenPixelError::Io {
+            path: output.to_path_buf(),
+            source: e,
+        })?;
+        result.output_path = output.to_string_lossy().to_string();
+        Ok(result)
+    }
+
+    /// The filesystem-free half of [`Engine::encode_and_write`]:
     /// target capability check -> encode via the target codec ->
-    /// metadata splicing per the policy (JPEG/PNG only; anything
-    /// dropped is warned about) -> output validation (re-detect what
-    /// was written) -> write the file.
-    fn encode_and_write(&self, req: EncodeRequest<'_>) -> Result<ConvertResult> {
+    /// metadata splicing per the policy -> output validation
+    /// (re-detect what was written). Returns the report plus the
+    /// encoded bytes. This is what the WASM bindings call through
+    /// [`Engine::convert_bytes`] — a browser has no filesystem for
+    /// the engine to write to, so the bytes come back to the caller.
+    /// `ConvertResult::output_path` is empty here: there is no file.
+    fn encode_to_bytes(&self, req: EncodeRequest<'_>) -> Result<(ConvertResult, Vec<u8>)> {
         let EncodeRequest {
             image: img,
             source_format,
             input_bytes,
             target,
-            output,
             options,
             metadata: source_metadata,
             mut warnings,
@@ -530,15 +630,6 @@ impl Engine {
         let target_codec = self.registry.get(target).ok_or_else(|| {
             OpenPixelError::NotImplemented(format!("no encoder registered for {}", target.id()))
         })?;
-        validate_output_path(output)?;
-        if let Some(parent) = output.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent).map_err(|e| OpenPixelError::Io {
-                    path: parent.to_path_buf(),
-                    source: e,
-                })?;
-            }
-        }
         let mut params = options.to_encode_params();
         if params.quality.is_none() {
             params.quality = Some(self.config.default_jpeg_quality);
@@ -590,23 +681,22 @@ impl Engine {
                 )));
             }
         }
-        fs::write(output, &out).map_err(|e| OpenPixelError::Io {
-            path: output.to_path_buf(),
-            source: e,
-        })?;
-        Ok(ConvertResult {
-            source_format,
-            target_format: target,
-            width: img.width,
-            height: img.height,
-            input_bytes,
-            output_bytes: out.len() as u64,
-            output_path: output.to_string_lossy().to_string(),
-            warnings,
-            metadata_preserved,
-            metadata_dropped,
-            orientation_applied,
-        })
+        Ok((
+            ConvertResult {
+                source_format,
+                target_format: target,
+                width: img.width,
+                height: img.height,
+                input_bytes,
+                output_bytes: out.len() as u64,
+                output_path: String::new(),
+                warnings,
+                metadata_preserved,
+                metadata_dropped,
+                orientation_applied,
+            },
+            out,
+        ))
     }
 }
 
@@ -617,7 +707,6 @@ struct EncodeRequest<'a> {
     source_format: ImageFormat,
     input_bytes: u64,
     target: ImageFormat,
-    output: &'a Path,
     options: &'a ConvertOptions,
     metadata: &'a Metadata,
     warnings: Vec<String>,
@@ -690,6 +779,92 @@ mod tests {
         assert_eq!(r.source_format, ImageFormat::Png);
         let info = engine.get_image_info(&dst).unwrap();
         assert!(info.has_alpha);
+    }
+
+    /// In-memory PNG bytes for the byte-API tests (no files involved).
+    fn png_bytes() -> Vec<u8> {
+        let mut buf = Vec::new();
+        test_image_rgba()
+            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+            .unwrap();
+        buf
+    }
+
+    #[test]
+    fn convert_bytes_png_to_jpeg_and_webp() {
+        // WASM entry point (follow-up item 2): the same pipeline as
+        // `convert`, but the bytes come back instead of a file.
+        let engine = Engine::default();
+        let png = png_bytes();
+        for target in [ImageFormat::Jpeg, ImageFormat::Webp, ImageFormat::Png] {
+            let (r, out) = engine
+                .convert_bytes(&png, target, &ConvertOptions::default())
+                .unwrap();
+            assert_eq!(r.target_format, target);
+            assert_eq!((r.width, r.height), (8, 6));
+            assert_eq!(r.input_bytes, png.len() as u64);
+            assert_eq!(r.output_bytes, out.len() as u64);
+            assert!(r.output_path.is_empty(), "byte output has no file path");
+            assert_eq!(engine.detect_format(&out), target);
+        }
+    }
+
+    #[test]
+    fn convert_bytes_and_info_bytes_reject_unknown_format() {
+        let engine = Engine::default();
+        let bad = b"this is not an image at all";
+        assert!(matches!(
+            engine.convert_bytes(bad, ImageFormat::Png, &ConvertOptions::default()),
+            Err(OpenPixelError::UnknownFormat)
+        ));
+        assert!(matches!(
+            engine.get_image_info_bytes(bad),
+            Err(OpenPixelError::UnknownFormat)
+        ));
+    }
+
+    #[test]
+    fn get_image_info_bytes_matches_file_info() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("a.png");
+        test_image_rgba().save(&src).unwrap();
+        let bytes = std::fs::read(&src).unwrap();
+        let engine = Engine::default();
+        let from_file = engine.get_image_info(&src).unwrap();
+        let from_bytes = engine.get_image_info_bytes(&bytes).unwrap();
+        assert_eq!(from_bytes.format, from_file.format);
+        assert_eq!((from_bytes.width, from_bytes.height), (8, 6));
+        assert_eq!(from_bytes.has_alpha, from_file.has_alpha);
+        assert_eq!(from_bytes.file_size_bytes, bytes.len() as u64);
+    }
+
+    #[test]
+    #[cfg(feature = "native-avif")]
+    fn convert_bytes_avif_roundtrip_with_native_feature() {
+        let engine = Engine::default();
+        let png = png_bytes();
+        let (_, avif) = engine
+            .convert_bytes(&png, ImageFormat::Avif, &ConvertOptions::default())
+            .unwrap();
+        assert_eq!(engine.detect_format(&avif), ImageFormat::Avif);
+        let (r, back) = engine
+            .convert_bytes(&avif, ImageFormat::Png, &ConvertOptions::default())
+            .unwrap();
+        assert_eq!(r.source_format, ImageFormat::Avif);
+        assert_eq!(engine.detect_format(&back), ImageFormat::Png);
+    }
+
+    #[test]
+    #[cfg(not(feature = "native-avif"))]
+    fn convert_bytes_avif_is_unavailable_without_native_feature() {
+        // The dav1d-free (wasm32) registry reports AVIF as
+        // unavailable instead of failing inside a codec.
+        let engine = Engine::default();
+        let png = png_bytes();
+        assert!(matches!(
+            engine.convert_bytes(&png, ImageFormat::Avif, &ConvertOptions::default()),
+            Err(OpenPixelError::NotImplemented(_))
+        ));
     }
 
     #[test]
@@ -784,7 +959,12 @@ mod tests {
         let engine = Engine::default();
         let caps = engine.get_capabilities();
         assert_eq!(caps.len(), 21);
+        // 17 encodable formats natively; 16 in a dav1d-free build,
+        // where AVIF moves to the planned list (see `native-avif`).
+        #[cfg(feature = "native-avif")]
         assert_eq!(caps.iter().filter(|c| c.can_encode).count(), 17);
+        #[cfg(not(feature = "native-avif"))]
+        assert_eq!(caps.iter().filter(|c| c.can_encode).count(), 16);
         // Removing a codec removes it from the capability list too.
         let mut registry = CodecRegistry::default();
         registry.remove(ImageFormat::Webp);
@@ -820,7 +1000,17 @@ mod tests {
             .unwrap();
         assert_eq!(r.source_format, ImageFormat::Svg);
         assert_eq!(r.target_format, ImageFormat::Png);
+    }
 
+    /// AVIF half of the test above, gated on the `native-avif`
+    /// feature: a dav1d-free build has no AVIF codec at all, so this
+    /// round-trip is expected to fail there (see
+    /// `convert_bytes_avif_is_unavailable_without_native_feature`).
+    #[test]
+    #[cfg(feature = "native-avif")]
+    fn avif_roundtrip_through_engine() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::default();
         // PNG -> AVIF -> PNG through the engine, with output validation.
         let src = dir.path().join("c.png");
         test_image_rgb().save(&src).unwrap();

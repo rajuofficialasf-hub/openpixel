@@ -1,30 +1,32 @@
 /**
- * WASM status — the honest outcome of the Phase 7 WASM attempt
- * (see docs/WEB.md for the full evidence).
+ * WASM status — the outcome of the follow-up item 2 WASM work
+ * (16 Nov 2026, see docs/WEB.md for the full evidence).
  *
- * Attempted 16 Nov 2026, Rust 1.100.0:
- * - `rustup target add wasm32-unknown-unknown` — installed.
- * - `cargo build -p openpixel-formats --target wasm32-unknown-unknown`
- *   — SUCCEEDS: magic-byte detection and the capability data compile
- *   to WASM (pure Rust, no C dependencies).
- * - `cargo build -p openpixel-core --target wasm32-unknown-unknown`
- *   — FAILS: `dav1d-sys` (the AVIF decoder's C binding) panics in
- *   its build script — pkg-config is not configured for
- *   cross-compilation to wasm32, and there is no wasm32 libdav1d
- *   sysroot on this machine. The full engine therefore cannot be
- *   built to WASM here, and no WASM module is shipped in this build.
- * - `wasm-pack` is not installed on this machine.
+ * The real Rust engine now compiles to `wasm32-unknown-unknown` as
+ * a dav1d-free build (`openpixel-wasm`, feature `native-avif` off)
+ * and is packaged with wasm-pack into `public/wasm/` by
+ * `npm run build:wasm`. The app loads it lazily
+ * (`src/lib/wasm-engine.ts`); when the module is present, TIFF /
+ * QOI / HEIC / HEIF / JXL / JPEG 2000 / ICO / PNM / TGA / EXR / HDR
+ * sources and TIFF / QOI / HEIC / HEIF / JXL / JPEG 2000 / ICO /
+ * PNM / TGA / GIF targets convert with the real engine in the
+ * browser. AVIF is still NOT available in WASM — its decoder needs
+ * the native libdav1d C library, which has no wasm32 build — and
+ * the engine reports it as unavailable instead of claiming it
+ * works. Conversions the canvas path already handles stay on the
+ * canvas (worker, non-blocking).
  *
- * Consequence: this build converts with the canvas path only. The UI
- * states this plainly instead of pretending a WASM engine exists.
- * When the engine gains a wasm32 build (e.g. a dav1d-free feature
- * set), flip `available` to true and wire the module in here.
+ * When the module is absent (a checkout that never ran
+ * `build:wasm`), the app works exactly as before: canvas-only
+ * conversion, and the extra formats report themselves as needing
+ * the native CLI. Nothing here promises a module that is not
+ * actually shipped — `wasm-engine.ts` is the runtime truth, this
+ * constant is only the human-readable summary shown in the footer.
  */
 export const WASM_STATUS = {
-  available: false,
+  available: true,
   detail:
-    'WASM processing is not available in this build: the full Rust engine does not compile to ' +
-    'wasm32 here (its AVIF decoder needs the native libdav1d C library, which has no wasm32 ' +
-    'build). Format detection alone does compile to WASM. Full conversion — AVIF, JXL, SVG, ' +
-    'EXR, TIFF and the rest — needs the native CLI or desktop app.',
+    'WASM engine: the real Rust engine runs in this browser for TIFF, QOI, HEIC, JXL, JPEG 2000, ' +
+    'ICO, PNM, TGA and GIF (when built with `npm run build:wasm`); AVIF is not available in WASM ' +
+    '(it needs the native libdav1d library) and still needs the native CLI.',
 } as const

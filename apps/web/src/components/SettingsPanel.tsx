@@ -161,8 +161,15 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
           <code className="rounded bg-slate-100 px-1 font-mono text-xs dark:bg-slate-700">
             npm run generate:capabilities
           </code>
-          . WASM processing is not available in this build (the full engine does not compile to
-          wasm32 here — see docs/WEB.md); conversion uses the browser canvas in a Web Worker.
+          . WASM processing is available in this build: the real Rust engine compiles to
+          wasm32 as a dav1d-free build (`crates/openpixel-wasm`, see docs/WEB.md) and is
+          packaged into `public/wasm/` with{' '}
+          <code className="rounded bg-slate-100 px-1 font-mono text-xs dark:bg-slate-700">
+            npm run build:wasm
+          </code>
+          ; conversion uses the browser canvas in a Web Worker for PNG / JPEG / WebP / BMP and
+          the WASM engine for the formats the canvas cannot handle. AVIF is not available in
+          WASM (it needs the native libdav1d library).
         </p>
       </div>
     </section>

@@ -7,7 +7,11 @@ description = "OpenPixel Core — unified engine over the dynamic codec registry
 
 [dependencies]
 openpixel-formats = { path = "../openpixel-formats" }
-openpixel-codecs = { path = "../openpixel-codecs" }
+# `default-features = false`: the `native-avif` feature below decides
+# whether the AVIF codec (dav1d, no wasm32 build) is registered — see
+# `openpixel-codecs/Cargo.toml`. Without this, feature unification
+# would switch AVIF back on for every wasm32 build of this crate.
+openpixel-codecs = { path = "../openpixel-codecs", default-features = false }
 openpixel-pipeline = { path = "../openpixel-pipeline" }
 openpixel-metadata = { path = "../openpixel-metadata" }
 thiserror.workspace = true
@@ -18,3 +22,10 @@ image.workspace = true
 gif.workspace = true
 tintbox.workspace = true
 tempfile = "=3.27.0"
+
+# WASM (follow-up item 2): `native-avif` is on by default, so native
+# builds are unchanged. A wasm32 build uses `--no-default-features`
+# and gets the dav1d-free registry (AVIF reported unavailable).
+[features]
+default = ["native-avif"]
+native-avif = ["openpixel-codecs/native-avif"]

@@ -50,6 +50,10 @@ impl CodecRegistry {
     pub fn with_defaults() -> Self {
         let mut r = Self::with_image_rs_defaults();
         r.register(Box::new(crate::SvgCodec));
+        // AVIF needs the native libdav1d decoder: absent from a
+        // dav1d-free (wasm32) build, where the planned list below
+        // reports it as unavailable instead.
+        #[cfg(feature = "native-avif")]
         r.register(Box::new(crate::AvifCodec));
         r.register(Box::new(crate::JxlCodec));
         r.register(Box::new(crate::HdrCodec));
@@ -194,15 +198,36 @@ mod tests {
         // `implemented_formats()` (which counts decode+encode).
         // 3 formats stay planned (APNG, RAW, PSD); total capabilities
         // stay 21.
+        //
+        // WASM (follow-up item 2): without the `native-avif` feature
+        // the AVIF codec is not registered — it moves to the planned
+        // list (17 codecs, 16 implemented, 4 planned), and the total
+        // capability count still stays 21, so the UI never loses the
+        // format, it just reports it as unavailable in that build.
         let r = CodecRegistry::default();
-        assert_eq!(r.registered_formats().len(), 18);
-        assert_eq!(r.implemented_formats().len(), 17);
-        assert_eq!(r.planned_formats().len(), 3);
+        #[cfg(feature = "native-avif")]
+        {
+            assert_eq!(r.registered_formats().len(), 18);
+            assert_eq!(r.implemented_formats().len(), 17);
+            assert_eq!(r.planned_formats().len(), 3);
+            assert!(r.can_decode(ImageFormat::Avif));
+            assert!(r.can_encode(ImageFormat::Avif));
+        }
+        #[cfg(not(feature = "native-avif"))]
+        {
+            assert_eq!(r.registered_formats().len(), 17);
+            assert_eq!(r.implemented_formats().len(), 16);
+            assert_eq!(r.planned_formats().len(), 4);
+            assert!(!r.can_decode(ImageFormat::Avif));
+            assert!(!r.can_encode(ImageFormat::Avif));
+            assert_eq!(
+                r.capability(ImageFormat::Avif).unwrap().status,
+                "not available in this build — AVIF needs the native libdav1d decoder (feature `native-avif`); use the native CLI or desktop app"
+            );
+        }
         assert_eq!(r.capabilities().len(), 21);
         assert!(r.can_decode(ImageFormat::Png));
         assert!(r.can_encode(ImageFormat::Jpeg));
-        assert!(r.can_decode(ImageFormat::Avif));
-        assert!(r.can_encode(ImageFormat::Avif));
         assert!(r.can_decode(ImageFormat::Svg));
         assert!(!r.can_encode(ImageFormat::Svg));
         assert!(r.can_decode(ImageFormat::Heic));
@@ -214,9 +239,11 @@ mod tests {
     #[test]
     fn register_replaces_and_remove_unregisters() {
         let mut r = CodecRegistry::default();
+        let base_codecs = r.registered_formats().len();
+        let base_caps = r.capabilities().len();
         r.register(Box::new(OnePixelCodec));
-        // Still 18 codecs — QOI was replaced, not duplicated.
-        assert_eq!(r.registered_formats().len(), 18);
+        // Still the same codec count — QOI was replaced, not duplicated.
+        assert_eq!(r.registered_formats().len(), base_codecs);
         assert_eq!(
             r.get(ImageFormat::Qoi)
                 .unwrap()
@@ -226,7 +253,7 @@ mod tests {
         );
         assert!(r.remove(ImageFormat::Jpeg));
         assert!(!r.can_decode(ImageFormat::Jpeg));
-        assert_eq!(r.capabilities().len(), 20);
+        assert_eq!(r.capabilities().len(), base_caps - 1);
         assert!(!r.remove(ImageFormat::Jpeg));
     }
 

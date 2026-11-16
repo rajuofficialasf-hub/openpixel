@@ -24,7 +24,6 @@
 //! * [`HeicCodec`] / [`HeifCodec`] — heifer 0.5.1, pure Rust,
 //!   decode + lossy 4:2:0 encode, no C library.
 
-pub mod avif;
 pub mod error;
 pub mod exr;
 pub mod float;
@@ -39,6 +38,14 @@ pub mod svg;
 pub mod traits;
 pub mod types;
 
+// The AVIF codec needs the native libdav1d C library (feature
+// `native-avif`, on by default). It does not exist for wasm32, so a
+// dav1d-free build compiles this module out entirely — see
+// `docs/BUILD.md` ("WASM"). The `avif` module's own tests go with it.
+#[cfg(feature = "native-avif")]
+pub mod avif;
+
+#[cfg(feature = "native-avif")]
 pub use avif::AvifCodec;
 pub use error::{CodecError, CodecResult};
 pub use exr::ExrCodec;

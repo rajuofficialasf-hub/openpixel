@@ -23,3 +23,16 @@ heifer.workspace = true
 
 [dev-dependencies]
 tempfile = "=3.27.0"
+
+# WASM (follow-up item 2, 16 Nov 2026): AVIF is the only codec with a
+# C dependency — dav1d decode via `image`'s `avif-native` feature
+# (ravif encode is pure Rust and stays available whenever the feature
+# is on). The feature is on by default, so every native build is
+# unchanged; a wasm32 build turns it off
+# (`--no-default-features` on `openpixel-core`, which propagates
+# here) and the `AvifCodec` disappears from the registry — the wasm
+# build reports AVIF as unavailable instead of claiming it works.
+# Every other codec in this crate is pure Rust and builds for wasm32.
+[features]
+default = ["native-avif"]
+native-avif = ["image/avif-native"]

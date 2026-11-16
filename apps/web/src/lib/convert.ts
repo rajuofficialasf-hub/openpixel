@@ -15,13 +15,32 @@
  * native CLI (`openpixel convert`) or the desktop app — the UI says
  * so next to the format selector instead of pretending otherwise.
  *
- * Metadata: a canvas round-trip always strips EXIF/ICC/XMP. The
- * metadata-policy selector therefore only offers Strip honestly;
- * choosing Preserve shows a warning that in-browser conversion
- * strips metadata and the CLI is needed to preserve it.
+ * WASM engine (`./wasm-engine`): when the generated WASM module is
+ * present (`npm run build:wasm`), conversions the canvas path cannot
+ * do at all are tried with the real Rust engine in the browser
+ * first — TIFF / QOI / HEIC / HEIF / JXL / JPEG 2000 / ICO / PNM /
+ * TGA / EXR / HDR sources, and TIFF / QOI / HEIC / HEIF / JXL /
+ * JPEG 2000 / ICO / PNM / TGA / GIF targets. AVIF stays unavailable
+ * in WASM (no wasm32 libdav1d). If the module is absent or the
+ * engine rejects the conversion, the canvas path runs exactly as
+ * before and errors honestly for targets it cannot encode. The
+ * canvas path is never replaced for conversions it already handles:
+ * it runs in a worker (non-blocking) while WASM runs synchronously.
+ *
+ * Metadata: a canvas round-trip always strips EXIF/ICC/XMP, and the
+ * WASM binding strips it too (it converts with the default
+ * strip policy). The metadata-policy selector therefore only offers
+ * Strip honestly; choosing Preserve shows a warning that in-browser
+ * conversion strips metadata and the CLI is needed to preserve it.
  */
 import { canvasMimeType, targetHasNoAlpha } from './capabilities'
 import { detectFileFormat, type DetectedFormat } from './detect'
+import {
+  convertWithWasm,
+  getWasmSupport,
+  probeWithWasm,
+  wasmCoversConversion,
+} from './wasm-engine'
 import type { WorkerConvertFailure, WorkerConvertRequest, WorkerConvertSuccess } from '../worker'
 
 export interface ConvertOptions {
@@ -36,6 +55,8 @@ export interface ConvertedImage {
   width: number
   height: number
   bytes: number
+  /** Which in-browser engine did the conversion. */
+  engine: 'wasm' | 'canvas'
 }
 
 export interface ProbedImage {
@@ -47,11 +68,27 @@ export interface ProbedImage {
 /** Read dimensions + detected format without converting. */
 export async function probeImage(file: Blob): Promise<ProbedImage> {
   const format = await detectFileFormat(file)
-  const bitmap = await decodeBitmap(file)
-  const width = bitmap.width
-  const height = bitmap.height
-  bitmap.close()
-  return { format, width, height }
+  try {
+    const bitmap = await decodeBitmap(file)
+    const width = bitmap.width
+    const height = bitmap.height
+    bitmap.close()
+    return { format, width, height }
+  } catch {
+    // The browser cannot decode this file (e.g. TIFF / QOI / HEIC):
+    // ask the WASM engine, which knows the real dimensions. A
+    // failed probe still throws below — the file is genuinely
+    // unreadable in this browser, and the native CLI is the answer.
+    const wasm = await probeWithWasm(new Uint8Array(await file.arrayBuffer()))
+    if (wasm) {
+      return {
+        format: (wasm.format as DetectedFormat) || format,
+        width: wasm.width,
+        height: wasm.height,
+      }
+    }
+    throw new Error('This browser cannot decode this image. Try the native CLI instead.')
+  }
 }
 
 async function decodeBitmap(file: Blob): Promise<ImageBitmap> {
@@ -77,14 +114,46 @@ async function decodeBitmap(file: Blob): Promise<ImageBitmap> {
 }
 
 export async function convertImage(file: Blob, options: ConvertOptions): Promise<ConvertedImage> {
+  const sourceFormat = await detectFileFormat(file)
+  const flattenBackground = targetHasNoAlpha(options.targetFormat) ? options.background : null
+  // WASM first — but only for conversions the canvas path cannot do
+  // at all (a source the browser cannot decode, or a target the
+  // canvas cannot encode). The canvas worker stays the default for
+  // everything it handles: it is non-blocking, and the WASM call
+  // runs synchronously on this thread. When the module is absent or
+  // the engine rejects the conversion, execution falls through to
+  // the canvas path below, which errors honestly for targets it
+  // cannot encode.
+  if (sourceFormat !== 'unknown') {
+    const support = await getWasmSupport()
+    if (wasmCoversConversion(sourceFormat, options.targetFormat, support)) {
+      const wasmResult = await convertWithWasm(
+        new Uint8Array(await file.arrayBuffer()),
+        options.targetFormat,
+        options.quality,
+        flattenBackground,
+      )
+      if (wasmResult) {
+        const blob = new Blob([wasmResult.bytes], { type: wasmResult.mimeType })
+        return {
+          blob,
+          width: wasmResult.width,
+          height: wasmResult.height,
+          bytes: blob.size,
+          engine: 'wasm',
+        }
+      }
+    }
+  }
   const targetMime = canvasMimeType(options.targetFormat)
   if (!targetMime) {
     throw new Error(
       `The browser cannot encode ${options.targetFormat.toUpperCase()} — use the native CLI (` +
-        `openpixel convert) for that format. In-browser targets are PNG, JPEG, WebP and BMP.`,
+        `openpixel convert) for that format. In-browser targets are PNG, JPEG, WebP and BMP` +
+        ` (plus the WASM engine's TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF when` +
+        ` the WASM module is built — see Settings, About).`,
     )
   }
-  const flattenBackground = targetHasNoAlpha(options.targetFormat) ? options.background : null
   try {
     return await convertInWorker(file, targetMime, options.quality, flattenBackground)
   } catch (err) {
@@ -140,7 +209,7 @@ async function convertInWorker(
       worker.postMessage(request, [buffer])
     })
     const blob = new Blob([result.buffer], { type: targetMime })
-    return { blob, width: result.width, height: result.height, bytes: blob.size }
+    return { blob, width: result.width, height: result.height, bytes: blob.size, engine: 'canvas' }
   } finally {
     worker.terminate()
   }
@@ -175,5 +244,5 @@ async function convertOnMainThread(
   if (!blob) {
     throw new Error(`This browser cannot encode ${targetMime}. Try PNG or JPEG instead.`)
   }
-  return { blob, width, height, bytes: blob.size }
+  return { blob, width, height, bytes: blob.size, engine: 'canvas' }
 }

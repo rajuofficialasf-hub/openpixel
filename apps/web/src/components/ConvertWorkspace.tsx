@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   BROWSER_DECODABLE,
-  browserEncodableFormats,
+  BROWSER_ENCODABLE,
+  formatById,
   formatBytes,
   formatLabel,
   outputFileName,
@@ -9,6 +10,7 @@ import {
 import { convertImage, probeImage, type ProbedImage } from '../lib/convert'
 import type { Settings } from '../lib/settings'
 import { WASM_STATUS } from '../lib/wasm'
+import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
 import { DropZone } from './DropZone'
 
 type Status = 'idle' | 'probing' | 'ready' | 'converting' | 'done' | 'error'
@@ -42,6 +44,11 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
   const [warnings, setWarnings] = useState<string[]>([])
   const [result, setResult] = useState<{ blob: Blob; url: string; width: number; height: number; bytes: number } | null>(null)
   const resultUrlRef = useRef<string | null>(null)
+  // The WASM engine's format support, loaded once on mount. `null`
+  // while loading and when the module is absent — the UI works
+  // identically either way, just with fewer formats offered.
+  const wasmSupport = useWasmSupport()
+  const decodableFormats = mergeFormatLists(BROWSER_DECODABLE, wasmSupport?.decode)
 
   useEffect(() => {
     return () => {
@@ -76,9 +83,13 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
           notes.push(
             'Format not recognised from the file signature — the browser may still be able to open it, but conversion is not guaranteed.',
           )
-        } else if (!BROWSER_DECODABLE.includes(info.format)) {
+        } else if (!decodableFormats.includes(info.format)) {
           notes.push(
             `${formatLabel(info.format)} cannot be decoded in this browser. Use the native CLI (openpixel convert) for this file.`,
+          )
+        } else if (!BROWSER_DECODABLE.includes(info.format)) {
+          notes.push(
+            `${formatLabel(info.format)} was decoded by the built-in WASM engine (the real Rust engine, in your browser) — the preview below may not render here, but conversion works.`,
           )
         }
         if (info.format === 'gif') {
@@ -95,11 +106,11 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
         setStatus('error')
       }
     },
-    [],
+    [decodableFormats],
   )
 
   const canConvert =
-    file !== null && probed !== null && probed.format !== 'unknown' && BROWSER_DECODABLE.includes(probed.format)
+    file !== null && probed !== null && probed.format !== 'unknown' && decodableFormats.includes(probed.format)
 
   const handleConvert = useCallback(async () => {
     if (!file || !probed) return
@@ -109,7 +120,7 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
       const next = [...prev]
       if (settings.metadataPolicy === 'preserve') {
         next.push(
-          'Metadata policy “Preserve” was requested, but a canvas round-trip always strips EXIF/ICC/XMP — the output has no metadata. Use the native CLI with --metadata preserve to keep it.',
+          'Metadata policy “Preserve” was requested, but in-browser conversion (canvas or WASM engine) always strips EXIF/ICC/XMP — the output has no metadata. Use the native CLI with --metadata preserve to keep it.',
         )
       }
       if (targetFormat === 'png' && pngCompression !== 1) {
@@ -130,6 +141,12 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
       if (resultUrlRef.current) URL.revokeObjectURL(resultUrlRef.current)
       resultUrlRef.current = url
       setResult({ blob: converted.blob, url, width: converted.width, height: converted.height, bytes: converted.bytes })
+      if (converted.engine === 'wasm') {
+        setWarnings((prev) => [
+          ...prev,
+          'Converted with the built-in WASM engine (the real Rust engine, running in your browser).',
+        ])
+      }
       setStatus('done')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Conversion failed.')
@@ -152,7 +169,13 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
     }
   }, [previewUrl])
 
-  const targets = browserEncodableFormats()
+  // Output targets: the canvas targets first, then whatever the
+  // WASM engine adds (TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM,
+  // TGA, GIF) when its module is present. Without the module the
+  // list is exactly the old canvas-only list.
+  const targets = mergeFormatLists(BROWSER_ENCODABLE, wasmSupport?.encode)
+    .map((id) => formatById(id))
+    .filter((c): c is NonNullable<typeof c> => c !== undefined && c.can_encode)
 
   return (
     <section aria-labelledby="convert-heading" className="space-y-4">
@@ -162,15 +185,18 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
       <p className="text-sm text-slate-600 dark:text-slate-400">
         Files never leave your device — conversion runs locally in your browser. In-browser
         conversion handles <strong>PNG, JPEG, WebP and BMP</strong> output from PNG, JPEG, WebP,
-        GIF (first frame), BMP, SVG and AVIF (browser-dependent) sources. Everything else needs
-        the native CLI. {WASM_STATUS.detail}
+        GIF (first frame), BMP, SVG and AVIF (browser-dependent) sources
+        {wasmSupport
+          ? ', plus the built-in WASM engine’s TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF targets (and sources) — AVIF still needs the native CLI'
+          : ', plus the WASM engine’s extra formats when its module is built (see Settings, About)'}
+        . Everything else needs the native CLI. {WASM_STATUS.detail}
       </p>
 
       {!file && (
         <DropZone
           inputId="convert-file"
           label="Drop an image here"
-          hint="PNG, JPEG, WebP, GIF, BMP, SVG, AVIF — up to the browser’s memory limits. Nothing is uploaded."
+          hint="PNG, JPEG, WebP, GIF, BMP, SVG, AVIF — plus TIFF, QOI, HEIC, JXL and JPEG 2000 when the WASM engine is built. Nothing is uploaded."
           multiple={false}
           accept="image/*"
           onFiles={handleFiles}
@@ -181,13 +207,21 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
         <div className="grid gap-6 md:grid-cols-2">
           <div className="space-y-3">
             <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
-              {previewUrl && (
-                <img
-                  src={previewUrl}
-                  alt={`Preview of ${file.name}`}
-                  className="mx-auto max-h-80 max-w-full rounded-lg object-contain"
-                />
-              )}
+              {previewUrl &&
+                (probed === null ||
+                probed.format === 'unknown' ||
+                BROWSER_DECODABLE.includes(probed.format) ? (
+                  <img
+                    src={previewUrl}
+                    alt={`Preview of ${file.name}`}
+                    className="mx-auto max-h-80 max-w-full rounded-lg object-contain"
+                  />
+                ) : (
+                  <p className="rounded-lg bg-slate-100 px-3 py-8 text-center text-sm text-slate-500 dark:bg-slate-700 dark:text-slate-400">
+                    No preview for {formatLabel(probed.format)} — this browser cannot display it,
+                    but the WASM engine can convert it.
+                  </p>
+                ))}
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
                 <dt className="text-slate-500 dark:text-slate-400">File</dt>
                 <dd className="truncate font-medium text-slate-900 dark:text-slate-100">{file.name}</dd>
@@ -242,8 +276,9 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
                 ))}
               </select>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Only formats this browser can encode. TIFF, AVIF, JXL, QOI and the rest need the
-                native CLI — see the Formats tab.
+                {wasmSupport
+                  ? 'Canvas targets plus the WASM engine’s TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF. AVIF still needs the native CLI — see the Formats tab.'
+                  : 'Only formats this browser can encode. TIFF, AVIF, JXL, QOI and the rest need the native CLI — see the Formats tab.'}
               </p>
             </div>
 

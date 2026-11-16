@@ -80,7 +80,8 @@
   desktop app. `npm test` 17 passed; `npm run build` passes;
   Rust workspace unchanged at 171 tests. See `docs/TESTING.md` for
   the verification results and the manual browser checklist that
-  still needs a real browser run.
+  still needs a real browser run. (WASM itself landed later as
+  follow-up item 2, 16 Nov 2026 — see Follow-ups below.)
 - [x] **Phase 8 — Desktop Application** (done 16 Nov 2026, verified
   by coordinator): Tauri 2, native file picker, drag-and-drop, offline mode,
   installers (Windows/macOS/Linux). Delivered as `apps/desktop/`:
@@ -129,10 +130,24 @@
   Rust workspace 182 tests (was 176). See `docs/CODECS.md` and
   `docs/TESTING.md`.
 
-## Follow-ups (approved 16 Nov 2026 — HEIC done above; the rest open)
+## Follow-ups (approved 16 Nov 2026 — HEIC and WASM done; the rest open)
 
-- [ ] **WASM engine** (dav1d-free build so the web app can convert
-  natively).
+- [x] **WASM engine** (dav1d-free build so the web app can convert
+  natively) — done 16 Nov 2026 (follow-up item 2): `native-avif`
+  cargo feature gates the dav1d AVIF codec off for wasm32 (on by
+  default natively); `openpixel-core` + `openpixel-codecs` build for
+  `wasm32-unknown-unknown`; `crates/openpixel-wasm` exposes
+  detect / info / convert via wasm-bindgen (wasm-pack 0.15.1);
+  the web app loads it lazily and uses it for conversions the
+  canvas cannot do (TIFF / QOI / HEIC / JXL / JPEG 2000 / ICO /
+  PNM / TGA / GIF targets and sources), with canvas fallback.
+  AVIF is honestly unavailable in WASM (no wasm32 libdav1d) and
+  the engine reports it as such. Verified in Node: `wasm-pack
+  test --node` 2/2 and a standalone script converting a real PNG
+  to 7 formats with re-detection. Rust workspace 195 tests (was
+  182); web `npm test` 28 passed (was 17). See `docs/WEB.md` and
+  `docs/TESTING.md`. Still open: a real-browser click-through of
+  the WASM conversion flows (no browser tooling in this session).
 - [ ] **Windows/macOS builds** (CI + installers).
 - [ ] **Full end-to-end testing** (real browser + desktop
   click-through).
