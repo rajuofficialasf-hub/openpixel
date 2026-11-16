@@ -2,10 +2,12 @@
 
 Run 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0, Node v24.22.1 /
 npm 10.9.4, Chromium 1248 (cached `~/.cache/ms-playwright`), git
-HEAD `687f992` (items 1–3 committed). This closes the real-browser
-and desktop click-through checklists that were open since Phases
-7/8 and the WASM checklist from follow-up item 2 — with evidence,
-not assertions. Every scenario below lists what was actually run
+HEAD `687f992` (items 1–3 committed). Polish re-run the same day
+(§2.13–2.15, §2.16, §6.1), git HEAD `a0422d7`, web e2e 30/30,
+no-WASM fallback 7/7. This closes the real-browser and desktop
+click-through checklists that were open since Phases 7/8 and the
+WASM checklist from follow-up item 2 — with evidence, not
+assertions. Every scenario below lists what was actually run
 and the observed result; anything not run is marked NOT RUN, never
 passed.
 
