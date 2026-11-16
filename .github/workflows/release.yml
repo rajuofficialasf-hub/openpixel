@@ -6,9 +6,10 @@
 # - Uploads the resulting binaries / installers as workflow artifacts
 #   (actions/upload-artifact). Nothing is published: there is no
 #   release-creation step, no upload to any store, no deploy.
-# - This workflow has NEVER RUN yet (added 16 Nov 2026, follow-up
-#   item 3). The first real Windows/macOS build happens when it runs
-#   on a GitHub runner or a real machine — see docs/BUILD.md.
+# - This workflow first ran 16 Nov 2026 (run 43832448184): Linux and
+#   macOS jobs all passed; both Windows jobs failed on missing
+#   pkg-config for dav1d-sys — fixed by installing pkgconfiglite
+#   (see the Windows dav1d steps).
 #
 # Triggers: pushes and PRs to main, plus manual dispatch.
 # Concurrency: one run per ref; a newer push cancels the older run.
@@ -75,11 +76,18 @@ jobs:
       # --- Windows: vcpkg is preinstalled on windows-latest runners
       # (VCPKG_INSTALLATION_ROOT). dav1d-sys finds libdav1d through
       # pkg-config, so PKG_CONFIG_PATH points at vcpkg's pkgconfig
-      # dir. The MSVC C++ workload (linker) is preinstalled on the
-      # runner. Expected route — not yet verified by a real run.
+      # dir — AND pkg-config itself must be installed: vcpkg does NOT
+      # provide the pkg-config executable. First CI run (16 Nov 2026,
+      # run 43832448184) failed on both Windows jobs exactly here:
+      # dav1d-sys build.rs panicked "The pkg-config command could not
+      # be found." pkgconfiglite (Chocolatey, preinstalled on the
+      # runner) puts pkg-config.exe on PATH. The MSVC C++ workload
+      # (linker) is preinstalled on the runner.
       - name: Install dav1d via vcpkg (Windows)
         if: runner.os == 'Windows'
-        run: vcpkg install dav1d:x64-windows
+        run: |
+          choco install pkgconfiglite -y
+          vcpkg install dav1d:x64-windows
         env:
           VCPKG_DEFAULT_TRIPLET: x64-windows
 
@@ -171,7 +179,9 @@ jobs:
 
       - name: Install dav1d via vcpkg (Windows)
         if: runner.os == 'Windows'
-        run: vcpkg install dav1d:x64-windows
+        run: |
+          choco install pkgconfiglite -y
+          vcpkg install dav1d:x64-windows
         env:
           VCPKG_DEFAULT_TRIPLET: x64-windows
 
