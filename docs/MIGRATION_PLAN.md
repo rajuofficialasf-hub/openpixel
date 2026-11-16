@@ -234,13 +234,25 @@ insert, replace, reverse, booklet, N-up page ops; WASM
 `Engine::encode_decoded`; `scripts/pdfium/fetch-pdfium.sh`
 (pinned chromium/8152).
 
-**Phase 3 — Conversion and Compression.** PDF compression (3
-modes, honest size reporting — never claim smaller when larger);
-Office→PDF and PDF→Office via LibreOffice headless
-(**desktop/server only** — the browser shows an honest
-"needs desktop/server" state); PDF→Word/Excel via the same
-adapter. Exit: compression benchmarks + Office round-trip
-fixtures green; fidelity limits documented.
+**Phase 3 — Conversion and Compression — DONE 16 Nov 2026.**
+PDF compression (screen/ebook/printer, honest size reporting —
+never claim smaller when larger; a growing compression returns
+the original); Office→PDF and PDF→Office via LibreOffice
+headless (**desktop/server only** — the browser shows an honest
+"needs desktop/server" state); PDF→Word via PDFium text
+extraction (text only). **PDF→Excel is NOT supported**
+(LibreOffice has no PDF→XLSX export filter — the plan's
+"PDF→Word/Excel" was wrong for Excel; the engine refuses it
+honestly). Password protect/unlock + watermark also landed here
+(parent brief scope), not Phase 5. Exit met: compression
+benchmarks measured (photo PDF 1,687,939 B → screen 70,306 B /
+ebook 120,063 B / printer 260,116 B) + Office round-trip
+fixtures green (CLI e2e §11) + fidelity limits documented in
+`docs/PDF.md`. Also done: `openpixel-documents` crate,
+`openpixel-formats` conversion registry (31 rows) +
+`openpixel-api` types, web Compress card + `pdf_compress` WASM
+export, "Pages | Pages: 4" label fix, RSS Windows-test fix
+(platform-aware test, see §10).
 
 **Phase 4 — OCR and Extraction.** English + Bengali OCR
 (Tesseract native, tesseract.js web); image→text, scanned

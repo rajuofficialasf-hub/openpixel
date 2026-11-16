@@ -108,6 +108,21 @@ export interface WasmPackage {
   pdf_process: (bytes: Uint8Array, opsJson: string) => Uint8Array[]
   pdf_merge: (documents: unknown) => Uint8Array
   pdf_from_images: (images: unknown, pageSize: string | undefined) => Uint8Array
+  // PDF compression (Studio Phase 3) — see src/lib/pdf.ts.
+  pdf_compress: (bytes: Uint8Array, optionsJson: string) => WasmPdfCompressResult
+}
+
+/** What the WASM `pdf_compress` export returns: compressed bytes + measured outcome. */
+export interface WasmPdfCompressResult {
+  /** Fresh `ArrayBuffer`-backed copy, so `new Blob([bytes])` type-checks. */
+  data: Uint8Array<ArrayBuffer>
+  input_bytes: number
+  output_bytes: number
+  saved_bytes: number
+  saved_percent: number
+  images_recompressed: number
+  images_skipped: number
+  note: string | null
 }
 
 /** What the WASM `process` export returns: resized bytes + result metadata. */

@@ -1639,7 +1639,10 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "image",
+ "openpixel-api",
  "openpixel-core",
+ "openpixel-documents",
+ "openpixel-formats",
  "openpixel-jobs",
  "openpixel-pdf",
  "serde",
@@ -1652,6 +1655,7 @@ name = "openpixel-api"
 version = "0.1.0"
 dependencies = [
  "openpixel-core",
+ "openpixel-formats",
  "openpixel-jobs",
  "serde",
  "serde_json",
@@ -1691,6 +1695,19 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tintbox",
+]
+
+[[package]]
+name = "openpixel-documents"
+version = "0.1.0"
+dependencies = [
+ "lopdf",
+ "openpixel-core",
+ "openpixel-formats",
+ "openpixel-pdf",
+ "openpixel-security",
+ "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -1734,6 +1751,7 @@ dependencies = [
 name = "openpixel-pdf"
 version = "0.1.0"
 dependencies = [
+ "crc32fast",
  "flate2",
  "getrandom 0.4.3",
  "image",

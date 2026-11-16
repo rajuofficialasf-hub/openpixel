@@ -7,9 +7,11 @@
 // PDF→PNG downloads a genuine PNG at the requested scale; merge
 // (4+2 pages) downloads a real 6-page PDF; split downloads one
 // real PDF per range; rotate and extract download real PDFs with
-// the right page counts; images→PDF builds a real PDF. Every
-// downloaded file is verified with `file(1)` and the CLI
-// (`openpixel pdf info` for PDFs, `openpixel info` for images).
+// the right page counts; compress downloads a real PDF that is no
+// bigger than the input (with the measured sizes in the report);
+// images→PDF builds a real PDF. Every downloaded file is verified
+// with `file(1)` and the CLI (`openpixel pdf info` for PDFs,
+// `openpixel info` for images).
 import { chromium } from 'playwright-core';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -96,7 +98,7 @@ await shot('21-pdf-tab.png');
 await page.setInputFiles('#pdf-file', path.join(IN, 'doc4.pdf'));
 await page.waitForSelector('#pdf-page-count', { timeout: 30000 });
 const pageCount = await page.locator('#pdf-page-count').innerText();
-check('info shows Pages: 4', pageCount.includes('Pages: 4'), pageCount);
+check('info page count is just the number (no "Pages:" prefix)', pageCount.trim() === '4', pageCount);
 const infoText = await page.locator('#pdf-info').innerText();
 check('info shows version 1.5 and page sizes', infoText.includes('PDF 1.5') && infoText.includes('256 × 192 pt'), infoText.replace(/\n/g, ' | ').slice(0, 200));
 // pdf.js preview: page 1 at the default 2x scale is 512x384 px.
@@ -164,6 +166,24 @@ await waitStatus('Images to PDF: 2 pages');
 const builtPath = await downloadResult(0);
 const builtInfo = verifyPdf(builtPath, 2);
 check('images to PDF builds a real 2-page PDF', builtInfo.ok, builtInfo.detail);
+
+// --- 8b. compress (screen mode) -> still 4 pages, no bigger than the input ---
+// doc4.pdf is built from images (Flate RGB), so screen mode must
+// actually shrink it; the engine's best-of rule guarantees the
+// result is never bigger than the input in any case.
+await page.locator('#pdf-compress-mode').selectOption('screen');
+await page.locator('#pdf-compress-button').click();
+await waitStatus('Compressed PDF');
+const compStatus = await page.locator('#pdf-result-status').innerText();
+const compressedPath = await downloadResult(0);
+const compressedInfo = verifyPdf(compressedPath, 4);
+const compIn = fs.statSync(path.join(IN, 'doc4.pdf')).size;
+const compOut = fs.statSync(compressedPath).size;
+check(
+  'compress downloads a real 4-page PDF no bigger than the input',
+  compressedInfo.ok && compOut <= compIn,
+  `${compressedInfo.detail} | ${compIn} -> ${compOut} bytes | status: ${compStatus}`,
+);
 
 // --- 9. dark mode screenshot ---
 await page.locator('button[aria-label="Switch to dark theme"]').click();

@@ -140,7 +140,7 @@ and fixed with a regression test. PDFium threading is a
 single-worker design (one binding per process, upstream
 constraint — see `docs/PDF.md`). PDF/A remains out of scope.
 
-## Phase 3 — Conversion and Compression
+## Phase 3 — Conversion and Compression — DONE 16 Nov 2026
 
 **Entry:** Phase 2 exit green; Office scope decision made (§7).
 **Work:** PDF compression (Extreme / Recommended / Low —
@@ -161,6 +161,35 @@ via the same adapter; font-substitution + error reporting.
 files (timeout policy from Phase 1 will be tested here);
 LibreOffice's ~286 MB install size and its effect on the
 desktop installer.
+
+**Done 16 Nov 2026 — what actually shipped (parent brief is
+authoritative where it differs from the plan above):**
+- Compression modes are **screen / ebook / printer** (72/150/300
+  DPI, JPEG q50/75/90), not Extreme/Recommended/Low — per the
+  parent brief. Measured on a real photo PDF (1,687,939 B):
+  screen → 70,306 B (95.8%), ebook → 120,063 B (92.9%),
+  printer → 260,116 B (84.6%). A compression that would grow
+  the file returns the original with a note (best-of rule).
+- Password protect/unlock + watermark landed in **Phase 3**,
+  not Phase 5 (parent brief scope): RC4-128 only — AES is not
+  claimed (lopdf V4/V5 not wired up).
+- **PDF→Excel is NOT supported** — the plan's "PDF→Word/Excel
+  via the same adapter" was wrong for Excel: LibreOffice has no
+  PDF→XLSX (or PDF→PPTX/ODT/RTF) export filter. PDF→TXT/EPUB/
+  DOCX go via PDFium text extraction instead (text only, honest
+  about layout limits). The engine refuses the unsupported pairs
+  and names the alternatives.
+- LibreOffice was already installed in this VM (24.2.7.2) — no
+  apt install was needed. Fresh-profile-per-conversion rule
+  (a shared profile produced a spurious failure); output-file
+  existence is verified (exit code 0 is never trusted).
+- Linearisation is NOT offered: lopdf 0.47's
+  `SaveOptions.linearize` is never read by its writer (verified
+  in the lopdf source) — offering it would be fake.
+- Tests: `cargo test --workspace` green (see commit message for
+  counts), web 64/64, CLI e2e §11, pdf-e2e 15/15.
+  Full details: `docs/PDF.md` (Compression, Security, Text
+  extraction, Document conversion sections).
 
 ## Phase 4 — OCR and Extraction
 

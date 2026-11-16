@@ -5,6 +5,8 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
+  FormControlLabel,
   Select,
   Stack,
   TextField,
@@ -20,14 +22,17 @@ import {
   parsePageList,
   parsePageRanges,
   parseReorder,
+  pdfCompress,
   pdfFromImages,
   pdfMerge,
   pdfOutputName,
   pdfProcess,
   renderPdfPage,
   renderPdfPageBlob,
+  PDF_COMPRESS_MODES,
   PDF_PAGE_SIZES,
   PDF_RENDER_SCALES,
+  type PdfCompressMode,
   type PdfInfo,
   type PdfPageSize,
 } from '../lib/pdf'
@@ -84,6 +89,9 @@ export function PdfWorkspace() {
   const [nupCols, setNupCols] = useState(2)
   const [nupRows, setNupRows] = useState(2)
   const [splitRanges, setSplitRanges] = useState('')
+
+  const [compressMode, setCompressMode] = useState<PdfCompressMode>('ebook')
+  const [compressStrip, setCompressStrip] = useState(false)
 
   const [secondFile, setSecondFile] = useState<File | null>(null)
   const [secondBytes, setSecondBytes] = useState<Uint8Array<ArrayBuffer> | null>(null)
@@ -278,6 +286,35 @@ export function PdfWorkspace() {
     void runOp('Split PDF', JSON.stringify({ kind: 'split', ranges }), 'split')
   }
 
+  const handleCompress = async () => {
+    if (!bytes || !file) return
+    setBusy('Compressed PDF')
+    setError(null)
+    setStatus(null)
+    const result = await pdfCompress(bytes, compressMode, compressStrip)
+    if (!result) {
+      setError(
+        'Compression needs the WASM engine, which is not loaded — rebuild the web app with npm run build:wasm. No file was produced.',
+      )
+      setBusy(null)
+      return
+    }
+    setResults([
+      {
+        label: 'Compressed PDF',
+        blob: new Blob([result.data as BlobPart], { type: 'application/pdf' }),
+        filename: pdfOutputName(file.name, 'compressed'),
+        pages: pageCount,
+      },
+    ])
+    setStatus(
+      result.note
+        ? `Compressed PDF: ${formatBytes(result.inputBytes)} → ${formatBytes(result.outputBytes)} — ${result.note}`
+        : `Compressed PDF: ${formatBytes(result.inputBytes)} → ${formatBytes(result.outputBytes)} (${result.savedPercent.toFixed(1)}% smaller, ${result.imagesRecompressed} image${result.imagesRecompressed === 1 ? '' : 's'} recompressed)`,
+    )
+    setBusy(null)
+  }
+
   const handleMerge = async () => {
     if (!bytes || !file || !secondBytes || !secondFile) return
     setBusy('Merged PDF')
@@ -442,7 +479,7 @@ export function PdfWorkspace() {
                   <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>{formatBytes(file.size)}</Box>
                   <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>Pages</Box>
                   <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }} id="pdf-page-count">
-                    Pages: {pageCount}
+                    {pageCount}
                   </Box>
                   {info && (
                     <>
@@ -756,6 +793,60 @@ export function PdfWorkspace() {
             <Card>
               <CardContent>
                 <Typography variant="overline" color="text.secondary">
+                  Compress
+                </Typography>
+                <Stack spacing={2} sx={{ mt: 1 }}>
+                  <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap">
+                    <Box>
+                      <Typography variant="subtitle2" component="label" htmlFor="pdf-compress-mode" sx={{ display: 'block' }}>
+                        Mode
+                      </Typography>
+                      <Select
+                        native
+                        id="pdf-compress-mode"
+                        value={compressMode}
+                        onChange={(e) => setCompressMode(e.target.value as PdfCompressMode)}
+                        sx={{ mt: 0.5, minWidth: 180 }}
+                      >
+                        {PDF_COMPRESS_MODES.map((m) => (
+                          <option key={m} value={m}>
+                            {m === 'screen' ? 'Screen — 72 DPI' : m === 'ebook' ? 'Ebook — 150 DPI' : 'Printer — 300 DPI'}
+                          </option>
+                        ))}
+                      </Select>
+                    </Box>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          id="pdf-compress-strip"
+                          checked={compressStrip}
+                          onChange={(e) => setCompressStrip(e.target.checked)}
+                        />
+                      }
+                      label="Strip document metadata (title, author…)"
+                    />
+                    <Button
+                      type="button"
+                      variant="contained"
+                      id="pdf-compress-button"
+                      onClick={() => void handleCompress()}
+                      disabled={busy !== null || wasmReady === false}
+                    >
+                      {busy === 'Compressed PDF' ? 'Compressing…' : 'Compress'}
+                    </Button>
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    Images are downsampled to the mode's DPI and re-encoded; the file structure
+                    is optimised too. If a mode cannot shrink this PDF, the original is kept
+                    and the result says so.
+                  </Typography>
+                </Stack>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent>
+                <Typography variant="overline" color="text.secondary">
                   Merge
                 </Typography>
                 <Stack spacing={2} sx={{ mt: 1 }}>
@@ -864,6 +955,9 @@ export function PdfWorkspace() {
             Insert and replace pages need the native CLI or desktop app — they are not
             available in the browser. Rendering with PDFium is CLI/desktop-only too
             (<Typography component="code" variant="body2">openpixel pdf render</Typography>).
+            Office documents (Word, Excel, PowerPoint) convert only in the CLI or desktop
+            app (<Typography component="code" variant="body2">openpixel doc convert</Typography>)
+            — LibreOffice cannot run in a browser.
           </Typography>
         </Box>
 

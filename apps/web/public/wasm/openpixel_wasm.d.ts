@@ -71,6 +71,27 @@ export function discover(bytes: Uint8Array | number[], extension?: string | null
 export function info(bytes: Uint8Array | number[]): any;
 
 /**
+ * Compress a PDF (Phase 3): image downsample + re-encode and
+ * structure optimisation. `options_json` is e.g.
+ * `{"mode":"ebook","strip_metadata":false}` — `mode` is
+ * `screen` | `ebook` | `printer` (default `ebook`).
+ * Returns a JS object `{ data: Uint8Array, input_bytes,
+ * output_bytes, saved_bytes, saved_percent,
+ * images_recompressed, images_skipped, note }` — the sizes are
+ * measured, never estimated. When the compressed file would be
+ * larger and no transformation was requested, `data` is the
+ * original bytes and `note` says so.
+ *
+ * The byte counts are emitted as JS **numbers** (f64), not
+ * BigInts: `JsValue::from(u64)` becomes a BigInt in JS, and the
+ * web UI does arithmetic on these fields (`formatBytes` divides
+ * them) — a BigInt there throws "Cannot mix BigInt and other
+ * types". f64 is exact for any real file size (PDFs are capped
+ * at 100 MiB, far below 2^53).
+ */
+export function pdf_compress(bytes: Uint8Array | number[], options_json: string): any;
+
+/**
  * Build a PDF from images (a JS array of `Uint8Array` — PNG, JPEG,
  * WebP, anything the engine decodes), one page per image, in order.
  * `page_size` is a named size ("A4", "Letter", "A5") or undefined
@@ -170,6 +191,7 @@ export interface InitOutput {
     readonly detect: (a: number, b: number) => [number, number];
     readonly discover: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
     readonly info: (a: number, b: number) => [number, number, number];
+    readonly pdf_compress: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly pdf_from_images: (a: any, b: number, c: number) => [number, number, number, number];
     readonly pdf_info: (a: number, b: number) => [number, number, number];
     readonly pdf_merge: (a: any) => [number, number, number, number];

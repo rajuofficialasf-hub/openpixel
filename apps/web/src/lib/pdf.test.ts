@@ -17,10 +17,12 @@ import {
   parsePageList,
   parsePageRanges,
   parseReorder,
+  pdfCompress,
   pdfFromImages,
   pdfMerge,
   pdfOutputName,
   pdfProcess,
+  PDF_COMPRESS_MODES,
 } from './pdf'
 
 describe('parsePageList', () => {
@@ -112,5 +114,13 @@ describe('WASM wrappers fall back to null (no generated package under vitest)', 
 
   it('pdfFromImages resolves to null instead of throwing', async () => {
     await expect(pdfFromImages([notPdf], null)).resolves.toBeNull()
+  })
+
+  it('pdfCompress resolves to null instead of throwing', async () => {
+    await expect(pdfCompress(notPdf, 'ebook', false)).resolves.toBeNull()
+  })
+
+  it('the compress modes are exactly screen/ebook/printer', () => {
+    expect(PDF_COMPRESS_MODES).toEqual(['screen', 'ebook', 'printer'])
   })
 })

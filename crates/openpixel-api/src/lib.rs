@@ -17,8 +17,10 @@
 pub mod types;
 
 pub use openpixel_jobs::{BatchProgress, JobKind, JobResult, JobStatus};
+pub use types::list_document_conversions;
 pub use types::{
-    ApiError, ApiVersion, ConvertRequest, CreateJobRequest, EngineStatus, ErrorResponse,
+    ApiError, ApiVersion, ConvertRequest, CreateJobRequest, DocumentConversion,
+    DocumentConvertRequest, DocumentConvertResponse, EngineStatus, ErrorResponse,
     FileUploadResponse, HealthResponse, JobResponse, BASE_PATH,
 };
 

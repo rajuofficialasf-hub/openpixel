@@ -9,6 +9,7 @@ members = [
     "crates/openpixel-security",
     "crates/openpixel-api",
     "crates/openpixel-pdf",
+    "crates/openpixel-documents",
     "crates/openpixel-wasm",
     "apps/cli",
 ]
@@ -70,6 +71,10 @@ serde-wasm-bindgen = "=0.6.5"
 gif = "=0.14.2"
 tiff = "=0.11.3"
 flate2 = "=1.1.11"
+# Studio Phase 3 — minimal ZIP writer for EPUB/DOCX export in
+# openpixel-pdf (crc32fast is already a transitive dep of flate2
+# at this exact version; it is pinned here as a direct dep).
+crc32fast = "=1.5.5"
 tintbox = "=0.5.0"
 # Studio Phase 1 — PDF engine (pinned exact — see
 # docs/EXISTING_PROJECT_AUDIT.md §14 and LICENSE_AUDIT.md):

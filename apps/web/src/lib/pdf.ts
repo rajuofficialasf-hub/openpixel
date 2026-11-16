@@ -38,6 +38,22 @@ export type { PdfInfo }
 export const PDF_PAGE_SIZES = ['Original', 'A4', 'Letter', 'A5'] as const
 export type PdfPageSize = (typeof PDF_PAGE_SIZES)[number]
 
+/** Compression modes the WASM `pdf_compress` export accepts. */
+export const PDF_COMPRESS_MODES = ['screen', 'ebook', 'printer'] as const
+export type PdfCompressMode = (typeof PDF_COMPRESS_MODES)[number]
+
+/** What `pdfCompress` returns: the output bytes plus the measured outcome. */
+export interface PdfCompressResult {
+  data: Uint8Array<ArrayBuffer>
+  inputBytes: number
+  outputBytes: number
+  savedBytes: number
+  savedPercent: number
+  imagesRecompressed: number
+  imagesSkipped: number
+  note: string | null
+}
+
 /** Render scales offered for preview / PDF→image (×72 dpi). */
 export const PDF_RENDER_SCALES = [1, 1.5, 2] as const
 
@@ -223,6 +239,44 @@ export async function pdfFromImages(
   if (!mod) return null
   try {
     return freshCopy(mod.pdf_from_images(images, pageSize ?? undefined))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Compress a PDF via the WASM engine. `mode` is `screen`
+ * (72 DPI, JPEG q50), `ebook` (150 DPI, q75) or `printer`
+ * (300 DPI, q90); `stripMetadata` removes the /Info metadata.
+ * Returns the output bytes plus the measured sizes, or `null`
+ * when the module is absent or the engine rejects the input.
+ * When the compressed file would be larger and no transformation
+ * was requested, the data is the original bytes and `note` says
+ * so — the caller shows that instead of claiming a saving.
+ */
+export async function pdfCompress(
+  bytes: Uint8Array,
+  mode: PdfCompressMode,
+  stripMetadata: boolean,
+): Promise<PdfCompressResult | null> {
+  const mod = await loadWasmEngine()
+  if (!mod) return null
+  try {
+    const out = mod.pdf_compress(bytes, JSON.stringify({ mode, strip_metadata: stripMetadata }))
+    // The Rust export emits the sizes as JS numbers (f64), but
+    // coerce anyway: a u64/i64 there would arrive as a BigInt,
+    // and the UI does arithmetic on these fields (a BigInt in
+    // `formatBytes` throws "Cannot mix BigInt and other types").
+    return {
+      data: freshCopy(out.data),
+      inputBytes: Number(out.input_bytes),
+      outputBytes: Number(out.output_bytes),
+      savedBytes: Number(out.saved_bytes),
+      savedPercent: Number(out.saved_percent),
+      imagesRecompressed: Number(out.images_recompressed),
+      imagesSkipped: Number(out.images_skipped),
+      note: out.note ?? null,
+    }
   } catch {
     return null
   }

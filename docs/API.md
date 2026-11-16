@@ -374,6 +374,13 @@ openpixel pdf booklet <input> <output>
 openpixel pdf nup <input> <output> [--cols 2] [--rows 2]
 openpixel pdf render <input> [--out-dir <dir>] [--pages 1,3] [--format png] [--scale 2.0] [--quality 85]
 openpixel pdf from-images <img1> <img2>... -o <out.pdf> [--page-size A4|Letter|A5]
+openpixel pdf compress <input> <output> [--mode screen|ebook|printer] [--strip-metadata]
+openpixel pdf protect <input> <output> --user-password <pw> [--owner-password <pw>] [--no-print] [--no-copy] [--no-modify]
+openpixel pdf unlock <input> <output> --password <pw>
+openpixel pdf watermark <input> <output> --text <text> [--font-size 48] [--opacity 0.25] [--angle 45]
+openpixel pdf extract-text <input> [-o <out>] [--pages 1,3] [--format txt|html|epub|docx]
+openpixel doc convert <input> --to <fmt> [-o <out>] [--timeout-secs 120]
+openpixel doc formats [--json]
 openpixel --json <any command>     # JSON output
 openpixel --quiet / --verbose      # log level
 ```
@@ -409,6 +416,25 @@ engine.render_to_images(bytes, pages: Option<&[u32]>, scale: f32) -> Result<Vec<
 // Image -> PDF
 engine.from_images(images: &[Vec<u8>], page_size: Option<(f64, f64)>) -> Result<Vec<u8>>
 //   named_page_size("A4" | "Letter" | "A5") -> Option<(f64, f64)>
+// Compression (Phase 3) — returns the output bytes and the measured outcome
+engine.compress(bytes, mode: CompressMode, options: CompressOptions) -> Result<(Vec<u8>, CompressOutcome)>
+//   CompressMode::Screen (72 DPI, JPEG q50) | Ebook (150 DPI, q75) | Printer (300 DPI, q90)
+//   CompressOptions { strip_metadata: bool, images: bool } (default: no strip, images on)
+//   CompressOutcome { mode, input_bytes, output_bytes, compressed_bytes, saved_bytes, saved_percent,
+//     images_total, images_recompressed, images_skipped, skipped_reasons, metadata_stripped, note }
+//   Best-of rule: when the compressed file is larger and no transformation was requested,
+//   the ORIGINAL bytes are returned with a note — never a bigger file labelled "compressed".
+// Security (Phase 3) — RC4-128 only (lopdf V2); AES is NOT claimed, see docs/PDF.md
+engine.protect(bytes, user_password, owner_password, permissions: PdfPermissions) -> Result<Vec<u8>>
+//   PdfPermissions { print, copy, modify } (default: all true)
+// engine.unlock(bytes, password) -> Result<Vec<u8>>   // user or owner password; wrong password = error
+// engine.watermark(bytes, text, WatermarkOptions { font_size, opacity, angle_degrees, grey }) -> Result<Vec<u8>>
+// Text extraction (Phase 3, optional `pdfium` feature — without it, a clear NotImplemented error)
+engine.extract_text(bytes, pages: Option<&[u32]>) -> Result<Vec<PageText>>
+//   PageText { page: u32, text: String, lines: Vec<TextLine> }; TextLine { text, x, y_top, width, height } (pt, top-left origin)
+//   text_to_txt(pages) -> String | text_to_html(pages) -> String
+//   text_to_epub(pages, title) -> Vec<u8>   // EPUB 3, mimetype first + stored, one chapter per page
+//   text_to_docx(pages) -> Vec<u8>          // minimal OOXML, one paragraph per line
 // Document detection (signature-first, never the extension)
 discover_document(bytes, extension, mime) -> DocumentDiscovery  // DocumentFormat::Pdf | Office | ...
 ```
@@ -431,8 +457,50 @@ pdf_process(bytes, ops_json) -> Uint8Array[]        // ops: {"kind":"split","ran
                                                     //   | {"kind":"nup","cols":2,"rows":2}
 pdf_merge(documents: Uint8Array[]) -> Uint8Array
 pdf_from_images(images: Uint8Array[], page_size?: "A4"|"Letter"|"A5") -> Uint8Array
+pdf_compress(bytes, options_json) -> { data, input_bytes, output_bytes, saved_bytes, saved_percent, images_recompressed, images_skipped, note }
+//   options_json: {"mode":"screen"|"ebook"|"printer","strip_metadata":bool}
+//   No linearise option: lopdf ignores it (see docs/PDF.md) — offering it would be fake.
 // No render export: PDFium cannot run in the browser — the web UI
 // renders PDF pages with pdf.js instead.
+// No protect/unlock/watermark/extract-text exports: native-only
+// (PDFium / passwords stay in the CLI/desktop).
+```
+
+## Studio Phase 3 — Document conversion API (`openpixel-documents`, `openpixel-formats`, `openpixel-api`)
+
+The conversion registry is the single source of truth for what
+converts to what, with which engine, and where it runs
+(`crates/openpixel-formats/src/conversion.rs`, 31 rows). The API
+types mirror it exactly (`openpixel-api::list_document_conversions()`).
+
+```rust
+// Registry row (openpixel-formats)
+DocumentConversion { source: &'static str, target: &'static str,
+  engine: ConversionEngine,           // LibreOffice | PdfText
+  runs_where: RunsWhere,              // CliDesktop (every row — nothing runs in the browser)
+  fidelity: &'static str }            // what actually survives, in plain words
+find_conversion(source, target) -> Option<&DocumentConversion>
+conversion_targets(source) -> Vec<&'static str>   // what a source CAN convert to (used in refusal messages)
+libreoffice_filter(target) -> Option<&'static str> // the LibreOffice --convert-to filter name, or None
+
+// Engine (openpixel-documents) — implements ProcessingEngine
+DocumentEngine::new() -> Self
+engine.convert(bytes, target: &str, options: DocumentOptions) -> Result<Vec<u8>>
+//   DocumentOptions { source_hint: Option<String>, timeout_secs: u64 } (default: no hint, 120 s)
+//   Detects the source (signature-first; OLE2 legacy formats need the extension as the hint),
+//   looks up the registry row, routes LibreOffice rows to `soffice --headless`
+//   (fresh profile, output verified to exist — exit code 0 is never trusted)
+//   and PdfText rows to PDFium text extraction + the text_to_* builders.
+//   No row -> UnsupportedConversion, naming the targets the source CAN convert to.
+//   Encrypted PDFs are refused by the engine before LibreOffice ever sees them.
+DocumentError: NotAvailable (no LibreOffice / no PDFium) | UnsupportedConversion { src, dst, reason }
+  | ConversionFailed { src, dst, detail } | Timeout(u64) | UnknownFormat | Pdf | Core | Security | Io
+
+// API types (openpixel-api — JSON-serialisable mirrors for a future server)
+DocumentConversion { source: String, target: String, engine: String, runs_where: String, fidelity: String }
+DocumentConvertRequest { target_format: String, timeout_secs: Option<u64> }
+DocumentConvertResponse { output_file_id: String, source_format: String, target_format: String,
+  engine: String, input_bytes: u64, output_bytes: u64, fidelity: String }
 ```
 
 ### `Engine::encode_decoded` (image engine, Phase 2)

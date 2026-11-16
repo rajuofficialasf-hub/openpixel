@@ -287,6 +287,99 @@ pub fn pdf_from_images(images: JsValue, page_size: Option<String>) -> Result<Vec
     pdf_engine().from_images(&imgs, size).map_err(js_err)
 }
 
+/// Compress a PDF (Phase 3): image downsample + re-encode and
+/// structure optimisation. `options_json` is e.g.
+/// `{"mode":"ebook","strip_metadata":false}` — `mode` is
+/// `screen` | `ebook` | `printer` (default `ebook`).
+/// Returns a JS object `{ data: Uint8Array, input_bytes,
+/// output_bytes, saved_bytes, saved_percent,
+/// images_recompressed, images_skipped, note }` — the sizes are
+/// measured, never estimated. When the compressed file would be
+/// larger and no transformation was requested, `data` is the
+/// original bytes and `note` says so.
+///
+/// The byte counts are emitted as JS **numbers** (f64), not
+/// BigInts: `JsValue::from(u64)` becomes a BigInt in JS, and the
+/// web UI does arithmetic on these fields (`formatBytes` divides
+/// them) — a BigInt there throws "Cannot mix BigInt and other
+/// types". f64 is exact for any real file size (PDFs are capped
+/// at 100 MiB, far below 2^53).
+#[wasm_bindgen]
+pub fn pdf_compress(bytes: &[u8], options_json: &str) -> Result<JsValue, JsValue> {
+    let (out, outcome) = pdf_compress_inner(bytes, options_json).map_err(js_err)?;
+    let obj = js_sys::Object::new();
+    let uint = js_sys::Uint8Array::new_with_length(out.len() as u32);
+    uint.copy_from(out.as_slice());
+    set_field(&obj, "data", uint.into())?;
+    set_field(
+        &obj,
+        "input_bytes",
+        JsValue::from(outcome.input_bytes as f64),
+    )?;
+    set_field(
+        &obj,
+        "output_bytes",
+        JsValue::from(outcome.output_bytes as f64),
+    )?;
+    set_field(
+        &obj,
+        "saved_bytes",
+        JsValue::from(outcome.saved_bytes as f64),
+    )?;
+    set_field(&obj, "saved_percent", JsValue::from(outcome.saved_percent))?;
+    set_field(
+        &obj,
+        "images_recompressed",
+        JsValue::from(outcome.images_recompressed as u32),
+    )?;
+    set_field(
+        &obj,
+        "images_skipped",
+        JsValue::from(outcome.images_skipped as u32),
+    )?;
+    set_field(
+        &obj,
+        "note",
+        outcome.note.map_or(JsValue::NULL, JsValue::from),
+    )?;
+    Ok(obj.into())
+}
+
+/// The `pdf_compress` options, as plain JSON (testable without JS).
+#[derive(Debug, serde::Deserialize)]
+struct PdfCompressJson {
+    mode: Option<String>,
+    strip_metadata: Option<bool>,
+}
+
+/// Unit-testable core of [`pdf_compress`]: parse the options JSON
+/// and run the engine. No linearise option — lopdf 0.47 ignores
+/// its own `SaveOptions.linearize`, so it is not offered (see
+/// docs/PDF.md).
+fn pdf_compress_inner(
+    bytes: &[u8],
+    options_json: &str,
+) -> Result<(Vec<u8>, openpixel_pdf::CompressOutcome), openpixel_pdf::PdfError> {
+    let opts: PdfCompressJson = serde_json::from_str(options_json).map_err(|e| {
+        openpixel_pdf::PdfError::InvalidPdf(format!("invalid compress options: {e}"))
+    })?;
+    let mode = openpixel_pdf::CompressMode::from_name(opts.mode.as_deref().unwrap_or("ebook"))
+        .ok_or_else(|| {
+            openpixel_pdf::PdfError::InvalidPdf(format!(
+                "unknown compression mode '{}' — use screen, ebook or printer",
+                opts.mode.as_deref().unwrap_or("")
+            ))
+        })?;
+    pdf_engine().compress(
+        bytes,
+        mode,
+        openpixel_pdf::CompressOptions {
+            strip_metadata: opts.strip_metadata.unwrap_or(false),
+            images: true,
+        },
+    )
+}
+
 /// A JS array of `Uint8Array` → `Vec<Vec<u8>>`. Anything else is a
 /// caller error, never a silent empty list.
 fn js_array_of_bytes(value: &JsValue) -> Result<Vec<Vec<u8>>, openpixel_core::OpenPixelError> {
@@ -769,6 +862,30 @@ mod tests {
         assert!(pdf_process_inner(&doc, r#"{"kind":"extract"}"#).is_err());
         assert!(pdf_process_inner(&doc, r#"{"kind":"extract","pages":[9]}"#).is_err());
         assert!(pdf_process_inner(&doc, "not json").is_err());
+    }
+
+    #[test]
+    fn pdf_compress_reports_measured_sizes_and_honest_modes() {
+        let doc = make_test_pdf(3);
+        let (out, outcome) =
+            pdf_compress_inner(&doc, r#"{"mode":"ebook","strip_metadata":false}"#).unwrap();
+        assert_eq!(outcome.input_bytes as usize, doc.len());
+        assert_eq!(outcome.output_bytes as usize, out.len());
+        assert_eq!(pdf_page_count(&out), 3);
+        // Compression never returns a bigger file without a
+        // requested transformation.
+        assert!(out.len() <= doc.len());
+        assert!(outcome.saved_bytes >= 0);
+        // Unknown modes and bad JSON are caller errors.
+        assert!(pdf_compress_inner(&doc, r#"{"mode":"extreme"}"#).is_err());
+        assert!(pdf_compress_inner(&doc, "not json").is_err());
+        // strip_metadata on a doc with no /Info strips nothing
+        // (honest false) but still returns a valid document.
+        let titled = make_test_pdf(1);
+        let (out, outcome) =
+            pdf_compress_inner(&titled, r#"{"mode":"screen","strip_metadata":true}"#).unwrap();
+        assert!(!outcome.metadata_stripped);
+        assert_eq!(pdf_page_count(&out), 1);
     }
 
     #[test]

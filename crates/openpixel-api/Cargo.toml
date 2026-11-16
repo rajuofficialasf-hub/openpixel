@@ -7,6 +7,7 @@ description = "OpenPixel API — shared /api/v1 request/response types, job type
 
 [dependencies]
 openpixel-core = { path = "../openpixel-core" }
+openpixel-formats = { path = "../openpixel-formats" }
 openpixel-jobs = { path = "../openpixel-jobs" }
 serde.workspace = true
 serde_json.workspace = true

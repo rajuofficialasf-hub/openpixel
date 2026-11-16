@@ -260,6 +260,13 @@ enum Commands {
         #[command(subcommand)]
         command: PdfCommands,
     },
+    /// Document conversion (Studio Phase 3): Office/PDF via
+    /// LibreOffice headless (desktop/server only) and PDF text
+    /// exports. Never runs in the browser.
+    Doc {
+        #[command(subcommand)]
+        command: DocCommands,
+    },
 }
 
 /// The `openpixel pdf ...` subcommands (Studio Phase 2). Every
@@ -403,6 +410,110 @@ enum PdfCommands {
         #[arg(long)]
         page_size: Option<String>,
     },
+    /// Compress a PDF: downsample + re-encode images and optimise
+    /// structure. Prints input/output sizes and what was saved.
+    /// When the compressed file would be larger, the original is
+    /// kept and the report says so (unless --strip-metadata was
+    /// asked for, which is always honoured).
+    Compress {
+        input: PathBuf,
+        output: PathBuf,
+        /// screen (72 DPI, JPEG q50), ebook (150 DPI, q75) or
+        /// printer (300 DPI, q90). Default: ebook.
+        #[arg(long, default_value = "ebook")]
+        mode: String,
+        /// Strip the document /Info metadata (title/author/…)
+        #[arg(long)]
+        strip_metadata: bool,
+    },
+    /// Password-protect a PDF (RC4-128, user + owner password).
+    /// Passwords are command-line arguments — use only on your
+    /// own machine, never in shared shell history you care about.
+    Protect {
+        input: PathBuf,
+        output: PathBuf,
+        /// User password (required to open the file)
+        #[arg(long)]
+        user_password: String,
+        /// Owner password (full rights; defaults to the user password)
+        #[arg(long)]
+        owner_password: Option<String>,
+        /// Forbid printing
+        #[arg(long)]
+        no_print: bool,
+        /// Forbid copying text
+        #[arg(long)]
+        no_copy: bool,
+        /// Forbid modifying the document
+        #[arg(long)]
+        no_modify: bool,
+    },
+    /// Remove password protection (user or owner password)
+    Unlock {
+        input: PathBuf,
+        output: PathBuf,
+        /// The user or owner password
+        #[arg(long)]
+        password: String,
+    },
+    /// Add a diagonal text watermark to every page
+    Watermark {
+        input: PathBuf,
+        output: PathBuf,
+        /// Watermark text
+        #[arg(long)]
+        text: String,
+        /// Font size in points (default 48)
+        #[arg(long, default_value = "48")]
+        font_size: f64,
+        /// Opacity 0.0..=1.0 (default 0.25)
+        #[arg(long, default_value = "0.25")]
+        opacity: f32,
+        /// Rotation in degrees, counter-clockwise (default 45)
+        #[arg(long, default_value = "45")]
+        angle: f64,
+    },
+    /// Extract text with layout (needs libpdfium — see docs/PDF.md)
+    ExtractText {
+        input: PathBuf,
+        /// Output file (default: <input-stem>.<format> next to the input)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Pages, e.g. 1,3,5 or 1-3,5 (default: all pages)
+        #[arg(long)]
+        pages: Option<String>,
+        /// Output format: txt, html, epub or docx (default txt).
+        /// EPUB/DOCX are text-only reflows, not the original layout.
+        #[arg(long, default_value = "txt")]
+        format: String,
+    },
+}
+
+/// The `openpixel doc ...` subcommands (Studio Phase 3).
+/// Conversions run LibreOffice headless on this machine — never
+/// in the browser, never through an external API.
+#[derive(Subcommand)]
+enum DocCommands {
+    /// Convert a document: Office/PDF via LibreOffice, or PDF text
+    /// exports (txt/html/epub/docx). Source is detected from the
+    /// file; `--to` names the target format.
+    Convert {
+        input: PathBuf,
+        /// Target format: pdf, docx, xlsx, pptx, odt, ods, odp,
+        /// html, txt, csv, rtf, epub (see `openpixel doc formats`
+        /// for the full matrix)
+        #[arg(long)]
+        to: String,
+        /// Output file (default: <input-stem>.<to> next to the input)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// LibreOffice timeout, seconds (default 120)
+        #[arg(long, default_value = "120")]
+        timeout_secs: u64,
+    },
+    /// List every supported document conversion, the engine that
+    /// runs it, where it runs, and what fidelity to expect
+    Formats,
 }
 
 fn main() -> ExitCode {
@@ -938,6 +1049,7 @@ fn run(cli: &Cli, engine: &Arc<Engine>) -> Result<(), openpixel_core::OpenPixelE
             Ok(())
         }
         Commands::Pdf { command } => run_pdf(cli, engine, command),
+        Commands::Doc { command } => run_doc(cli, command),
     }
 }
 
@@ -1437,6 +1549,403 @@ fn run_pdf(
             print_pdf_op(cli, &pdf, "from-images", output, &out);
             Ok(())
         }
+        PdfCommands::Compress {
+            input,
+            output,
+            mode,
+            strip_metadata,
+        } => {
+            let mode = openpixel_pdf::CompressMode::from_name(mode).ok_or_else(|| {
+                openpixel_core::OpenPixelError::InvalidArgument(format!(
+                    "unknown compression mode '{mode}' — use screen, ebook or printer"
+                ))
+            })?;
+            let bytes = read_pdf_bytes(input)?;
+            let (out, outcome) = pdf
+                .compress(
+                    &bytes,
+                    mode,
+                    openpixel_pdf::CompressOptions {
+                        strip_metadata: *strip_metadata,
+                        images: true,
+                    },
+                )
+                .map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&PdfCompressSummary {
+                        command: "compress",
+                        mode: outcome.mode.label(),
+                        output: output.clone(),
+                        input_bytes: outcome.input_bytes,
+                        output_bytes: outcome.output_bytes,
+                        saved_bytes: outcome.saved_bytes,
+                        saved_percent: outcome.saved_percent,
+                        images_recompressed: outcome.images_recompressed,
+                        images_skipped: outcome.images_skipped,
+                        skipped_reasons: outcome.skipped_reasons.clone(),
+                        note: outcome.note.clone(),
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                println!(
+                    "compressed {} -> {} ({} bytes -> {} bytes, {:.1}% saved)",
+                    input.display(),
+                    output.display(),
+                    outcome.input_bytes,
+                    outcome.output_bytes,
+                    outcome.saved_percent
+                );
+                println!(
+                    "images: {} recompressed, {} skipped{}",
+                    outcome.images_recompressed,
+                    outcome.images_skipped,
+                    if outcome.skipped_reasons.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" ({})", outcome.skipped_reasons.join("; "))
+                    }
+                );
+                if let Some(note) = &outcome.note {
+                    println!("note: {note}");
+                }
+            }
+            Ok(())
+        }
+        PdfCommands::Protect {
+            input,
+            output,
+            user_password,
+            owner_password,
+            no_print,
+            no_copy,
+            no_modify,
+        } => {
+            let bytes = read_pdf_bytes(input)?;
+            let perms = openpixel_pdf::PdfPermissions {
+                print: !no_print,
+                copy: !no_copy,
+                modify: !no_modify,
+            };
+            let out = pdf
+                .protect(
+                    &bytes,
+                    user_password,
+                    owner_password.as_deref().unwrap_or(""),
+                    perms,
+                )
+                .map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            // The output is encrypted, so its page count cannot be
+            // read back without a password — report the input's
+            // count instead of a misleading "0 pages".
+            let pages = pdf.page_count(&bytes).unwrap_or(0);
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&PdfOpSummary {
+                        command: "protect",
+                        output: output.to_path_buf(),
+                        pages,
+                        bytes: out.len() as u64,
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                println!(
+                    "wrote {} ({} pages, {} bytes, encrypted)",
+                    output.display(),
+                    pages,
+                    out.len()
+                );
+            }
+            if !cli.json && !cli.quiet {
+                println!("protected with RC4-128 (user password required to open)");
+            }
+            Ok(())
+        }
+        PdfCommands::Unlock {
+            input,
+            output,
+            password,
+        } => {
+            let bytes = read_pdf_bytes(input)?;
+            let out = pdf.unlock(&bytes, password).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            print_pdf_op(cli, &pdf, "unlock", output, &out);
+            Ok(())
+        }
+        PdfCommands::Watermark {
+            input,
+            output,
+            text,
+            font_size,
+            opacity,
+            angle,
+        } => {
+            let bytes = read_pdf_bytes(input)?;
+            let out = pdf
+                .watermark(
+                    &bytes,
+                    text,
+                    openpixel_pdf::WatermarkOptions {
+                        font_size: *font_size,
+                        opacity: *opacity,
+                        angle_degrees: *angle,
+                        grey: 0.5,
+                    },
+                )
+                .map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            print_pdf_op(cli, &pdf, "watermark", output, &out);
+            Ok(())
+        }
+        PdfCommands::ExtractText {
+            input,
+            output,
+            pages,
+            format,
+        } => {
+            let format = format.trim().to_ascii_lowercase();
+            if !matches!(format.as_str(), "txt" | "html" | "epub" | "docx") {
+                return Err(openpixel_core::OpenPixelError::InvalidArgument(format!(
+                    "unknown text format '{format}' — use txt, html, epub or docx"
+                )));
+            }
+            let bytes = read_pdf_bytes(input)?;
+            let list = pages.as_deref().map(parse_page_list).transpose()?;
+            let extracted = pdf.extract_text(&bytes, list.as_deref()).map_err(pdf_err)?;
+            let title = pdf
+                .inspect(&bytes)
+                .map_err(pdf_err)?
+                .title
+                .unwrap_or_else(|| "Document".to_string());
+            let out: Vec<u8> = match format.as_str() {
+                "txt" => openpixel_pdf::PdfEngine::text_to_txt(&extracted).into_bytes(),
+                "html" => openpixel_pdf::PdfEngine::text_to_html(&extracted, &title).into_bytes(),
+                "epub" => {
+                    openpixel_pdf::PdfEngine::text_to_epub(&extracted, &title).map_err(pdf_err)?
+                }
+                "docx" => {
+                    openpixel_pdf::PdfEngine::text_to_docx(&extracted, &title).map_err(pdf_err)?
+                }
+                _ => unreachable!(),
+            };
+            let output = output.clone().unwrap_or_else(|| {
+                let stem = input
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "out".into());
+                input.with_file_name(format!("{stem}.{format}"))
+            });
+            write_pdf_bytes(&output, &out)?;
+            let chars: usize = extracted.iter().map(|p| p.text.len()).sum();
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&PdfExtractTextSummary {
+                        command: "extract-text",
+                        format: format.clone(),
+                        output: output.clone(),
+                        pages: extracted.len() as u32,
+                        chars: chars as u64,
+                        bytes: out.len() as u64,
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                println!(
+                    "extracted {} pages ({} chars) -> {} ({} bytes, {})",
+                    extracted.len(),
+                    chars,
+                    output.display(),
+                    out.len(),
+                    format
+                );
+            }
+            Ok(())
+        }
+    }
+}
+
+/// What `pdf compress` reports, in text and `--json`.
+#[derive(Debug, serde::Serialize)]
+struct PdfCompressSummary {
+    command: &'static str,
+    mode: &'static str,
+    output: PathBuf,
+    input_bytes: u64,
+    output_bytes: u64,
+    saved_bytes: i64,
+    saved_percent: f64,
+    images_recompressed: usize,
+    images_skipped: usize,
+    skipped_reasons: Vec<String>,
+    note: Option<String>,
+}
+
+/// What `pdf extract-text` reports, in text and `--json`.
+#[derive(Debug, serde::Serialize)]
+struct PdfExtractTextSummary {
+    command: &'static str,
+    format: String,
+    output: PathBuf,
+    pages: u32,
+    chars: u64,
+    bytes: u64,
+}
+
+/// What `doc convert` reports, in text and `--json`.
+#[derive(Debug, serde::Serialize)]
+struct DocConvertSummary {
+    command: &'static str,
+    input: PathBuf,
+    output: PathBuf,
+    source: String,
+    target: String,
+    engine: String,
+    input_bytes: u64,
+    output_bytes: u64,
+    fidelity: String,
+}
+
+fn run_doc(cli: &Cli, command: &DocCommands) -> Result<(), openpixel_core::OpenPixelError> {
+    match command {
+        DocCommands::Convert {
+            input,
+            to,
+            output,
+            timeout_secs,
+        } => {
+            let target = to.trim().trim_start_matches('.').to_ascii_lowercase();
+            let bytes = read_pdf_bytes(input)?;
+            let hint = input.extension().map(|e| e.to_string_lossy().to_string());
+            let engine = openpixel_documents::DocumentEngine::new();
+            let options = openpixel_documents::DocumentOptions {
+                source_hint: hint,
+                timeout_secs: *timeout_secs,
+            };
+            let (outcome, out) = engine
+                .convert(&bytes, &target, &options)
+                .map_err(openpixel_core::OpenPixelError::from)?;
+            let output = output.clone().unwrap_or_else(|| {
+                let stem = input
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "out".into());
+                input.with_file_name(format!("{stem}.{target}"))
+            });
+            write_pdf_bytes(&output, &out)?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&DocConvertSummary {
+                        command: "doc-convert",
+                        input: input.clone(),
+                        output: output.clone(),
+                        source: outcome.source.id().to_string(),
+                        target: outcome.target.clone(),
+                        engine: match outcome.engine {
+                            openpixel_formats::ConversionEngine::LibreOffice => {
+                                "libre_office".to_string()
+                            }
+                            openpixel_formats::ConversionEngine::PdfText => {
+                                "pdf_text".to_string()
+                            }
+                        },
+                        input_bytes: outcome.input_bytes,
+                        output_bytes: outcome.output_bytes,
+                        fidelity: outcome.fidelity.clone(),
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                println!(
+                    "converted {} ({} bytes) -> {} ({} bytes) via {}",
+                    input.display(),
+                    outcome.input_bytes,
+                    output.display(),
+                    outcome.output_bytes,
+                    match outcome.engine {
+                        openpixel_formats::ConversionEngine::LibreOffice => "LibreOffice",
+                        openpixel_formats::ConversionEngine::PdfText => "PDF text extraction",
+                    }
+                );
+                println!("fidelity: {}", outcome.fidelity);
+            }
+            Ok(())
+        }
+        DocCommands::Formats => {
+            let lo = openpixel_documents::LibreOffice::discover();
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&openpixel_api_types()).unwrap()
+                );
+            } else {
+                match &lo {
+                    Some(lo) => match lo.version() {
+                        Ok(v) => println!("LibreOffice: {v}"),
+                        Err(e) => println!("LibreOffice: found, but --version failed: {e}"),
+                    },
+                    None => println!(
+                        "LibreOffice: NOT INSTALLED — Office conversions need LibreOffice on this machine (see docs/PDF.md)"
+                    ),
+                }
+                println!(
+                    "PDF text extraction: {}",
+                    if openpixel_pdf::pdfium_available() {
+                        "available (PDFium)"
+                    } else {
+                        "NOT AVAILABLE — PDF -> TXT/HTML/EPUB/DOCX need --features pdfium (see docs/PDF.md)"
+                    }
+                );
+                println!();
+                println!(
+                    "{:<8} {:<8} {:<13} {:<12} FIDELITY",
+                    "SOURCE", "TARGET", "ENGINE", "RUNS WHERE"
+                );
+                for row in openpixel_formats::DOCUMENT_CONVERSIONS {
+                    println!(
+                        "{:<8} {:<8} {:<13} {:<12} {}",
+                        row.source,
+                        row.target,
+                        match row.engine {
+                            openpixel_formats::ConversionEngine::LibreOffice => "libre_office",
+                            openpixel_formats::ConversionEngine::PdfText => "pdf_text",
+                        },
+                        match row.runs_where {
+                            openpixel_formats::RunsWhere::CliDesktop => "cli/desktop",
+                            openpixel_formats::RunsWhere::Browser => "browser",
+                        },
+                        row.fidelity
+                    );
+                }
+                println!();
+                println!("Conversions not listed here are NOT supported — e.g. PDF -> XLSX/PPTX (LibreOffice has no export filter for them).");
+            }
+            Ok(())
+        }
+    }
+}
+
+/// The `doc formats --json` payload: the conversion matrix plus
+/// the local availability of the two engines that run it.
+#[derive(Debug, serde::Serialize)]
+struct DocFormatsJson {
+    libreoffice: Option<String>,
+    pdf_text_extraction: bool,
+    conversions: Vec<openpixel_api::DocumentConversion>,
+}
+
+fn openpixel_api_types() -> DocFormatsJson {
+    DocFormatsJson {
+        libreoffice: openpixel_documents::LibreOffice::discover().and_then(|lo| lo.version().ok()),
+        pdf_text_extraction: openpixel_pdf::pdfium_available(),
+        conversions: openpixel_api::list_document_conversions(),
     }
 }
 

@@ -149,6 +149,47 @@ export function info(bytes) {
 }
 
 /**
+ * Compress a PDF (Phase 3): image downsample + re-encode and
+ * structure optimisation. `options_json` is e.g.
+ * `{"mode":"ebook","strip_metadata":false}` — `mode` is
+ * `screen` | `ebook` | `printer` (default `ebook`).
+ * Returns a JS object `{ data: Uint8Array, input_bytes,
+ * output_bytes, saved_bytes, saved_percent,
+ * images_recompressed, images_skipped, note }` — the sizes are
+ * measured, never estimated. When the compressed file would be
+ * larger and no transformation was requested, `data` is the
+ * original bytes and `note` says so.
+ *
+ * The byte counts are emitted as JS **numbers** (f64), not
+ * BigInts: `JsValue::from(u64)` becomes a BigInt in JS, and the
+ * web UI does arithmetic on these fields (`formatBytes` divides
+ * them) — a BigInt there throws "Cannot mix BigInt and other
+ * types". f64 is exact for any real file size (PDFs are capped
+ * at 100 MiB, far below 2^53).
+ * @param {Uint8Array | number[]} bytes
+ * @param {string} options_json
+ * @returns {any}
+ */
+export function pdf_compress(bytes, options_json) {
+    let ptr0, len0, ptr1, len1;
+    try {
+        ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = passStringToWasm0(options_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len1 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+        if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+        throw e;
+    }
+    const ret = wasm.pdf_compress(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * Build a PDF from images (a JS array of `Uint8Array` — PNG, JPEG,
  * WebP, anything the engine decodes), one page per image, in order.
  * `page_size` is a named size ("A4", "Letter", "A5") or undefined

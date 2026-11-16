@@ -29,7 +29,7 @@ real PNG/JPEG/TIFF/HEIC/GIF into that directory with the same names.
 node apps/web/e2e/web-e2e.mjs        # 37 checks, Chromium vs :8321
 node apps/web/e2e/web-nowasm.mjs     # 9 checks, WASM-absent fallback vs :8322
 node apps/web/e2e/resize-e2e.mjs     # 16 checks, Resize tab vs :8321
-node apps/web/e2e/pdf-e2e.mjs        # 14 checks, PDF tab vs :8323
+node apps/web/e2e/pdf-e2e.mjs        # 15 checks, PDF tab vs :8323
 ```
 
 Serve `apps/web/dist` on port 8323 for the PDF run the same way
@@ -97,15 +97,18 @@ re-encode grows the file — see docs/E2E.md §2.19). Screenshots
 `17-resize-tab.png` … `20-resize-batch.png`.
 
 `pdf-e2e.mjs` — the PDF tab, Studio Phase 2 (16 Nov 2026; see
-docs/E2E.md §2.20): tab renders; a real 4-page PDF uploads and
-its info shows the true page count, version and page sizes;
-pdf.js preview actually paints page 1 (canvas 512×384 at the
-default 2× scale — a broken worker would leave it blank);
-PDF→PNG downloads a genuine PNG at the requested dimensions
-(`file` + `openpixel info`); merge (4+2 pages) downloads a real
-6-page PDF; split downloads one real PDF per range; rotate and
-extract download real PDFs with the right page counts;
-images→PDF builds a real 2-page PDF; dark-mode screenshot.
+docs/E2E.md §2.20), extended Phase 3: tab renders; a real 4-page
+PDF uploads and its info shows the true page count (just the
+number — the "Pages | Pages: 4" duplication is fixed), version
+and page sizes; pdf.js preview actually paints page 1 (canvas
+512×384 at the default 2× scale — a broken worker would leave it
+blank); PDF→PNG downloads a genuine PNG at the requested
+dimensions (`file` + `openpixel info`); merge (4+2 pages)
+downloads a real 6-page PDF; split downloads one real PDF per
+range; rotate and extract download real PDFs with the right page
+counts; compress (screen mode) downloads a real 4-page PDF no
+bigger than the input, with the measured sizes in the status
+line; images→PDF builds a real 2-page PDF; dark-mode screenshot.
 Screenshots `21-pdf-tab.png` … `23-pdf-dark.png`.
 
 ## Known notes (see docs/E2E.md)

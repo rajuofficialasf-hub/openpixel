@@ -8,6 +8,7 @@ description = "OpenPixel PDF engine — document detection, merge/split/page ops
 [dependencies]
 openpixel-core = { path = "../openpixel-core", default-features = false }
 openpixel-formats = { path = "../openpixel-formats" }
+crc32fast.workspace = true
 flate2.workspace = true
 image.workspace = true
 # Feature activation only: lopdf -> rand -> getrandom 0.4 needs

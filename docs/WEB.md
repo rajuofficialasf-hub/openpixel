@@ -187,9 +187,10 @@ settings (per-file download, plus a .zip of all results).
   §2.19). The same run re-checked the baselines: web e2e 36/37
   (the one failure is the known keyboard file-chooser flake,
   §2.19a — not a regression) and resize e2e 16/16. New PDF tab
-  (`apps/web/e2e/pdf-e2e.mjs`, 14/14 — see docs/E2E.md §2.20).
+  (`apps/web/e2e/pdf-e2e.mjs`, 15/15 — see docs/E2E.md §2.20),
+  incl. the compress check and the fixed page-count label.
 
-## PDF tools — PDF tab (Studio Phase 2, 16 Nov 2026)
+## PDF tools — PDF tab (Studio Phase 2, extended Phase 3, 16 Nov 2026)
 
 A sixth tab next to Resize: work with PDFs entirely in the browser.
 Upload one PDF for info, preview and page operations, or build a
@@ -199,7 +200,9 @@ PDF from images — no upload, no server.
   creator / producer), encryption flag, and the effective page
   size in points per page — from the WASM engine's `pdf_info`
   (lopdf `inspect`). Without the WASM module the page count falls
-  back to pdf.js, so the tab still shows it.
+  back to pdf.js, so the tab still shows it. (Phase 3 fix: the
+  info row used to read "Pages | Pages: 4" — the value carried
+  its own "Pages:" prefix. It now shows just the number.)
 - **Page operations (all real WASM calls):** merge with a second
   PDF (`pdf_merge`), split by ranges (`pdf_process` split — one
   output document per range, each with its own download), rotate
@@ -213,6 +216,19 @@ PDF from images — no upload, no server.
 - **Images to PDF:** `pdf_from_images` — one page per image, in
   order, at the image's own size in points or on an A4 / Letter /
   A5 page.
+- **Compress (Phase 3):** `pdf_compress` — screen (72 DPI, JPEG
+  q50) / ebook (150 DPI, q75) / printer (300 DPI, q90), plus an
+  optional metadata strip. The status line reports the measured
+  sizes ("Compressed PDF: 1,687,939 → 70,306 bytes (95.8%
+  smaller, 1 image recompressed)"), and when a mode cannot shrink
+  the file the original is kept and the note says so. Same engine
+  as the CLI, same best-of rule.
+- **Office documents (Phase 3, honest state):** Word, Excel and
+  PowerPoint files cannot be converted in the browser — the
+  conversion runs LibreOffice headless, which cannot run in
+  WASM. The PDF tab states this in its bottom note and points
+  to the CLI (`openpixel doc convert`); there is no fake Office
+  upload or disabled button pretending the feature exists.
 - **Preview and PDF→image:** rendered with **pdf.js**
   (`pdfjs-dist` 6.5.438, Apache-2.0 — see `LICENSE_AUDIT.md`),
   not PDFium: PDFium needs a native libpdfium binary, which
@@ -229,12 +245,15 @@ PDF from images — no upload, no server.
   rendering is CLI/desktop-only (`openpixel pdf render`), and the
   pdf.js render may look slightly different from it on very
   complex pages. Encrypted PDFs cannot be opened in the browser
-  (the engine refuses them); use the CLI. Without the WASM
+  (the engine refuses them); use the CLI. Password protect,
+  unlock, watermark and text extraction are CLI/desktop-only too
+  (no WASM export — see `docs/PDF.md`). Without the WASM
   module, page operations are disabled with a warning, while
   preview and PDF→image still work.
-- **Tests:** `apps/web/src/lib/pdf.test.ts` (13 unit tests:
+- **Tests:** `apps/web/src/lib/pdf.test.ts` (15 unit tests:
   page-list / range / reorder parsing, page-size formatting,
-  output names, WASM-wrapper null fallback); e2e in
+  output names, WASM-wrapper null fallback incl. `pdfCompress`,
+  compress modes); e2e in
   `apps/web/e2e/pdf-e2e.mjs` (see docs/E2E.md §2.20).
 
 ## WASM status — shipped (follow-up item 2, 16 Nov 2026)

@@ -79,10 +79,16 @@ mod tests {
 
     #[test]
     fn tiny_cap_is_refused_and_huge_cap_passes() {
-        assert!(matches!(
-            check_rss_cap(1),
-            Err(SecurityError::RssCapExceeded { .. })
-        ));
+        if current_rss_bytes().is_some() {
+            // Linux: RSS is readable, so a 1-byte cap must be refused.
+            assert!(matches!(
+                check_rss_cap(1),
+                Err(SecurityError::RssCapExceeded { .. })
+            ));
+        } else {
+            // Non-Linux: RSS cannot be read, so the check is a documented no-op.
+            assert!(check_rss_cap(1).is_ok());
+        }
         assert!(check_rss_cap(u64::MAX).is_ok());
     }
 }

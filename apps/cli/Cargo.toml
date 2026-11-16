@@ -16,6 +16,11 @@ openpixel-jobs = { path = "../../crates/openpixel-jobs" }
 # libpdfium, loaded only when `pdf render` runs; every other pdf
 # command works without it).
 openpixel-pdf = { path = "../../crates/openpixel-pdf", features = ["pdfium"] }
+# Studio Phase 3: document conversion (LibreOffice headless +
+# PDF text exports).
+openpixel-documents = { path = "../../crates/openpixel-documents" }
+openpixel-formats = { path = "../../crates/openpixel-formats" }
+openpixel-api = { path = "../../crates/openpixel-api" }
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -1,0 +1,22 @@
+[package]
+name = "openpixel-documents"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OpenPixel document conversion engine — Office/PDF conversion via LibreOffice headless, PDF text exports via the PDF engine (Studio Phase 3)"
+
+[dependencies]
+# Path deps, like every other workspace crate. openpixel-core
+# with default-features = false (no dav1d) so the crate stays
+# wasm32-compatible for the CI check, like openpixel-pdf.
+openpixel-core = { path = "../openpixel-core", default-features = false }
+openpixel-formats = { path = "../openpixel-formats" }
+openpixel-pdf = { path = "../openpixel-pdf", default-features = false }
+openpixel-security = { path = "../openpixel-security" }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+# Minimal PDF/DOCX fixtures in tests: lopdf builds the PDF,
+# the PDF crate's ZIP writer builds the DOCX.
+lopdf.workspace = true

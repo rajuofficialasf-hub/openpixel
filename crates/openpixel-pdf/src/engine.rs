@@ -339,11 +339,28 @@ impl ProcessingEngine for PdfEngine {
         }
     }
 
-    fn optimize(&self, _bytes: &[u8], _level: OptimizeLevel) -> openpixel_core::Result<Vec<u8>> {
-        Err(openpixel_core::OpenPixelError::NotImplemented(
-            "PDF compression lands in Phase 3 — this engine only merges and splits in Phase 1"
-                .to_string(),
-        ))
+    /// Shrink a PDF in place. The level maps to the compression
+    /// modes (see `compress`): `Lossless` is structure-only (no
+    /// pixel is touched), `Balanced` is ebook (150 DPI, JPEG 75),
+    /// `Aggressive` is screen (72 DPI, JPEG 50). When compression
+    /// would grow the file, the original bytes are returned.
+    fn optimize(&self, bytes: &[u8], level: OptimizeLevel) -> openpixel_core::Result<Vec<u8>> {
+        let (mode, images) = match level {
+            OptimizeLevel::Lossless => (crate::CompressMode::Printer, false),
+            OptimizeLevel::Balanced => (crate::CompressMode::Ebook, true),
+            OptimizeLevel::Aggressive => (crate::CompressMode::Screen, true),
+        };
+        let (out, _) = self
+            .compress(
+                bytes,
+                mode,
+                crate::CompressOptions {
+                    strip_metadata: false,
+                    images,
+                },
+            )
+            .map_err(openpixel_core::OpenPixelError::from)?;
+        Ok(out)
     }
 
     fn health_check(&self) -> EngineHealth {
@@ -368,8 +385,8 @@ impl ProcessingEngine for PdfEngine {
                 },
                 HealthDetail {
                     name: "optimize (compression)".to_string(),
-                    ok: false,
-                    note: "not implemented — Phase 3".to_string(),
+                    ok: true,
+                    note: "screen/ebook/printer — image downsample + structure pass; original kept when larger".to_string(),
                 },
                 HealthDetail {
                     name: "page operations".to_string(),
@@ -877,11 +894,10 @@ pub(crate) mod tests {
             err,
             openpixel_core::OpenPixelError::NotImplemented(_)
         ));
-        let err = engine.optimize(&doc, OptimizeLevel::Balanced).unwrap_err();
-        assert!(matches!(
-            err,
-            openpixel_core::OpenPixelError::NotImplemented(_)
-        ));
+        // optimize() is real since Phase 3: a text-only PDF
+        // optimizes to a valid PDF with the same pages.
+        let optimized = engine.optimize(&doc, OptimizeLevel::Balanced).unwrap();
+        assert_eq!(engine.page_count(&optimized).unwrap(), 4);
         let health = engine.health_check();
         assert_eq!(health.engine, "pdf");
         assert!(health.ok);

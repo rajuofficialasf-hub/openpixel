@@ -41,10 +41,14 @@ fn missing_libpdfium_error() -> PdfError {
 }
 
 /// The render worker (feature `pdfium` only). One thread owns the
-/// one `Pdfium`; everyone else talks to it over a channel.
+/// one `Pdfium`; everyone else talks to it over a channel. The
+/// channel carries both job kinds — rendering and text extraction
+/// (Phase 3) — because PDFium allows exactly one binding per
+/// process, so a second worker thread could not bind its own.
 #[cfg(feature = "pdfium")]
-mod worker {
+pub(crate) mod worker {
     use super::*;
+    use crate::text::PageText;
     use std::sync::mpsc::{channel, Receiver, Sender};
     use std::sync::{Arc, OnceLock};
 
@@ -55,16 +59,27 @@ mod worker {
         reply: Sender<Result<DecodedImage>>,
     }
 
-    fn tx() -> &'static Sender<RenderJob> {
-        static TX: OnceLock<Sender<RenderJob>> = OnceLock::new();
+    struct TextJob {
+        pdf: Arc<Vec<u8>>,
+        page: u32,
+        reply: Sender<Result<PageText>>,
+    }
+
+    enum Job {
+        Render(RenderJob),
+        Text(TextJob),
+    }
+
+    fn tx() -> &'static Sender<Job> {
+        static TX: OnceLock<Sender<Job>> = OnceLock::new();
         TX.get_or_init(|| {
-            let (tx, rx) = channel::<RenderJob>();
+            let (tx, rx) = channel::<Job>();
             std::thread::spawn(move || run_worker(rx));
             tx
         })
     }
 
-    fn run_worker(rx: Receiver<RenderJob>) {
+    fn run_worker(rx: Receiver<Job>) {
         let pdfium = match bind_pdfium() {
             Ok(p) => p,
             Err(e) => {
@@ -76,20 +91,42 @@ mod worker {
                     other => (false, other.to_string()),
                 };
                 while let Ok(job) = rx.recv() {
-                    let err = if not_implemented {
-                        PdfError::NotImplemented(msg.clone())
-                    } else {
-                        PdfError::Lopdf(msg.clone())
-                    };
-                    let _ = job.reply.send(Err(err));
+                    match job {
+                        Job::Render(j) => {
+                            let err = if not_implemented {
+                                PdfError::NotImplemented(msg.clone())
+                            } else {
+                                PdfError::Lopdf(msg.clone())
+                            };
+                            let _ = j.reply.send(Err(err));
+                        }
+                        Job::Text(j) => {
+                            let err = if not_implemented {
+                                PdfError::NotImplemented(msg.clone())
+                            } else {
+                                PdfError::Lopdf(msg.clone())
+                            };
+                            let _ = j.reply.send(Err(err));
+                        }
+                    }
                 }
                 return;
             }
         };
         while let Ok(job) = rx.recv() {
-            let result = render_one(&pdfium, &job.pdf, job.page, job.scale);
-            if job.reply.send(result).is_err() {
-                // Caller went away; keep serving the rest.
+            match job {
+                Job::Render(j) => {
+                    let result = render_one(&pdfium, &j.pdf, j.page, j.scale);
+                    if j.reply.send(result).is_err() {
+                        // Caller went away; keep serving the rest.
+                    }
+                }
+                Job::Text(j) => {
+                    let result = extract_one(&pdfium, &j.pdf, j.page);
+                    if j.reply.send(result).is_err() {
+                        // Caller went away; keep serving the rest.
+                    }
+                }
             }
         }
     }
@@ -182,12 +219,12 @@ mod worker {
         let mut out = Vec::with_capacity(targets.len());
         for &page in targets {
             let (reply_tx, reply_rx) = channel();
-            tx().send(RenderJob {
+            tx().send(Job::Render(RenderJob {
                 pdf: Arc::clone(&pdf),
                 page,
                 scale,
                 reply: reply_tx,
-            })
+            }))
             .map_err(|_| PdfError::Lopdf("PDF render worker is gone".to_string()))?;
             let image = reply_rx
                 .recv()
@@ -195,6 +232,112 @@ mod worker {
             out.push(RenderedPage { page, image });
         }
         Ok(out)
+    }
+
+    /// Extract text from `targets` (1-based) via the worker
+    /// thread, in order. Layout comes from the segments' bounds
+    /// (see `crate::text`).
+    pub(crate) fn extract_pages(bytes: &[u8], targets: &[u32]) -> Result<Vec<PageText>> {
+        let pdf = Arc::new(bytes.to_vec());
+        let mut out = Vec::with_capacity(targets.len());
+        for &page in targets {
+            let (reply_tx, reply_rx) = channel();
+            tx().send(Job::Text(TextJob {
+                pdf: Arc::clone(&pdf),
+                page,
+                reply: reply_tx,
+            }))
+            .map_err(|_| PdfError::Lopdf("PDF render worker is gone".to_string()))?;
+            let text = reply_rx
+                .recv()
+                .map_err(|_| PdfError::Lopdf("PDF render worker is gone".to_string()))??;
+            out.push(text);
+        }
+        Ok(out)
+    }
+
+    /// One page's text, with layout: PDFium segments grouped into
+    /// lines by their vertical centres, lines top-to-bottom,
+    /// segments left-to-right, a space inserted where two segments
+    /// on one line are more than 2 pt apart.
+    fn extract_one(
+        pdfium: &pdfium_render::prelude::Pdfium,
+        pdf_bytes: &[u8],
+        page: u32,
+    ) -> Result<PageText> {
+        use pdfium_render::prelude::*;
+        let document = pdfium
+            .load_pdf_from_byte_slice(pdf_bytes, None)
+            .map_err(|e| PdfError::Lopdf(format!("PDFium could not load the PDF: {e}")))?;
+        let pdf_page = document
+            .pages()
+            .get((page - 1) as i32)
+            .map_err(|e| PdfError::Lopdf(format!("PDFium could not get page {page}: {e}")))?;
+        let page_height = pdf_page.height().value;
+        let text = pdf_page
+            .text()
+            .map_err(|e| PdfError::Lopdf(format!("PDFium could not read page {page} text: {e}")))?;
+        // Segments in document order; each carries its bounds.
+        let mut segs: Vec<(f32, f32, f32, f32, String)> = Vec::new();
+        for seg in text.segments().iter() {
+            let b = seg.bounds();
+            let t = seg.text();
+            if t.trim().is_empty() {
+                continue;
+            }
+            // PDF origin is bottom-left; y_top is from the top.
+            let y_top = page_height - b.top().value;
+            segs.push((b.left().value, y_top, b.width().value, b.height().value, t));
+        }
+        // Sort by line (top), then by x.
+        segs.sort_by(|a, b| {
+            a.1.partial_cmp(&b.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal))
+        });
+        let mut lines: Vec<crate::text::TextLine> = Vec::new();
+        for (x, y_top, w, h, t) in segs {
+            let center = y_top + h / 2.0;
+            let join = lines
+                .last_mut()
+                .filter(|line: &&mut crate::text::TextLine| {
+                    let line_center = line.y_top + line.height / 2.0;
+                    (center - line_center).abs() <= line.height.max(h) * 0.6
+                });
+            match join {
+                Some(line) => {
+                    let gap = x - (line.x + line.width);
+                    if gap > 2.0
+                        && !line.text.ends_with(char::is_whitespace)
+                        && !t.starts_with(char::is_whitespace)
+                    {
+                        line.text.push(' ');
+                    }
+                    line.text.push_str(&t);
+                    let right = (line.x + line.width).max(x + w);
+                    line.width = right - line.x;
+                    line.height = line.height.max(h);
+                    line.y_top = line.y_top.min(y_top);
+                }
+                None => lines.push(crate::text::TextLine {
+                    text: t,
+                    x,
+                    y_top,
+                    width: w,
+                    height: h,
+                }),
+            }
+        }
+        let text_all = lines
+            .iter()
+            .map(|l| l.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        Ok(PageText {
+            page,
+            text: text_all,
+            lines,
+        })
     }
 }
 

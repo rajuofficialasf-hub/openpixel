@@ -100,7 +100,7 @@ fn split_single_pages_then_remerge() {
 }
 
 #[test]
-fn trait_process_split_and_optimize_refusal() {
+fn trait_process_split_and_optimize() {
     let engine = PdfEngine::default();
     let doc = make_pdf(4, "T");
     let out = <PdfEngine as ProcessingEngine>::process(
@@ -117,8 +117,10 @@ fn trait_process_split_and_optimize_refusal() {
     assert_eq!(out.len(), 1);
     assert_eq!(engine.page_count(&out[0]).unwrap(), 2);
 
-    // Wrong target and optimize are honest NotImplemented errors,
-    // not silent no-ops.
+    // Wrong target is still an honest NotImplemented error, not a
+    // silent no-op. Optimize is implemented since Phase 3
+    // (structure pass + Ebook image recompression) and must
+    // return a valid document with the same pages.
     let err =
         <PdfEngine as ProcessingEngine>::process(&engine, &doc, "png", &PdfOptions::default())
             .unwrap_err();
@@ -126,10 +128,8 @@ fn trait_process_split_and_optimize_refusal() {
         err,
         openpixel_core::OpenPixelError::NotImplemented(_)
     ));
-    let err = <PdfEngine as ProcessingEngine>::optimize(&engine, &doc, OptimizeLevel::Balanced)
-        .unwrap_err();
-    assert!(matches!(
-        err,
-        openpixel_core::OpenPixelError::NotImplemented(_)
-    ));
+    let optimized =
+        <PdfEngine as ProcessingEngine>::optimize(&engine, &doc, OptimizeLevel::Balanced).unwrap();
+    assert_eq!(engine.page_count(&optimized).unwrap(), 4);
+    assert!(contains_bytes(&optimized, b"T page 4"));
 }

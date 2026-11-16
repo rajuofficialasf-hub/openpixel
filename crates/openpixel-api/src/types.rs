@@ -123,9 +123,113 @@ pub struct ConvertRequest {
     pub metadata_policy: Option<String>,
 }
 
+/// One row of the document conversion matrix
+/// (`GET /api/v1/documents/conversions`). A mirror of
+/// `openpixel_formats::DocumentConversion` with owned strings,
+/// so the wire type does not borrow the registry table. Rows
+/// that do not exist are not listed — the API never advertises
+/// a conversion the engine refuses.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DocumentConversion {
+    /// Source format id, e.g. `"docx"`.
+    pub source: String,
+    /// Target format id, e.g. `"pdf"`.
+    pub target: String,
+    /// `"libre_office"` or `"pdf_text"`.
+    pub engine: String,
+    /// `"cli_desktop"` today; `"browser"` when a conversion can
+    /// run in the browser (none do yet).
+    pub runs_where: String,
+    /// What the user actually gets (fidelity note).
+    pub fidelity: String,
+}
+
+impl DocumentConversion {
+    /// Mirror one registry row into its wire form.
+    pub fn from_registry(row: &openpixel_formats::DocumentConversion) -> Self {
+        Self {
+            source: row.source.to_string(),
+            target: row.target.to_string(),
+            engine: match row.engine {
+                openpixel_formats::ConversionEngine::LibreOffice => "libre_office".to_string(),
+                openpixel_formats::ConversionEngine::PdfText => "pdf_text".to_string(),
+            },
+            runs_where: match row.runs_where {
+                openpixel_formats::RunsWhere::CliDesktop => "cli_desktop".to_string(),
+                openpixel_formats::RunsWhere::Browser => "browser".to_string(),
+            },
+            fidelity: row.fidelity.to_string(),
+        }
+    }
+}
+
+/// The whole conversion matrix, in wire form.
+pub fn list_document_conversions() -> Vec<DocumentConversion> {
+    openpixel_formats::DOCUMENT_CONVERSIONS
+        .iter()
+        .map(DocumentConversion::from_registry)
+        .collect()
+}
+
+/// `POST /api/v1/documents/convert` — convert an uploaded file
+/// to `target_format`. The source format is detected from the
+/// file (signature first); unknown pairs are a
+/// `not_implemented` error naming the targets the source can
+/// convert to.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentConvertRequest {
+    pub target_format: String,
+    /// LibreOffice timeout, seconds. Defaults to 120 server-side.
+    pub timeout_secs: Option<u64>,
+}
+
+/// `POST /api/v1/documents/convert` response — the converted
+/// file's id plus the measured outcome.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentConvertResponse {
+    pub output_file_id: String,
+    pub source_format: String,
+    pub target_format: String,
+    /// `"libre_office"` or `"pdf_text"`.
+    pub engine: String,
+    pub input_bytes: u64,
+    pub output_bytes: u64,
+    pub fidelity: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn document_conversion_matrix_mirrors_the_registry() {
+        // The API lists exactly the registry rows — no more, no
+        // less — so it never advertises a conversion the engine
+        // refuses.
+        let listed = list_document_conversions();
+        assert_eq!(listed.len(), openpixel_formats::DOCUMENT_CONVERSIONS.len());
+        assert!(listed.iter().all(|c| c.runs_where == "cli_desktop"));
+        let pdf_xlsx = listed
+            .iter()
+            .find(|c| c.source == "pdf" && c.target == "xlsx");
+        assert!(
+            pdf_xlsx.is_none(),
+            "pdf -> xlsx has no route and must not be listed"
+        );
+        let docx_pdf = listed
+            .iter()
+            .find(|c| c.source == "docx" && c.target == "pdf")
+            .unwrap();
+        assert_eq!(docx_pdf.engine, "libre_office");
+        let pdf_txt = listed
+            .iter()
+            .find(|c| c.source == "pdf" && c.target == "txt")
+            .unwrap();
+        assert_eq!(pdf_txt.engine, "pdf_text");
+        let json = serde_json::to_string(&docx_pdf).unwrap();
+        let back: DocumentConversion = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, *docx_pdf);
+    }
 
     #[test]
     fn error_response_round_trips_through_json() {

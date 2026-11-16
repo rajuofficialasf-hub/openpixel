@@ -6,6 +6,7 @@ export const convert: (a: number, b: number, c: number, d: number, e: number, f:
 export const detect: (a: number, b: number) => [number, number];
 export const discover: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
 export const info: (a: number, b: number) => [number, number, number];
+export const pdf_compress: (a: number, b: number, c: number, d: number) => [number, number, number];
 export const pdf_from_images: (a: any, b: number, c: number) => [number, number, number, number];
 export const pdf_info: (a: number, b: number) => [number, number, number];
 export const pdf_merge: (a: any) => [number, number, number, number];

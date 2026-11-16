@@ -19,8 +19,16 @@ use serde::{Deserialize, Serialize};
 pub enum DocumentFormat {
     Pdf,
     Docx,
+    /// Legacy Word (OLE2 compound file). The OLE2 magic alone
+    /// cannot tell doc/xls/ppt apart — see `is_ole2` and
+    /// `discover_document`: an extension hint is needed.
+    Doc,
     Xlsx,
+    /// Legacy Excel (OLE2 compound file).
+    Xls,
     Pptx,
+    /// Legacy PowerPoint (OLE2 compound file).
+    Ppt,
     Odt,
     Ods,
     Odp,
@@ -38,8 +46,11 @@ impl DocumentFormat {
         match self {
             Self::Pdf => "pdf",
             Self::Docx => "docx",
+            Self::Doc => "doc",
             Self::Xlsx => "xlsx",
+            Self::Xls => "xls",
             Self::Pptx => "pptx",
+            Self::Ppt => "ppt",
             Self::Odt => "odt",
             Self::Ods => "ods",
             Self::Odp => "odp",
@@ -57,9 +68,12 @@ impl DocumentFormat {
         let n = name.trim().trim_start_matches('.').to_ascii_lowercase();
         Some(match n.as_str() {
             "pdf" => Self::Pdf,
-            "docx" | "doc" => Self::Docx,
-            "xlsx" | "xls" => Self::Xlsx,
-            "pptx" | "ppt" => Self::Pptx,
+            "docx" => Self::Docx,
+            "doc" => Self::Doc,
+            "xlsx" => Self::Xlsx,
+            "xls" => Self::Xls,
+            "pptx" => Self::Pptx,
+            "ppt" => Self::Ppt,
             "odt" => Self::Odt,
             "ods" => Self::Ods,
             "odp" => Self::Odp,
@@ -78,10 +92,13 @@ impl DocumentFormat {
         Some(match m.as_str() {
             "application/pdf" => Self::Pdf,
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => Self::Docx,
+            "application/msword" => Self::Doc,
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => Self::Xlsx,
+            "application/vnd.ms-excel" => Self::Xls,
             "application/vnd.openxmlformats-officedocument.presentationml.presentation" => {
                 Self::Pptx
             }
+            "application/vnd.ms-powerpoint" => Self::Ppt,
             "application/vnd.oasis.opendocument.text" => Self::Odt,
             "application/vnd.oasis.opendocument.spreadsheet" => Self::Ods,
             "application/vnd.oasis.opendocument.presentation" => Self::Odp,
@@ -117,7 +134,9 @@ impl DocumentDiscovery {
 
 /// Detect a document format from magic bytes only. `Unknown` when
 /// nothing matches — including a ZIP that is none of the known
-/// document types.
+/// document types, and an OLE2 compound file (legacy doc/xls/ppt
+/// share one magic, `D0 CF 11 E0…`, so the bytes alone cannot tell
+/// them apart — use [`discover_document`] with the extension).
 pub fn detect_document_format(bytes: &[u8]) -> DocumentFormat {
     if bytes.starts_with(b"%PDF-") {
         return DocumentFormat::Pdf;
@@ -196,6 +215,13 @@ pub fn discover_document(
 
 fn is_zip(bytes: &[u8]) -> bool {
     bytes.starts_with(b"PK\x03\x04") || bytes.starts_with(b"PK\x05\x06")
+}
+
+/// Legacy OLE2 compound file (doc/xls/ppt share this magic).
+/// The bytes alone cannot say which of the three it is — the
+/// extension must disambiguate (see `discover_document`).
+pub fn is_ole2(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1")
 }
 
 /// A ZIP is a document container: read the central directory entry
@@ -483,6 +509,31 @@ mod tests {
         assert_eq!(r.format, DocumentFormat::Csv);
         assert_eq!(r.method, DetectionMethod::Extension);
         assert_eq!(r.confidence, Confidence::Low);
+    }
+
+    #[test]
+    fn ole2_needs_an_extension_to_tell_doc_xls_ppt_apart() {
+        let ole2: &[u8] = b"\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1\x00\x00\x00\x00";
+        assert!(is_ole2(ole2));
+        // Bytes alone: Unknown, not a guessed legacy format.
+        assert_eq!(detect_document_format(ole2), DocumentFormat::Unknown);
+        // With the extension the container is disambiguated.
+        let r = discover_document(ole2, Some("doc"), None);
+        assert_eq!(r.format, DocumentFormat::Doc);
+        assert_eq!(r.method, DetectionMethod::Extension);
+        assert_eq!(r.confidence, Confidence::Low);
+        assert_eq!(
+            discover_document(ole2, Some("xls"), None).format,
+            DocumentFormat::Xls
+        );
+        assert_eq!(
+            discover_document(ole2, Some("ppt"), None).format,
+            DocumentFormat::Ppt
+        );
+        // And from_name no longer collapses legacy onto modern.
+        assert_eq!(DocumentFormat::from_name("doc"), Some(DocumentFormat::Doc));
+        assert_eq!(DocumentFormat::from_name("xls"), Some(DocumentFormat::Xls));
+        assert_eq!(DocumentFormat::from_name("ppt"), Some(DocumentFormat::Ppt));
     }
 
     #[test]

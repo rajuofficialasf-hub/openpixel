@@ -36,6 +36,28 @@ choice to Raju instead of working around it.
 | pdfium-render | `=0.9.5` | MIT OR Apache-2.0 | crates.io / github.com/ajrcarey/pdfium-render | Static (Rust binding crate; the binding itself is MIT OR Apache-2.0) | Include the chosen licence text; no source disclosure required |
 | PDFium (prebuilt binary, via pdfium-render) | chromium build **8152** (MAJOR=159, MINOR=0, BUILD=8152, PATCH=0) | BSD-3-Clause | github.com/bblanchon/pdfium-binaries — release `chromium/8152`, asset `pdfium-linux-x64.tgz` | **Dynamic** — `libpdfium.so` is loaded at runtime by `pdfium-render` (`Pdfium::bind_to_library`); it is NOT compiled into our binary and NOT committed to the repo | Include the BSD-3-Clause licence text (`licenses/pdfium.txt` in the archive) and the copyright notice in distributions that ship the binary; no source disclosure required |
 
+## Phase 3 — Document conversion (LibreOffice headless)
+
+| Component | Version | Licence | Source | Linking | Redistribution |
+|---|---|---|---|---|---|
+| LibreOffice (headless, system dependency — NOT bundled) | **24.2.7.2** (this VM, Ubuntu 24.04) | MPL-2.0 | libreoffice.org / Ubuntu package `libreoffice` | **External process** — `openpixel-documents` spawns `soffice --headless` (fresh profile per conversion, 120 s default timeout); no code is linked or embedded | Not shipped by OpenPixel. The user installs LibreOffice themselves (desktop/server); the CLI reports `doc formats` with the detected version, or an honest "not available" when it is absent. MPL-2.0 permits this use without source disclosure; the Office formats it reads/writes (OOXML, ODF) are the user's own documents. No conversion API is called — everything runs locally. |
+
+### LibreOffice provisioning (verified 16 Nov 2026)
+
+- The Phase 3 brief expected an `apt` install (~286 MB). It
+  was **already installed in this VM** (24.2.7.2, `/usr/bin/soffice`)
+  — no install was needed, and no package was added. The
+  adapter discovers it via `OPENPIXEL_SOFFICE_PATH`, then
+  `soffice`, then `libreoffice` on `PATH`; `doc formats` prints
+  the detected version, and every conversion that needs it fails
+  honestly when it is absent.
+- Desktop/server only by design: LibreOffice cannot run in a
+  browser (no WASM), so Office conversions are CLI/desktop-only
+  and the web app says so (see `docs/WEB.md`).
+- Conversion quality is LibreOffice's, not ours: fidelity
+  results per format are recorded in `docs/PDF.md` §Document
+  conversion. Perfect formatting preservation is never promised.
+
 ### PDFium provenance (verified 16 Nov 2026)
 
 - Downloaded by the Phase 1 prototype

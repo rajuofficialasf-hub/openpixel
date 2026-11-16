@@ -162,5 +162,120 @@ echo "=== 10b. pdf error cases (expect exit 1, clean error, no crash) ==="
 [ $? -eq 1 ] || { echo "FAIL: render to SVG (decode-only) should exit 1"; exit 1; }
 "$BIN" pdf merge "$IN/doc3.pdf" "$IN/rgba.png" -o "$OUT/x.pdf" > /dev/null 2>&1
 [ $? -eq 1 ] || { echo "FAIL: merge with a non-PDF should exit 1"; exit 1; }
+echo "=== 11. pdf compression / security / text extraction + doc conversion (Studio Phase 3) ==="
+# Office fixtures, generated inline (python-docx / openpyxl /
+# python-pptx are installed in this VM; no checked-in Office files).
+python3 - "$IN" <<'PYEOF'
+import sys
+from docx import Document as Docx
+from openpyxl import Workbook
+from pptx import Presentation
+d = sys.argv[1]
+doc = Docx()
+doc.add_heading('OpenPixel Test Document', 0)
+doc.add_paragraph('This is a test paragraph with bold and italic text.')
+p = doc.add_paragraph(); r = p.add_run('Bold run. '); r.bold = True
+r = p.add_run('Italic run.'); r.italic = True
+t = doc.add_table(rows=2, cols=2); t.cell(0,0).text='Name'; t.cell(0,1).text='Value'
+t.cell(1,0).text='Alpha'; t.cell(1,1).text='42'
+doc.add_page_break(); doc.add_paragraph('Second page of the test document.')
+doc.save(f'{d}/test.docx')
+wb = Workbook(); ws = wb.active; ws['A1']='Name'; ws['B1']='Qty'; ws['C1']='Price'
+ws.append(['Apple', 10, 1.5]); ws.append(['Banana', 20, 0.75])
+wb.save(f'{d}/test.xlsx')
+prs = Presentation(); s = prs.slides.add_slide(prs.slide_layouts[1])
+s.shapes.title.text = 'OpenPixel Slides'; s.placeholders[1].text = 'First slide body.'
+s2 = prs.slides.add_slide(prs.slide_layouts[1]); s2.shapes.title.text = 'Second Slide'
+prs.save(f'{d}/test.pptx')
+open(f'{d}/test.txt','w').write('Hello from a plain text file.\nSecond line here.\n')
+open(f'{d}/test.csv','w').write('Name,Qty,Price\nApple,10,1.5\nBanana,20,0.75\n')
+open(f'{d}/test.html','w').write('<!doctype html><html><body><h1>Test Page</h1><ul><li>One</li><li>Two</li></ul></body></html>\n')
+open(f'{d}/test.rtf','w').write(r'{\rtf1\ansi {\b Bold RTF} and plain text.\par}' + '\n')
+PYEOF
+# --- 11a. compression: doc3.pdf has a 1024x768 photo page (Flate RGB) ---
+# Screen must shrink it a lot; every mode keeps 3 pages; screen <= ebook <= printer.
+run "$BIN" pdf compress "$IN/doc3.pdf" "$OUT/pdf-comp-screen.pdf" --mode screen
+pdfinfo "$OUT/pdf-comp-screen.pdf" | grep -Eq "Pages:\s+3" || { echo "FAIL: compressed doc3 should have 3 pages"; exit 1; }
+[ "$(stat -c%s "$OUT/pdf-comp-screen.pdf")" -lt "$(stat -c%s "$IN/doc3.pdf")" ] || { echo "FAIL: screen compression should shrink doc3.pdf"; exit 1; }
+run "$BIN" pdf compress "$IN/doc3.pdf" "$OUT/pdf-comp-ebook.pdf" --mode ebook
+run "$BIN" pdf compress "$IN/doc3.pdf" "$OUT/pdf-comp-printer.pdf" --mode printer
+pdfinfo "$OUT/pdf-comp-printer.pdf" | grep -Eq "Pages:\s+3" || { echo "FAIL: printer compression page count"; exit 1; }
+[ "$(stat -c%s "$OUT/pdf-comp-screen.pdf")" -le "$(stat -c%s "$OUT/pdf-comp-ebook.pdf")" ] || { echo "FAIL: screen should be <= ebook"; exit 1; }
+[ "$(stat -c%s "$OUT/pdf-comp-ebook.pdf")" -le "$(stat -c%s "$OUT/pdf-comp-printer.pdf")" ] || { echo "FAIL: ebook should be <= printer"; exit 1; }
+echo "compression sizes: input=$(stat -c%s "$IN/doc3.pdf") screen=$(stat -c%s "$OUT/pdf-comp-screen.pdf") ebook=$(stat -c%s "$OUT/pdf-comp-ebook.pdf") printer=$(stat -c%s "$OUT/pdf-comp-printer.pdf")"
+# --- 11b. security: protect -> encrypted, unlock -> clean, wrong password fails ---
+run "$BIN" pdf protect "$IN/doc3.pdf" "$OUT/pdf-prot.pdf" --user-password user123 --owner-password owner456 --no-print --no-copy
+pdfinfo -upw user123 "$OUT/pdf-prot.pdf" | grep -Eq "Encrypted:\s+yes" || { echo "FAIL: protected PDF should report Encrypted: yes"; exit 1; }
+pdfinfo -upw user123 "$OUT/pdf-prot.pdf" | grep -Eq "Pages:\s+3" || { echo "FAIL: protected PDF page count"; exit 1; }
+pdfinfo -upw user123 "$OUT/pdf-prot.pdf" | grep -q "print:no" || { echo "FAIL: protected PDF should forbid printing"; exit 1; }
+pdfinfo -upw user123 "$OUT/pdf-prot.pdf" | grep -q "algorithm:RC4" || { echo "FAIL: protection should be RC4-128"; exit 1; }
+run "$BIN" pdf unlock "$OUT/pdf-prot.pdf" "$OUT/pdf-unlocked.pdf" --password user123
+pdfinfo "$OUT/pdf-unlocked.pdf" | grep -Eq "Encrypted:\s+no" || { echo "FAIL: unlocked PDF should report Encrypted: no"; exit 1; }
+pdfinfo "$OUT/pdf-unlocked.pdf" | grep -Eq "Pages:\s+3" || { echo "FAIL: unlocked page count"; exit 1; }
+"$BIN" pdf unlock "$OUT/pdf-prot.pdf" "$OUT/x.pdf" --password wrongpw > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: unlock with a wrong password should exit 1"; exit 1; }
+"$BIN" pdf protect "$IN/doc3.pdf" "$OUT/x.pdf" > /dev/null 2>&1
+[ $? -eq 2 ] || { echo "FAIL: protect without a password should exit 2 (clap)"; exit 1; }
+# --- 11c. watermark ---
+run "$BIN" pdf watermark "$IN/doc3.pdf" "$OUT/pdf-wm.pdf" --text CONFIDENTIAL
+pdfinfo "$OUT/pdf-wm.pdf" | grep -Eq "Pages:\s+3" || { echo "FAIL: watermarked page count"; exit 1; }
+grep -aq "CONFIDENTIAL" "$OUT/pdf-wm.pdf" || { echo "FAIL: watermark text should be in the content stream"; exit 1; }
+# --- 11d. doc formats registry (human + JSON) ---
+run "$BIN" doc formats
+"$BIN" doc formats --json > "$OUT/doc-formats.json"
+python3 - "$OUT/doc-formats.json" <<'PYEOF'
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d['libreoffice'].startswith('LibreOffice '), d['libreoffice']
+assert d['pdf_text_extraction'] is True
+pairs = {(c['source'], c['target']) for c in d['conversions']}
+assert ('docx', 'pdf') in pairs and ('pdf', 'txt') in pairs, pairs
+assert ('pdf', 'xlsx') not in pairs and ('pptx', 'txt') not in pairs, pairs
+assert all(c['runs_where'] == 'cli_desktop' for c in d['conversions'])
+print('doc formats --json: registry OK,', len(pairs), 'rows')
+PYEOF
+# --- 11e. Office -> PDF (LibreOffice), text verified with pdftotext ---
+run "$BIN" doc convert "$IN/test.docx" --to pdf -o "$OUT/doc.pdf"
+pdfinfo "$OUT/doc.pdf" | grep -Eq "Pages:\s+2" || { echo "FAIL: docx->pdf should have 2 pages"; exit 1; }
+pdftotext "$OUT/doc.pdf" - | grep -q "OpenPixel Test Document" || { echo "FAIL: docx->pdf text"; exit 1; }
+run "$BIN" doc convert "$IN/test.xlsx" --to pdf -o "$OUT/xlsx.pdf"
+pdfinfo "$OUT/xlsx.pdf" | grep -Eq "Pages:\s+1" || { echo "FAIL: xlsx->pdf page count"; exit 1; }
+pdftotext "$OUT/xlsx.pdf" - | grep -q "Apple" || { echo "FAIL: xlsx->pdf text"; exit 1; }
+run "$BIN" doc convert "$IN/test.pptx" --to pdf -o "$OUT/pptx.pdf"
+pdfinfo "$OUT/pptx.pdf" | grep -Eq "Pages:\s+2" || { echo "FAIL: pptx->pdf should have 2 slides"; exit 1; }
+pdftotext "$OUT/pptx.pdf" - | grep -q "OpenPixel Slides" || { echo "FAIL: pptx->pdf text"; exit 1; }
+run "$BIN" doc convert "$IN/test.txt" --to pdf -o "$OUT/txt.pdf"
+pdfinfo "$OUT/txt.pdf" | grep -Eq "Pages:\s+1" || { echo "FAIL: txt->pdf page count"; exit 1; }
+run "$BIN" doc convert "$IN/test.csv" --to pdf -o "$OUT/csv.pdf"
+pdftotext "$OUT/csv.pdf" - | grep -q "Apple" || { echo "FAIL: csv->pdf text"; exit 1; }
+run "$BIN" doc convert "$IN/test.html" --to pdf -o "$OUT/html.pdf"
+pdftotext "$OUT/html.pdf" - | grep -q "Test Page" || { echo "FAIL: html->pdf text"; exit 1; }
+run "$BIN" doc convert "$IN/test.rtf" --to pdf -o "$OUT/rtf.pdf"
+pdfinfo "$OUT/rtf.pdf" | grep -Eq "Pages:\s+1" || { echo "FAIL: rtf->pdf page count"; exit 1; }
+# Office -> Office / text
+run "$BIN" doc convert "$IN/test.xlsx" --to csv -o "$OUT/back.csv"
+grep -q "Apple,10,1.5" "$OUT/back.csv" || { echo "FAIL: xlsx->csv round-trip"; exit 1; }
+run "$BIN" doc convert "$IN/test.docx" --to txt -o "$OUT/doc.txt"
+grep -q "OpenPixel Test Document" "$OUT/doc.txt" || { echo "FAIL: docx->txt text"; exit 1; }
+# --- 11f. text extraction (PDFium) in all four formats ---
+run "$BIN" pdf extract-text "$OUT/doc.pdf" -o "$OUT/doc-extracted.txt" --format txt
+grep -q "OpenPixel Test Document" "$OUT/doc-extracted.txt" || { echo "FAIL: extract-text txt"; exit 1; }
+run "$BIN" pdf extract-text "$OUT/doc.pdf" -o "$OUT/doc-extracted.html" --format html
+grep -q "OpenPixel Test Document" "$OUT/doc-extracted.html" || { echo "FAIL: extract-text html"; exit 1; }
+run "$BIN" pdf extract-text "$OUT/doc.pdf" -o "$OUT/doc-extracted.epub" --format epub
+unzip -p "$OUT/doc-extracted.epub" OEBPS/chapter-1.xhtml | grep -q "OpenPixel Test Document" || { echo "FAIL: extract-text epub chapter"; exit 1; }
+run "$BIN" pdf extract-text "$OUT/doc.pdf" -o "$OUT/doc-extracted.docx" --format docx
+unzip -p "$OUT/doc-extracted.docx" word/document.xml | grep -q "OpenPixel Test Document" || { echo "FAIL: extract-text docx"; exit 1; }
+# docx round-trip: pdf->docx -> LibreOffice -> pdf, text survives
+run "$BIN" doc convert "$OUT/doc-extracted.docx" --to pdf -o "$OUT/doc-rt.pdf"
+pdftotext "$OUT/doc-rt.pdf" - | grep -q "OpenPixel Test Document" || { echo "FAIL: docx round-trip text"; exit 1; }
+# pdf->txt via `doc convert` (PdfText engine)
+run "$BIN" doc convert "$OUT/doc.pdf" --to txt -o "$OUT/doc-via-doc.txt"
+grep -q "OpenPixel Test Document" "$OUT/doc-via-doc.txt" || { echo "FAIL: doc convert pdf->txt"; exit 1; }
+# --- 11g. honest refusals (exit 1, with the alternatives named) ---
+"$BIN" doc convert "$OUT/doc.pdf" --to xlsx -o "$OUT/x.xlsx" > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: pdf->xlsx should exit 1"; exit 1; }
+"$BIN" doc convert "$IN/test.pptx" --to txt -o "$OUT/x.txt" > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: pptx->txt should exit 1"; exit 1; }
 echo "=== DONE ==="
 ls -la "$OUT" | head -50
