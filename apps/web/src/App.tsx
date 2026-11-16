@@ -1,14 +1,23 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { Box, Button, Container, CssBaseline, Tab, Tabs, Typography } from '@mui/material'
+import { alpha, ThemeProvider } from '@mui/material/styles'
+import DarkModeIcon from '@mui/icons-material/DarkMode'
+import LightModeIcon from '@mui/icons-material/LightMode'
 import { BatchWorkspace } from './components/BatchWorkspace'
 import { CapabilitiesTable } from './components/CapabilitiesTable'
 import { ConvertWorkspace } from './components/ConvertWorkspace'
 import { SettingsPanel } from './components/SettingsPanel'
 import { loadSettings, resolveTheme, saveSettings, type Settings } from './lib/settings'
 import { WASM_STATUS } from './lib/wasm'
+import { getTheme } from './theme/theme'
 
-type Tab = 'convert' | 'batch' | 'formats' | 'settings'
+// Lazy: the 3D backdrop is decoration — it must never block first
+// paint. The chunk loads only when the setting is on.
+const Background3D = lazy(() => import('./components/Background3D'))
 
-const TABS: { id: Tab; label: string }[] = [
+type TabId = 'convert' | 'batch' | 'formats' | 'settings'
+
+const TABS: { id: TabId; label: string }[] = [
   { id: 'convert', label: 'Convert' },
   { id: 'batch', label: 'Batch' },
   { id: 'formats', label: 'Formats' },
@@ -16,13 +25,19 @@ const TABS: { id: Tab; label: string }[] = [
 ]
 
 function App() {
-  const [tab, setTab] = useState<Tab>('convert')
+  const [tab, setTab] = useState<TabId>('convert')
   const [settings, setSettings] = useState<Settings>(() => loadSettings())
 
+  const mode = resolveTheme(settings.theme)
+  const theme = useMemo(() => getTheme(mode), [mode])
+
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', resolveTheme(settings.theme) === 'dark')
+    // The `dark` class is kept for the e2e suite (it asserts on
+    // `documentElement.classList.contains('dark')`); the MUI theme
+    // itself does not need it.
+    document.documentElement.classList.toggle('dark', mode === 'dark')
     saveSettings(settings)
-  }, [settings])
+  }, [settings, mode])
 
   const toggleTheme = useCallback(() => {
     setSettings((prev) => ({
@@ -31,73 +46,124 @@ function App() {
     }))
   }, [])
 
-  const themeLabel = resolveTheme(settings.theme) === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'
+  const isDark = mode === 'dark'
+  const themeLabel = isDark ? 'Switch to light theme' : 'Switch to dark theme'
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-900 dark:text-slate-100">
-      <header className="border-b border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-4">
-          <div>
-            <h1 className="text-2xl font-bold">OpenPixel</h1>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              Local image conversion — files never leave your device.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            aria-label={themeLabel}
-            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
-          >
-            {resolveTheme(settings.theme) === 'dark' ? '☀️ Light' : '🌙 Dark'}
-          </button>
-        </div>
-        <nav aria-label="Main" className="mx-auto max-w-6xl px-4 pb-3">
-          <div role="tablist" aria-label="OpenPixel sections" className="flex flex-wrap gap-2">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      {settings.show3dBackground && (
+        <Suspense fallback={null}>
+          <Background3D />
+        </Suspense>
+      )}
+      <Box
+        sx={{
+          position: 'relative',
+          zIndex: 1,
+          minHeight: '100vh',
+          display: 'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <Box
+          component="header"
+          sx={{
+            borderBottom: 1,
+            borderColor: 'divider',
+            bgcolor: (t) => alpha(t.palette.background.paper, 0.85),
+            backdropFilter: 'blur(10px)',
+          }}
+        >
+          <Container maxWidth="lg">
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 2,
+                py: 2,
+              }}
+            >
+              <Box>
+                <Typography variant="h4" component="h1">
+                  OpenPixel
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Local image conversion — files never leave your device.
+                </Typography>
+              </Box>
+              <Button
                 type="button"
-                role="tab"
-                aria-selected={tab === t.id}
-                aria-controls={`panel-${t.id}`}
-                id={`tab-${t.id}`}
-                onClick={() => setTab(t.id)}
-                className={`rounded-lg px-4 py-2 text-sm font-medium ${
-                  tab === t.id
-                    ? 'bg-blue-600 text-white'
-                    : 'border border-slate-300 hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700'
-                }`}
+                variant="outlined"
+                onClick={toggleTheme}
+                aria-label={themeLabel}
+                startIcon={isDark ? <LightModeIcon /> : <DarkModeIcon />}
               >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </nav>
-      </header>
+                {isDark ? 'Light' : 'Dark'}
+              </Button>
+            </Box>
+            <Tabs
+              value={tab}
+              onChange={(_, value: TabId) => setTab(value)}
+              aria-label="OpenPixel sections"
+            >
+              {TABS.map((t) => (
+                <Tab key={t.id} value={t.id} label={t.label} id={`tab-${t.id}`} aria-controls={`panel-${t.id}`} />
+              ))}
+            </Tabs>
+          </Container>
+        </Box>
 
-      <main className="mx-auto max-w-6xl px-4 py-6">
-        <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-          {tab === 'convert' && (
-            <ConvertWorkspace settings={settings} onSettingsChange={setSettings} />
-          )}
-          {tab === 'batch' && <BatchWorkspace settings={settings} />}
-          {tab === 'formats' && <CapabilitiesTable />}
-          {tab === 'settings' && <SettingsPanel settings={settings} onSettingsChange={setSettings} />}
-        </div>
-      </main>
+        <Container component="main" maxWidth="lg" sx={{ py: 3, flex: 1, width: '100%' }}>
+          <Box role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+            {tab === 'convert' && (
+              <ConvertWorkspace settings={settings} onSettingsChange={setSettings} />
+            )}
+            {tab === 'batch' && <BatchWorkspace settings={settings} />}
+            {tab === 'formats' && <CapabilitiesTable />}
+            {tab === 'settings' && <SettingsPanel settings={settings} onSettingsChange={setSettings} />}
+          </Box>
+        </Container>
 
-      <footer className="border-t border-slate-200 bg-white px-4 py-4 text-center text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
-        <p>
-          OpenPixel Engine — Phase 7 web app. No server, no upload, no account. {WASM_STATUS.detail}
-        </p>
-        <p className="mt-1">
-          In-browser conversion: PNG / JPEG / WebP output via the browser canvas, plus BMP,
-          TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF via the built-in WASM engine
-          (when built). For AVIF, use the native CLI (<code>openpixel convert</code>).
-        </p>
-      </footer>
-    </div>
+        <Box
+          component="footer"
+          sx={{
+            borderTop: 1,
+            borderColor: 'divider',
+            bgcolor: (t) => alpha(t.palette.background.paper, 0.85),
+            backdropFilter: 'blur(10px)',
+            px: 2,
+            py: 2,
+            textAlign: 'center',
+          }}
+        >
+          <Typography variant="caption" color="text.secondary" component="p">
+            OpenPixel Engine — Phase 7 web app. No server, no upload, no account. {WASM_STATUS.detail}
+          </Typography>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            component="p"
+            sx={{
+              mt: 0.5,
+              '& code': {
+                fontFamily: 'monospace',
+                fontSize: '0.85em',
+                bgcolor: 'action.hover',
+                px: 0.5,
+                borderRadius: 0.5,
+              },
+            }}
+          >
+            In-browser conversion: PNG / JPEG / WebP output via the browser canvas, plus BMP,
+            TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF via the built-in WASM engine
+            (when built). For AVIF, use the native CLI (<code>openpixel convert</code>).
+          </Typography>
+        </Box>
+      </Box>
+    </ThemeProvider>
   )
 }
 

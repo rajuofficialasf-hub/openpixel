@@ -1,3 +1,16 @@
+import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  FormControlLabel,
+  Select,
+  Slider,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+} from '@mui/material'
 import { browserEncodableFormats, formatLabel } from '../lib/capabilities'
 import { DEFAULT_SETTINGS, type Settings } from '../lib/settings'
 
@@ -13,166 +26,185 @@ interface SettingsPanelProps {
 export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps) {
   const update = (patch: Partial<Settings>) => onSettingsChange({ ...settings, ...patch })
 
+  const codeSx = {
+    fontFamily: 'monospace',
+    fontSize: '0.85em',
+    bgcolor: 'action.hover',
+    px: 0.5,
+    borderRadius: 0.5,
+  }
+
   return (
-    <section aria-labelledby="settings-heading" className="space-y-6">
-      <h2 id="settings-heading" className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-        Settings
-      </h2>
+    <Box component="section" aria-labelledby="settings-heading">
+      <Stack spacing={3}>
+        <Typography variant="h5" component="h2" id="settings-heading">
+          Settings
+        </Typography>
 
-      <div className="max-w-xl space-y-5 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-        <div>
-          <label htmlFor="theme" className="block text-sm font-medium text-slate-900 dark:text-slate-100">
-            Theme
-          </label>
-          <select
-            id="theme"
-            value={settings.theme}
-            onChange={(e) => update({ theme: e.target.value as Settings['theme'] })}
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-          >
-            <option value="system">System (follow your OS)</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
-        </div>
+        <Card sx={{ maxWidth: 640 }}>
+          <CardContent>
+            <Stack spacing={2.5}>
+              <Box>
+                <Typography variant="subtitle2" component="label" htmlFor="theme">
+                  Theme
+                </Typography>
+                <Select
+                  native
+                  fullWidth
+                  id="theme"
+                  value={settings.theme}
+                  onChange={(e) => update({ theme: e.target.value as Settings['theme'] })}
+                  sx={{ mt: 0.5 }}
+                >
+                  <option value="system">System (follow your OS)</option>
+                  <option value="light">Light</option>
+                  <option value="dark">Dark</option>
+                </Select>
+              </Box>
 
-        <div>
-          <label
-            htmlFor="default-quality"
-            className="block text-sm font-medium text-slate-900 dark:text-slate-100"
-          >
-            Default JPEG / WebP quality: {settings.defaultQuality}
-          </label>
-          <input
-            id="default-quality"
-            type="range"
-            min={1}
-            max={100}
-            value={settings.defaultQuality}
-            onChange={(e) => update({ defaultQuality: Number(e.target.value) })}
-            className="mt-1 w-full"
-          />
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Used as the starting quality in the Convert and Batch views. The engine default is 85.
-          </p>
-        </div>
+              <Box>
+                <Typography variant="subtitle2" component="label">
+                  Default JPEG / WebP quality: {settings.defaultQuality}
+                </Typography>
+                <Slider
+                  aria-label="Default JPEG / WebP quality"
+                  min={1}
+                  max={100}
+                  value={settings.defaultQuality}
+                  onChange={(_, value) => update({ defaultQuality: value as number })}
+                />
+                <Typography variant="caption" color="text.secondary">
+                  Used as the starting quality in the Convert and Batch views. The engine default is 85.
+                </Typography>
+              </Box>
 
-        <div>
-          <label
-            htmlFor="default-format"
-            className="block text-sm font-medium text-slate-900 dark:text-slate-100"
-          >
-            Default output format
-          </label>
-          <select
-            id="default-format"
-            value={settings.defaultFormat}
-            onChange={(e) => update({ defaultFormat: e.target.value })}
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-          >
-            {browserEncodableFormats().map((t) => (
-              <option key={t.format_id} value={t.format_id}>
-                {formatLabel(t.format_id)}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Only formats this browser can encode are offered here.
-          </p>
-        </div>
+              <Box>
+                <Typography variant="subtitle2" component="label" htmlFor="default-format">
+                  Default output format
+                </Typography>
+                <Select
+                  native
+                  fullWidth
+                  id="default-format"
+                  value={settings.defaultFormat}
+                  onChange={(e) => update({ defaultFormat: e.target.value })}
+                  sx={{ mt: 0.5 }}
+                >
+                  {browserEncodableFormats().map((t) => (
+                    <option key={t.format_id} value={t.format_id}>
+                      {formatLabel(t.format_id)}
+                    </option>
+                  ))}
+                </Select>
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  Only formats this browser can encode are offered here.
+                </Typography>
+              </Box>
 
-        <div>
-          <label
-            htmlFor="default-background"
-            className="block text-sm font-medium text-slate-900 dark:text-slate-100"
-          >
-            Default background colour (flattens transparency for JPEG/BMP)
-          </label>
-          <div className="mt-1 flex items-center gap-2">
-            <input
-              id="default-background"
-              type="color"
-              value={settings.defaultBackground}
-              onChange={(e) => update({ defaultBackground: e.target.value })}
-              className="h-10 w-12 cursor-pointer rounded border border-slate-300 dark:border-slate-600"
-              aria-label="Default background colour picker"
-            />
-            <input
-              type="text"
-              value={settings.defaultBackground}
-              onChange={(e) => update({ defaultBackground: e.target.value })}
-              aria-label="Default background colour hex value"
-              className="w-28 rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-            />
-          </div>
-        </div>
+              <Box>
+                <Typography variant="subtitle2" component="label">
+                  Default background colour (flattens transparency for JPEG/BMP)
+                </Typography>
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                  <TextField
+                    type="color"
+                    size="small"
+                    value={settings.defaultBackground}
+                    onChange={(e) => update({ defaultBackground: e.target.value })}
+                    inputProps={{ 'aria-label': 'Default background colour picker' }}
+                    sx={{ width: 56, '& input': { p: 0.5, height: 40, cursor: 'pointer' } }}
+                  />
+                  <TextField
+                    size="small"
+                    value={settings.defaultBackground}
+                    onChange={(e) => update({ defaultBackground: e.target.value })}
+                    inputProps={{ 'aria-label': 'Default background colour hex value' }}
+                    sx={{ width: 120, '& input': { fontFamily: 'monospace' } }}
+                  />
+                </Stack>
+              </Box>
 
-        <div>
-          <label
-            htmlFor="batch-workers"
-            className="block text-sm font-medium text-slate-900 dark:text-slate-100"
-          >
-            Batch concurrency: {settings.batchWorkers} file{settings.batchWorkers === 1 ? '' : 's'} at a
-            time
-          </label>
-          <input
-            id="batch-workers"
-            type="range"
-            min={1}
-            max={4}
-            step={1}
-            value={settings.batchWorkers}
-            onChange={(e) => update({ batchWorkers: Number(e.target.value) })}
-            className="mt-1 w-full"
-          />
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            The native CLI allows up to 8 workers; the browser is capped at 4 so a batch cannot
-            exhaust tab memory. Conversion itself runs in a Web Worker, so the UI stays responsive.
-          </p>
-        </div>
+              <Box>
+                <Typography variant="subtitle2" component="label">
+                  Batch concurrency: {settings.batchWorkers} file{settings.batchWorkers === 1 ? '' : 's'} at a
+                  time
+                </Typography>
+                <Slider
+                  aria-label="Batch concurrency"
+                  min={1}
+                  max={4}
+                  step={1}
+                  value={settings.batchWorkers}
+                  onChange={(_, value) => update({ batchWorkers: value as number })}
+                />
+                <Typography variant="caption" color="text.secondary">
+                  The native CLI allows up to 8 workers; the browser is capped at 4 so a batch cannot
+                  exhaust tab memory. Conversion itself runs in a Web Worker, so the UI stays responsive.
+                </Typography>
+              </Box>
 
-        <div className="flex flex-wrap gap-3 pt-1">
-          <button
-            type="button"
-            onClick={() => onSettingsChange({ ...DEFAULT_SETTINGS })}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
-          >
-            Reset to defaults
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              localStorage.removeItem('openpixel.settings.v1')
-              onSettingsChange({ ...DEFAULT_SETTINGS })
-            }}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
-          >
-            Clear saved settings
-          </button>
-        </div>
-      </div>
+              <Box>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={settings.show3dBackground}
+                      onChange={(_, checked) => update({ show3dBackground: checked })}
+                      inputProps={{ 'aria-label': '3D background' }}
+                    />
+                  }
+                  label="3D background"
+                />
+                <Typography variant="caption" color="text.secondary" display="block">
+                  Animated Three.js backdrop behind the header. Turn it off for a static page, or if
+                  motion is distracting — the setting is saved on this device.
+                </Typography>
+              </Box>
 
-      <div className="max-w-xl rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
-        <h3 className="font-medium text-slate-900 dark:text-slate-100">About this app</h3>
-        <p className="mt-1">
-          OpenPixel web (Phase 7) — React + TypeScript + Vite + Tailwind CSS. All processing is
-          local: there is no server, no account, and no upload. Capability data is generated from
-          the Rust engine with{' '}
-          <code className="rounded bg-slate-100 px-1 font-mono text-xs dark:bg-slate-700">
-            npm run generate:capabilities
-          </code>
-          . WASM processing is available in this build: the real Rust engine compiles to
-          wasm32 as a dav1d-free build (`crates/openpixel-wasm`, see docs/WEB.md) and is
-          packaged into `public/wasm/` with{' '}
-          <code className="rounded bg-slate-100 px-1 font-mono text-xs dark:bg-slate-700">
-            npm run build:wasm
-          </code>
-          ; conversion uses the browser canvas in a Web Worker for PNG / JPEG / WebP and
-          the WASM engine for the formats the canvas cannot handle (including BMP, which
-          the canvas cannot encode at all). AVIF is not available in
-          WASM (it needs the native libdav1d library).
-        </p>
-      </div>
-    </section>
+              <Stack direction="row" flexWrap="wrap" spacing={1.5} sx={{ pt: 0.5 }}>
+                <Button type="button" variant="outlined" onClick={() => onSettingsChange({ ...DEFAULT_SETTINGS })}>
+                  Reset to defaults
+                </Button>
+                <Button
+                  type="button"
+                  variant="outlined"
+                  onClick={() => {
+                    localStorage.removeItem('openpixel.settings.v1')
+                    onSettingsChange({ ...DEFAULT_SETTINGS })
+                  }}
+                >
+                  Clear saved settings
+                </Button>
+              </Stack>
+            </Stack>
+          </CardContent>
+        </Card>
+
+        <Card sx={{ maxWidth: 640 }}>
+          <CardContent>
+            <Typography variant="subtitle1" fontWeight={600}>
+              About this app
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+              OpenPixel web (Phase 7) — React + TypeScript + Vite + Material UI, with a Three.js
+              animated background. All processing is local: there is no server, no account, and no
+              upload. Capability data is generated from the Rust engine with{' '}
+              <Box component="code" sx={codeSx}>
+                npm run generate:capabilities
+              </Box>
+              . WASM processing is available in this build: the real Rust engine compiles to
+              wasm32 as a dav1d-free build (`crates/openpixel-wasm`, see docs/WEB.md) and is
+              packaged into `public/wasm/` with{' '}
+              <Box component="code" sx={codeSx}>
+                npm run build:wasm
+              </Box>
+              ; conversion uses the browser canvas in a Web Worker for PNG / JPEG / WebP and
+              the WASM engine for the formats the canvas cannot handle (including BMP, which
+              the canvas cannot encode at all). AVIF is not available in
+              WASM (it needs the native libdav1d library).
+            </Typography>
+          </CardContent>
+        </Card>
+      </Stack>
+    </Box>
   )
 }

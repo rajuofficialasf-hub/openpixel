@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import JSZip from 'jszip'
 import {
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  Select,
+  Stack,
+  Typography,
+} from '@mui/material'
+import DownloadIcon from '@mui/icons-material/Download'
+import {
   BROWSER_DECODABLE,
   BROWSER_ENCODABLE,
   formatById,
@@ -44,6 +55,25 @@ function downloadBlob(blob: Blob, filename: string): void {
 }
 
 let nextId = 0
+
+function statusChipProps(status: ItemStatus): {
+  color: 'success' | 'error' | 'info' | 'default'
+  label: string
+} {
+  switch (status) {
+    case 'done':
+      return { color: 'success', label: 'done' }
+    case 'failed':
+    case 'skipped':
+      return { color: 'error', label: status }
+    case 'converting':
+      return { color: 'info', label: 'Converting…' }
+    case 'probing':
+      return { color: 'info', label: 'Reading…' }
+    default:
+      return { color: 'default', label: status }
+  }
+}
 
 export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
   const [items, setItems] = useState<BatchItem[]>([])
@@ -209,150 +239,147 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
   const readyCount = items.filter((i) => i.status === 'ready' || i.status === 'failed').length
 
   return (
-    <section aria-labelledby="batch-heading" className="space-y-4">
-      <h2 id="batch-heading" className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-        Batch conversion
-      </h2>
-      <p className="text-sm text-slate-600 dark:text-slate-400">
-        Add several images and convert them together — still entirely on your device. Files are
-        processed up to {settings.batchWorkers} at a time (see Settings). A file that fails never
-        stops the rest of the batch. Files this browser cannot decode are skipped with a reason.
-      </p>
+    <Box component="section" aria-labelledby="batch-heading">
+      <Stack spacing={2}>
+        <Typography variant="h5" component="h2" id="batch-heading">
+          Batch conversion
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Add several images and convert them together — still entirely on your device. Files are
+          processed up to {settings.batchWorkers} at a time (see Settings). A file that fails never
+          stops the rest of the batch. Files this browser cannot decode are skipped with a reason.
+        </Typography>
 
-      <DropZone
-        inputId="batch-files"
-        label="Drop images here for batch conversion"
-        hint="PNG, JPEG, WebP, GIF, BMP, SVG, AVIF (browser-dependent) — plus TIFF, QOI, HEIC, JXL and JPEG 2000 when the WASM engine is built. Nothing is uploaded."
-        multiple
-        accept="image/*"
-        onFiles={addFiles}
-      />
+        <DropZone
+          inputId="batch-files"
+          label="Drop images here for batch conversion"
+          hint="PNG, JPEG, WebP, GIF, BMP, SVG, AVIF (browser-dependent) — plus TIFF, QOI, HEIC, JXL and JPEG 2000 when the WASM engine is built. Nothing is uploaded."
+          multiple
+          accept="image/*"
+          onFiles={addFiles}
+        />
 
-      {items.length > 0 && (
-        <>
-          <div className="flex flex-wrap items-center gap-3">
-            <div>
-              <label
-                htmlFor="batch-target-format"
-                className="block text-sm font-medium text-slate-900 dark:text-slate-100"
-              >
-                Output format for all files
-              </label>
-              <select
-                id="batch-target-format"
-                value={targetFormat}
-                onChange={(e) => setTargetFormat(e.target.value)}
-                className="mt-1 rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-              >
-                {encodableFormats.map((t) => (
-                  <option key={t.format_id} value={t.format_id}>
-                    {formatLabel(t.format_id)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button
-              type="button"
-              onClick={convertAll}
-              disabled={running || readyCount === 0}
-              className="mt-5 rounded-lg bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {running ? 'Converting…' : `Convert ${readyCount} file${readyCount === 1 ? '' : 's'}`}
-            </button>
-            <button
-              type="button"
-              onClick={downloadAllAsZip}
-              disabled={zipping || doneCount === 0}
-              className="mt-5 rounded-lg bg-green-700 px-4 py-2 font-medium text-white hover:bg-green-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {zipping ? 'Building zip…' : `Download all (${doneCount}) as .zip`}
-            </button>
-            <button
-              type="button"
-              onClick={clearAll}
-              disabled={running}
-              className="mt-5 rounded-lg border border-slate-300 px-4 py-2 font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
-            >
-              Clear list
-            </button>
-          </div>
-
-          <p role="status" aria-live="polite" className="text-sm text-slate-600 dark:text-slate-400">
-            {items.length} file{items.length === 1 ? '' : 's'} — {doneCount} converted, {failedCount}{' '}
-            failed, {skippedCount} skipped (cannot decode in this browser)
-          </p>
-          {zipError && (
-            <p role="alert" className="text-sm text-red-700 dark:text-red-400">
-              Zip download failed: {zipError} — individual downloads below still work.
-            </p>
-          )}
-
-          <ul className="space-y-2">
-            {items.map((item) => (
-              <li
-                key={item.id}
-                className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800"
-              >
-                <img
-                  src={item.thumbUrl}
-                  alt={`Thumbnail of ${item.file.name}`}
-                  className="h-14 w-14 rounded object-cover"
-                />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-100">
-                    {item.file.name}
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {formatBytes(item.file.size)}
-                    {item.width > 0 ? ` · ${item.width} × ${item.height} px` : ''} · source{' '}
-                    {formatLabel(item.sourceFormat)}
-                    {item.status === 'done' ? ` → ${formatBytes(item.resultBytes)}` : ''}
-                  </p>
-                  {item.error && (
-                    <p role="alert" className="text-xs text-red-700 dark:text-red-400">
-                      {item.error}
-                    </p>
-                  )}
-                </div>
-                <span
-                  className={`rounded-full px-2 py-1 text-xs font-medium ${
-                    item.status === 'done'
-                      ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                      : item.status === 'failed' || item.status === 'skipped'
-                        ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                        : item.status === 'converting' || item.status === 'probing'
-                          ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                          : 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200'
-                  }`}
+        {items.length > 0 && (
+          <>
+            <Stack direction="row" flexWrap="wrap" alignItems="flex-end" spacing={1.5}>
+              <Box>
+                <Typography variant="subtitle2" component="label" htmlFor="batch-target-format">
+                  Output format for all files
+                </Typography>
+                <Select
+                  native
+                  id="batch-target-format"
+                  value={targetFormat}
+                  onChange={(e) => setTargetFormat(e.target.value)}
+                  sx={{ mt: 0.5, minWidth: 160 }}
                 >
-                  {item.status === 'probing'
-                    ? 'Reading…'
-                    : item.status === 'converting'
-                      ? 'Converting…'
-                      : item.status}
-                </span>
-                {item.status === 'done' && item.resultBlob && (
-                  <button
-                    type="button"
-                    onClick={() => downloadBlob(item.resultBlob as Blob, outputFileName(item.file.name, targetFormat))}
-                    className="rounded-lg bg-green-700 px-3 py-2 text-sm font-medium text-white hover:bg-green-800"
-                  >
-                    Download
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => removeItem(item.id)}
-                  aria-label={`Remove ${item.file.name} from the batch`}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </section>
+                  {encodableFormats.map((t) => (
+                    <option key={t.format_id} value={t.format_id}>
+                      {formatLabel(t.format_id)}
+                    </option>
+                  ))}
+                </Select>
+              </Box>
+              <Button type="button" variant="contained" onClick={convertAll} disabled={running || readyCount === 0}>
+                {running ? 'Converting…' : `Convert ${readyCount} file${readyCount === 1 ? '' : 's'}`}
+              </Button>
+              <Button
+                type="button"
+                variant="contained"
+                color="success"
+                startIcon={<DownloadIcon />}
+                onClick={downloadAllAsZip}
+                disabled={zipping || doneCount === 0}
+              >
+                {zipping ? 'Building zip…' : `Download all (${doneCount}) as .zip`}
+              </Button>
+              <Button type="button" variant="outlined" onClick={clearAll} disabled={running}>
+                Clear list
+              </Button>
+            </Stack>
+
+            <Typography role="status" aria-live="polite" variant="body2" color="text.secondary">
+              {items.length} file{items.length === 1 ? '' : 's'} — {doneCount} converted, {failedCount}{' '}
+              failed, {skippedCount} skipped (cannot decode in this browser)
+            </Typography>
+            {zipError && (
+              <Typography role="alert" variant="body2" color="error">
+                Zip download failed: {zipError} — individual downloads below still work.
+              </Typography>
+            )}
+
+            <Stack component="ul" spacing={1.5} sx={{ listStyle: 'none', m: 0, p: 0 }}>
+              {items.map((item) => {
+                const chip = statusChipProps(item.status)
+                return (
+                  <Card key={item.id} component="li">
+                    <CardContent
+                      sx={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                        gap: 1.5,
+                        p: 2,
+                        '&:last-child': { pb: 2 },
+                      }}
+                    >
+                      <Box
+                        component="img"
+                        src={item.thumbUrl}
+                        alt={`Thumbnail of ${item.file.name}`}
+                        sx={{ width: 56, height: 56, borderRadius: 1, objectFit: 'cover' }}
+                      />
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography
+                          variant="body2"
+                          fontWeight={500}
+                          sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                        >
+                          {item.file.name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatBytes(item.file.size)}
+                          {item.width > 0 ? ` · ${item.width} × ${item.height} px` : ''} · source{' '}
+                          {formatLabel(item.sourceFormat)}
+                          {item.status === 'done' ? ` → ${formatBytes(item.resultBytes)}` : ''}
+                        </Typography>
+                        {item.error && (
+                          <Typography role="alert" variant="caption" color="error" display="block">
+                            {item.error}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Chip color={chip.color} label={chip.label} size="small" />
+                      {item.status === 'done' && item.resultBlob && (
+                        <Button
+                          type="button"
+                          variant="contained"
+                          color="success"
+                          size="small"
+                          onClick={() =>
+                            downloadBlob(item.resultBlob as Blob, outputFileName(item.file.name, targetFormat))
+                          }
+                        >
+                          Download
+                        </Button>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outlined"
+                        size="small"
+                        onClick={() => removeItem(item.id)}
+                        aria-label={`Remove ${item.file.name} from the batch`}
+                      >
+                        Remove
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </Stack>
+          </>
+        )}
+      </Stack>
+    </Box>
   )
 }

@@ -1,8 +1,8 @@
 # OpenPixel — Web Application (Phase 7)
 
-React + TypeScript + Vite + Tailwind CSS. Single-page app, no server:
+React + TypeScript + Vite + Material UI 7 + Three.js. Single-page app, no server:
 every file is processed locally in the browser, nothing is uploaded
-anywhere.
+anywhere. Design system: `src/theme/theme.ts` (see docs/WEB.md).
 
 ## Run it
 

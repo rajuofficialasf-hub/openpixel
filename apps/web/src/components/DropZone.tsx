@@ -1,4 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
+import { Box, Typography } from '@mui/material'
+import { visuallyHidden } from '@mui/utils'
+import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 
 interface DropZoneProps {
   onFiles: (files: File[]) => void
@@ -12,6 +15,9 @@ interface DropZoneProps {
 /**
  * Drag-and-drop upload zone + file picker. Files are only ever read
  * with the File API on this device — nothing is uploaded.
+ *
+ * Keyboard: the zone is focusable (Tab) and Enter/Space opens the
+ * file picker — the e2e suite asserts on this behaviour.
  */
 export function DropZone({ onFiles, accept, multiple = true, label, hint, inputId }: DropZoneProps) {
   const [dragging, setDragging] = useState(false)
@@ -28,16 +34,11 @@ export function DropZone({ onFiles, accept, multiple = true, label, hint, inputI
   )
 
   return (
-    <div
+    <Box
       role="button"
       tabIndex={0}
       aria-label={label}
       aria-describedby={`${inputId}-hint`}
-      className={`cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
-        dragging
-          ? 'border-blue-600 bg-blue-50 dark:bg-blue-950'
-          : 'border-slate-300 bg-slate-50 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-800/50 dark:hover:border-slate-500'
-      }`}
       onClick={() => inputRef.current?.click()}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -51,28 +52,47 @@ export function DropZone({ onFiles, accept, multiple = true, label, hint, inputI
       }}
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
+      sx={{
+        cursor: 'pointer',
+        borderRadius: 3,
+        border: 2,
+        borderStyle: 'dashed',
+        borderColor: dragging ? 'primary.main' : 'divider',
+        bgcolor: dragging ? 'action.selected' : 'action.hover',
+        p: 4,
+        textAlign: 'center',
+        transition: (theme) =>
+          theme.transitions.create(['border-color', 'background-color'], {
+            duration: theme.transitions.duration.short,
+          }),
+        '&:hover': { borderColor: 'text.secondary' },
+      }}
     >
-      <p className="text-lg font-medium text-slate-900 dark:text-slate-100">{label}</p>
-      <p id={`${inputId}-hint`} className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+      <CloudUploadIcon color="primary" sx={{ fontSize: 40 }} />
+      <Typography variant="h6" component="p" sx={{ mt: 1 }}>
+        {label}
+      </Typography>
+      <Typography id={`${inputId}-hint`} variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
         {hint}
-      </p>
-      <p className="mt-3 text-sm font-medium text-blue-700 dark:text-blue-400">
+      </Typography>
+      <Typography variant="body2" color="primary" fontWeight={600} sx={{ mt: 1.5 }}>
         Choose files or drag them here
-      </p>
-      <input
+      </Typography>
+      <Box
+        component="input"
         ref={inputRef}
         id={inputId}
         type="file"
         accept={accept}
         multiple={multiple}
-        className="sr-only"
         aria-label={label}
-        onChange={(event) => {
+        onChange={(event: React.ChangeEvent<HTMLInputElement>) => {
           const files = Array.from(event.target.files ?? [])
           if (files.length > 0) onFiles(files)
           event.target.value = ''
         }}
+        sx={visuallyHidden}
       />
-    </div>
+    </Box>
   )
 }

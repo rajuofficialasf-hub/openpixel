@@ -1,5 +1,19 @@
 import { useState } from 'react'
 import {
+  Box,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@mui/material'
+import {
   BROWSER_DECODABLE,
   BROWSER_ENCODABLE,
   CAPABILITIES,
@@ -37,89 +51,91 @@ export function CapabilitiesTable() {
     return 'Not implemented'
   }
 
+  const codeSx = {
+    fontFamily: 'monospace',
+    fontSize: '0.85em',
+    bgcolor: 'action.hover',
+    px: 0.5,
+    borderRadius: 0.5,
+  }
+
   return (
-    <section aria-labelledby="formats-heading" className="space-y-4">
-      <h2 id="formats-heading" className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-        Format capabilities
-      </h2>
-      <p className="text-sm text-slate-600 dark:text-slate-400">
-        Generated from the Rust engine’s registry — run{' '}
-        <code className="rounded bg-slate-100 px-1 font-mono text-xs dark:bg-slate-800">
-          npm run generate:capabilities
-        </code>{' '}
-        to regenerate it after any engine change. The “In browser” column is what this web app
-        can do; everything else needs the native CLI ({' '}
-        <code className="rounded bg-slate-100 px-1 font-mono text-xs dark:bg-slate-800">
-          openpixel convert
-        </code>
-        ) or the desktop app.
-      </p>
+    <Box component="section" aria-labelledby="formats-heading">
+      <Stack spacing={2}>
+        <Typography variant="h5" component="h2" id="formats-heading">
+          Format capabilities
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Generated from the Rust engine’s registry — run{' '}
+          <Box component="code" sx={codeSx}>
+            npm run generate:capabilities
+          </Box>{' '}
+          to regenerate it after any engine change. The “In browser” column is what this web app
+          can do; everything else needs the native CLI ({' '}
+          <Box component="code" sx={codeSx}>
+            openpixel convert
+          </Box>
+          ) or the desktop app.
+        </Typography>
 
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Filter formats">
-        {(
-          [
-            ['all', `All formats (${CAPABILITIES.length})`],
-            ['browser', 'Works in this browser'],
-            ['cli-only', 'CLI / desktop only'],
-          ] as [Filter, string][]
-        ).map(([value, label]) => (
-          <button
-            key={value}
-            type="button"
-            aria-pressed={filter === value}
-            onClick={() => setFilter(value)}
-            className={`rounded-full px-3 py-1.5 text-sm font-medium ${
-              filter === value
-                ? 'bg-blue-600 text-white'
-                : 'border border-slate-300 text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700'
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+        <ToggleButtonGroup
+          exclusive
+          value={filter}
+          onChange={(_, value: Filter | null) => {
+            if (value) setFilter(value)
+          }}
+          aria-label="Filter formats"
+        >
+          <ToggleButton value="all" aria-label="All formats">
+            All formats ({CAPABILITIES.length})
+          </ToggleButton>
+          <ToggleButton value="browser" aria-label="Works in this browser">
+            Works in this browser
+          </ToggleButton>
+          <ToggleButton value="cli-only" aria-label="CLI / desktop only">
+            CLI / desktop only
+          </ToggleButton>
+        </ToggleButtonGroup>
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-        <table className="w-full min-w-[720px] text-left text-sm">
-          <thead className="bg-slate-100 dark:bg-slate-800">
-            <tr>
-              <th scope="col" className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">Format</th>
-              <th scope="col" className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">Extensions</th>
-              <th scope="col" className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">Engine decode</th>
-              <th scope="col" className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">Engine encode</th>
-              <th scope="col" className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">Alpha</th>
-              <th scope="col" className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">Animation</th>
-              <th scope="col" className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">In browser</th>
-              <th scope="col" className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((cap) => (
-              <tr
-                key={cap.format_id}
-                className="border-t border-slate-200 dark:border-slate-700"
-              >
-                <th scope="row" className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100">
-                  {formatLabel(cap.format_id)}
-                </th>
-                <td className="px-3 py-2 font-mono text-xs text-slate-600 dark:text-slate-400">
-                  {cap.extensions.map((e) => `.${e}`).join(', ')}
-                </td>
-                <td className="px-3 py-2">{cap.can_decode ? 'Yes' : 'No'}</td>
-                <td className="px-3 py-2">{cap.can_encode ? 'Yes' : 'No'}</td>
-                <td className="px-3 py-2">{cap.supports_alpha ? 'Yes' : 'No'}</td>
-                <td className="px-3 py-2">{cap.supports_animation ? 'Yes' : 'No'}</td>
-                <td className="px-3 py-2">{browserNote(cap.format_id, cap.can_decode, cap.can_encode)}</td>
-                <td className="px-3 py-2 text-xs text-slate-600 dark:text-slate-400">{cap.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-sm text-slate-600 dark:text-slate-400">
-        Showing {rows.length} of {CAPABILITIES.length} formats. HEIC/HEIF, APNG, RAW and PSD are
-        planned in the engine and not convertible anywhere yet — the CLI reports them the same way.
-      </p>
-    </section>
+        <TableContainer component={Paper}>
+          <Table sx={{ minWidth: 720 }}>
+            <TableHead>
+              <TableRow>
+                <TableCell>Format</TableCell>
+                <TableCell>Extensions</TableCell>
+                <TableCell>Engine decode</TableCell>
+                <TableCell>Engine encode</TableCell>
+                <TableCell>Alpha</TableCell>
+                <TableCell>Animation</TableCell>
+                <TableCell>In browser</TableCell>
+                <TableCell>Status</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {rows.map((cap) => (
+                <TableRow key={cap.format_id}>
+                  <TableCell component="th" scope="row" sx={{ fontWeight: 500 }}>
+                    {formatLabel(cap.format_id)}
+                  </TableCell>
+                  <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85em' }}>
+                    {cap.extensions.map((e) => `.${e}`).join(', ')}
+                  </TableCell>
+                  <TableCell>{cap.can_decode ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>{cap.can_encode ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>{cap.supports_alpha ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>{cap.supports_animation ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>{browserNote(cap.format_id, cap.can_decode, cap.can_encode)}</TableCell>
+                  <TableCell sx={{ fontSize: '0.85em' }}>{cap.status}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+        <Typography variant="body2" color="text.secondary">
+          Showing {rows.length} of {CAPABILITIES.length} formats. HEIC/HEIF, APNG, RAW and PSD are
+          planned in the engine and not convertible anywhere yet — the CLI reports them the same way.
+        </Typography>
+      </Stack>
+    </Box>
   )
 }

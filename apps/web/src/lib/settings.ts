@@ -12,6 +12,7 @@ export interface Settings {
   defaultBackground: string // hex colour used to flatten alpha
   metadataPolicy: MetadataPolicy
   batchWorkers: number // 1–4 files converted concurrently in the batch view
+  show3dBackground: boolean // animated Three.js background behind the header
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -21,6 +22,7 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultBackground: '#ffffff',
   metadataPolicy: 'strip',
   batchWorkers: 4,
+  show3dBackground: true,
 }
 
 const STORAGE_KEY = 'openpixel.settings.v1'
@@ -47,6 +49,10 @@ export function loadSettings(): Settings {
         typeof parsed.batchWorkers === 'number'
           ? Math.min(4, Math.max(1, Math.round(parsed.batchWorkers)))
           : DEFAULT_SETTINGS.batchWorkers,
+      show3dBackground:
+        typeof parsed.show3dBackground === 'boolean'
+          ? parsed.show3dBackground
+          : DEFAULT_SETTINGS.show3dBackground,
     }
   } catch {
     return { ...DEFAULT_SETTINGS }

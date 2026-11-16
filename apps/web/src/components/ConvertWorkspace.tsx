@@ -1,5 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  FormControl,
+  FormControlLabel,
+  Radio,
+  RadioGroup,
+  Select,
+  Slider,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material'
+import DownloadIcon from '@mui/icons-material/Download'
+import {
   BROWSER_DECODABLE,
   BROWSER_ENCODABLE,
   formatById,
@@ -197,271 +214,323 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
     .filter((c): c is NonNullable<typeof c> => c !== undefined && c.can_encode)
 
   return (
-    <section aria-labelledby="convert-heading" className="space-y-4">
-      <h2 id="convert-heading" className="text-xl font-semibold text-slate-900 dark:text-slate-100">
-        Convert one image
-      </h2>
-      <p className="text-sm text-slate-600 dark:text-slate-400">
-        Files never leave your device — conversion runs locally in your browser. In-browser
-        conversion handles <strong>PNG, JPEG and WebP</strong> output via the canvas from PNG,
-        JPEG, WebP, GIF (first frame), BMP, SVG and AVIF (browser-dependent) sources
-        {wasmSupport
-          ? ', plus the built-in WASM engine’s BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF targets (and sources) — AVIF still needs the native CLI'
-          : ', plus the WASM engine’s extra formats when its module is built (see Settings, About)'}
-        . Everything else needs the native CLI. {WASM_STATUS.detail}
-      </p>
+    <Box component="section" aria-labelledby="convert-heading">
+      <Stack spacing={2}>
+        <Typography variant="h5" component="h2" id="convert-heading">
+          Convert one image
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Files never leave your device — conversion runs locally in your browser. In-browser
+          conversion handles <strong>PNG, JPEG and WebP</strong> output via the canvas from PNG,
+          JPEG, WebP, GIF (first frame), BMP, SVG and AVIF (browser-dependent) sources
+          {wasmSupport
+            ? ', plus the built-in WASM engine’s BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF targets (and sources) — AVIF still needs the native CLI'
+            : ', plus the WASM engine’s extra formats when its module is built (see Settings, About)'}
+          . Everything else needs the native CLI. {WASM_STATUS.detail}
+        </Typography>
 
-      {!file && (
-        <DropZone
-          inputId="convert-file"
-          label="Drop an image here"
-          hint="PNG, JPEG, WebP, GIF, BMP, SVG, AVIF — plus TIFF, QOI, HEIC, JXL and JPEG 2000 when the WASM engine is built. Nothing is uploaded."
-          multiple={false}
-          accept="image/*"
-          onFiles={handleFiles}
-        />
-      )}
+        {!file && (
+          <DropZone
+            inputId="convert-file"
+            label="Drop an image here"
+            hint="PNG, JPEG, WebP, GIF, BMP, SVG, AVIF — plus TIFF, QOI, HEIC, JXL and JPEG 2000 when the WASM engine is built. Nothing is uploaded."
+            multiple={false}
+            accept="image/*"
+            onFiles={handleFiles}
+          />
+        )}
 
-      {file && (
-        <div className="grid gap-6 md:grid-cols-2">
-          <div className="space-y-3">
-            <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
-              {previewUrl &&
-                (probed === null ||
-                probed.format === 'unknown' ||
-                BROWSER_DECODABLE.includes(probed.format) ? (
-                  <img
-                    src={previewUrl}
-                    alt={`Preview of ${file.name}`}
-                    className="mx-auto max-h-80 max-w-full rounded-lg object-contain"
-                  />
-                ) : (
-                  <p className="rounded-lg bg-slate-100 px-3 py-8 text-center text-sm text-slate-500 dark:bg-slate-700 dark:text-slate-400">
-                    No preview for {formatLabel(probed.format)} — this browser cannot display it,
-                    but the WASM engine can convert it.
-                  </p>
-                ))}
-              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                <dt className="text-slate-500 dark:text-slate-400">File</dt>
-                <dd className="truncate font-medium text-slate-900 dark:text-slate-100">{file.name}</dd>
-                <dt className="text-slate-500 dark:text-slate-400">Size</dt>
-                <dd className="text-slate-900 dark:text-slate-100">{formatBytes(file.size)}</dd>
-                <dt className="text-slate-500 dark:text-slate-400">Detected format</dt>
-                <dd className="text-slate-900 dark:text-slate-100">
-                  {probed
-                    ? formatLabel(probed.format)
-                    : detectedFormat
-                      ? formatLabel(detectedFormat)
-                      : status === 'probing'
-                        ? 'Reading…'
-                        : 'Unknown'}
-                  <span className="block text-xs text-slate-500 dark:text-slate-400">
-                    Detected from magic bytes, not the extension.
-                  </span>
-                </dd>
-                <dt className="text-slate-500 dark:text-slate-400">Dimensions</dt>
-                <dd className="text-slate-900 dark:text-slate-100">
-                  {probed ? `${probed.width} × ${probed.height} px` : '—'}
-                </dd>
-              </dl>
-              <button
+        {file && (
+          <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { md: '1fr 1fr' } }}>
+            <Stack spacing={2}>
+              <Card>
+                <CardContent>
+                  {previewUrl &&
+                    (probed === null ||
+                    probed.format === 'unknown' ||
+                    BROWSER_DECODABLE.includes(probed.format) ? (
+                      <Box
+                        component="img"
+                        src={previewUrl}
+                        alt={`Preview of ${file.name}`}
+                        sx={{
+                          display: 'block',
+                          mx: 'auto',
+                          maxHeight: 320,
+                          maxWidth: '100%',
+                          borderRadius: 1,
+                          objectFit: 'contain',
+                        }}
+                      />
+                    ) : (
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        align="center"
+                        sx={{ bgcolor: 'action.hover', borderRadius: 1, px: 2, py: 4 }}
+                      >
+                        No preview for {formatLabel(probed.format)} — this browser cannot display it,
+                        but the WASM engine can convert it.
+                      </Typography>
+                    ))}
+                  <Box
+                    component="dl"
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: 'auto 1fr',
+                      columnGap: 2,
+                      rowGap: 0.5,
+                      mt: 2,
+                      mx: 0,
+                      mb: 0,
+                    }}
+                  >
+                    <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>
+                      File
+                    </Box>
+                    <Box
+                      component="dd"
+                      sx={{
+                        m: 0,
+                        typography: 'body2',
+                        fontWeight: 500,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {file.name}
+                    </Box>
+                    <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>
+                      Size
+                    </Box>
+                    <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>
+                      {formatBytes(file.size)}
+                    </Box>
+                    <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>
+                      Detected format
+                    </Box>
+                    <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>
+                      {probed
+                        ? formatLabel(probed.format)
+                        : detectedFormat
+                          ? formatLabel(detectedFormat)
+                          : status === 'probing'
+                            ? 'Reading…'
+                            : 'Unknown'}
+                      <Typography variant="caption" component="span" display="block" color="text.secondary">
+                        Detected from magic bytes, not the extension.
+                      </Typography>
+                    </Box>
+                    <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>
+                      Dimensions
+                    </Box>
+                    <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>
+                      {probed ? `${probed.width} × ${probed.height} px` : '—'}
+                    </Box>
+                  </Box>
+                  <Button type="button" variant="outlined" onClick={clearFile} sx={{ mt: 2 }}>
+                    Choose a different file
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {status === 'probing' && (
+                <Typography role="status" variant="body2" color="text.secondary">
+                  Reading image…
+                </Typography>
+              )}
+            </Stack>
+
+            <Card>
+              <CardContent>
+                <Stack spacing={2.5}>
+                  <Box>
+                    <Typography variant="subtitle2" component="label" htmlFor="target-format">
+                      Output format
+                    </Typography>
+                    <Select
+                      native
+                      fullWidth
+                      id="target-format"
+                      value={targetFormat}
+                      onChange={(e) => setTargetFormat(e.target.value)}
+                      sx={{ mt: 0.5 }}
+                    >
+                      {targets.map((t) => (
+                        <option key={t.format_id} value={t.format_id}>
+                          {formatLabel(t.format_id)}
+                        </option>
+                      ))}
+                    </Select>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                      {wasmSupport
+                        ? 'Canvas targets plus the WASM engine’s BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF. AVIF still needs the native CLI — see the Formats tab.'
+                        : 'Only formats this browser can encode. BMP, TIFF, AVIF, JXL, QOI and the rest need the WASM engine or the native CLI — see the Formats tab.'}
+                    </Typography>
+                  </Box>
+
+                  {(targetFormat === 'jpeg' || targetFormat === 'webp') && (
+                    <Box>
+                      <Typography variant="subtitle2" component="label">
+                        Quality: {quality}
+                      </Typography>
+                      <Slider
+                        aria-label="Quality"
+                        min={1}
+                        max={100}
+                        value={quality}
+                        onChange={(_, value) => setQuality(value as number)}
+                      />
+                    </Box>
+                  )}
+
+                  {targetFormat === 'png' && (
+                    <Box>
+                      <Typography variant="subtitle2" component="label">
+                        PNG compression: {pngCompression} (0 = fast, 1 = default, 2 = best)
+                      </Typography>
+                      <Slider
+                        aria-label="PNG compression"
+                        min={0}
+                        max={2}
+                        step={1}
+                        value={pngCompression}
+                        onChange={(_, value) => setPngCompression(value as number)}
+                      />
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                        The browser’s canvas encoder has no PNG compression knob — this setting is
+                        recorded and honoured by the CLI, but does not change the in-browser output.
+                      </Typography>
+                    </Box>
+                  )}
+
+                  <Box>
+                    <Typography variant="subtitle2" component="label">
+                      Background colour (flattens transparency for JPEG/BMP)
+                    </Typography>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                      <TextField
+                        type="color"
+                        size="small"
+                        value={background}
+                        onChange={(e) => setBackground(e.target.value)}
+                        inputProps={{ 'aria-label': 'Background colour picker' }}
+                        sx={{ width: 56, '& input': { p: 0.5, height: 40, cursor: 'pointer' } }}
+                      />
+                      <TextField
+                        size="small"
+                        value={background}
+                        onChange={(e) => setBackground(e.target.value)}
+                        inputProps={{ 'aria-label': 'Background colour hex value' }}
+                        sx={{ width: 120, '& input': { fontFamily: 'monospace' } }}
+                      />
+                    </Stack>
+                  </Box>
+
+                  <Box>
+                    <Typography variant="subtitle2">Metadata</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                      Canvas conversion always strips EXIF/ICC/XMP. “Preserve” is offered so the choice
+                      is explicit, but in this browser it still strips — use the CLI to preserve.
+                    </Typography>
+                    <FormControl sx={{ mt: 1 }}>
+                      <RadioGroup
+                        row
+                        name="metadata-policy"
+                        value={settings.metadataPolicy}
+                        onChange={(_, value) =>
+                          onSettingsChange({ ...settings, metadataPolicy: value as Settings['metadataPolicy'] })
+                        }
+                      >
+                        <FormControlLabel value="strip" control={<Radio />} label="Strip (default)" />
+                        <FormControlLabel value="preserve" control={<Radio />} label="Preserve (CLI only)" />
+                      </RadioGroup>
+                    </FormControl>
+                  </Box>
+
+                  <Button
+                    type="button"
+                    variant="contained"
+                    size="large"
+                    fullWidth
+                    onClick={handleConvert}
+                    disabled={!canConvert || status === 'converting'}
+                  >
+                    {status === 'converting' ? 'Converting…' : `Convert to ${formatLabel(targetFormat)}`}
+                  </Button>
+                  {!canConvert && probed && (
+                    <Typography variant="body2" color="warning.main">
+                      This source format cannot be converted in the browser — use the native CLI.
+                    </Typography>
+                  )}
+                </Stack>
+              </CardContent>
+            </Card>
+          </Box>
+        )}
+
+        {warnings.length > 0 && (
+          <Box
+            role="status"
+            sx={{
+              borderRadius: 3,
+              border: 1,
+              borderColor: 'warning.main',
+              bgcolor: (t) => (t.palette.mode === 'dark' ? '#451a03' : '#fffbeb'),
+              color: (t) => (t.palette.mode === 'dark' ? '#fde68a' : '#92400e'),
+              p: 2,
+            }}
+          >
+            <Box component="ul" sx={{ m: 0, pl: 2.5, typography: 'body2' }}>
+              {warnings.map((w, i) => (
+                <li key={i}>{w}</li>
+              ))}
+            </Box>
+          </Box>
+        )}
+
+        {status === 'error' && error && <Alert severity="error">{error}</Alert>}
+
+        {status === 'done' && result && file && (
+          <Box
+            role="status"
+            sx={{
+              borderRadius: 3,
+              border: 1,
+              borderColor: 'success.main',
+              bgcolor: (t) => (t.palette.mode === 'dark' ? '#052e16' : '#f0fdf4'),
+              p: 2,
+            }}
+          >
+            <Typography variant="body1" fontWeight={600} color="success.main">
+              Converted: {formatBytes(file.size)} → {formatBytes(result.bytes)} ({result.width} ×{' '}
+              {result.height} px)
+            </Typography>
+            <Stack direction="row" flexWrap="wrap" spacing={1.5} sx={{ mt: 1.5 }}>
+              <Button
                 type="button"
-                onClick={clearFile}
-                className="mt-3 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                variant="contained"
+                color="success"
+                startIcon={<DownloadIcon />}
+                onClick={() => downloadBlob(result.blob, outputFileName(file.name, targetFormat))}
               >
-                Choose a different file
-              </button>
-            </div>
-
-            {status === 'probing' && (
-              <p role="status" className="text-sm text-slate-600 dark:text-slate-400">
-                Reading image…
-              </p>
-            )}
-          </div>
-
-          <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-            <div>
-              <label
-                htmlFor="target-format"
-                className="block text-sm font-medium text-slate-900 dark:text-slate-100"
+                Download {outputFileName(file.name, targetFormat)}
+              </Button>
+              <Button
+                type="button"
+                variant="outlined"
+                onClick={() => {
+                  setResult(null)
+                  setStatus('ready')
+                }}
               >
-                Output format
-              </label>
-              <select
-                id="target-format"
-                value={targetFormat}
-                onChange={(e) => setTargetFormat(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-              >
-                {targets.map((t) => (
-                  <option key={t.format_id} value={t.format_id}>
-                    {formatLabel(t.format_id)}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {wasmSupport
-                  ? 'Canvas targets plus the WASM engine’s BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF. AVIF still needs the native CLI — see the Formats tab.'
-                  : 'Only formats this browser can encode. BMP, TIFF, AVIF, JXL, QOI and the rest need the WASM engine or the native CLI — see the Formats tab.'}
-              </p>
-            </div>
-
-            {(targetFormat === 'jpeg' || targetFormat === 'webp') && (
-              <div>
-                <label
-                  htmlFor="quality"
-                  className="block text-sm font-medium text-slate-900 dark:text-slate-100"
-                >
-                  Quality: {quality}
-                </label>
-                <input
-                  id="quality"
-                  type="range"
-                  min={1}
-                  max={100}
-                  value={quality}
-                  onChange={(e) => setQuality(Number(e.target.value))}
-                  className="mt-1 w-full"
-                />
-              </div>
-            )}
-
-            {targetFormat === 'png' && (
-              <div>
-                <label
-                  htmlFor="png-compression"
-                  className="block text-sm font-medium text-slate-900 dark:text-slate-100"
-                >
-                  PNG compression: {pngCompression} (0 = fast, 1 = default, 2 = best)
-                </label>
-                <input
-                  id="png-compression"
-                  type="range"
-                  min={0}
-                  max={2}
-                  step={1}
-                  value={pngCompression}
-                  onChange={(e) => setPngCompression(Number(e.target.value))}
-                  className="mt-1 w-full"
-                />
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  The browser’s canvas encoder has no PNG compression knob — this setting is
-                  recorded and honoured by the CLI, but does not change the in-browser output.
-                </p>
-              </div>
-            )}
-
-            <div>
-              <label
-                htmlFor="background"
-                className="block text-sm font-medium text-slate-900 dark:text-slate-100"
-              >
-                Background colour (flattens transparency for JPEG/BMP)
-              </label>
-              <div className="mt-1 flex items-center gap-2">
-                <input
-                  id="background"
-                  type="color"
-                  value={background}
-                  onChange={(e) => setBackground(e.target.value)}
-                  className="h-10 w-12 cursor-pointer rounded border border-slate-300 dark:border-slate-600"
-                  aria-label="Background colour picker"
-                />
-                <input
-                  type="text"
-                  value={background}
-                  onChange={(e) => setBackground(e.target.value)}
-                  aria-label="Background colour hex value"
-                  className="w-28 rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-                />
-              </div>
-            </div>
-
-            <div>
-              <span className="block text-sm font-medium text-slate-900 dark:text-slate-100">
-                Metadata
-              </span>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Canvas conversion always strips EXIF/ICC/XMP. “Preserve” is offered so the choice
-                is explicit, but in this browser it still strips — use the CLI to preserve.
-              </p>
-              <div className="mt-2 flex gap-4">
-                {(['strip', 'preserve'] as const).map((policy) => (
-                  <label key={policy} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="metadata-policy"
-                      value={policy}
-                      checked={settings.metadataPolicy === policy}
-                      onChange={() => onSettingsChange({ ...settings, metadataPolicy: policy })}
-                    />
-                    {policy === 'strip' ? 'Strip (default)' : 'Preserve (CLI only)'}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleConvert}
-              disabled={!canConvert || status === 'converting'}
-              className="w-full rounded-lg bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {status === 'converting' ? 'Converting…' : `Convert to ${formatLabel(targetFormat)}`}
-            </button>
-            {!canConvert && probed && (
-              <p className="text-sm text-amber-700 dark:text-amber-400">
-                This source format cannot be converted in the browser — use the native CLI.
-              </p>
-            )}
-          </div>
-        </div>
-      )}
-
-      {warnings.length > 0 && (
-        <div role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
-          <ul className="list-disc pl-5">
-            {warnings.map((w, i) => (
-              <li key={i}>{w}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {status === 'error' && error && (
-        <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
-          {error}
-        </div>
-      )}
-
-      {status === 'done' && result && file && (
-        <div role="status" className="rounded-xl border border-green-300 bg-green-50 p-4 dark:border-green-700 dark:bg-green-950">
-          <p className="font-medium text-green-800 dark:text-green-200">
-            Converted: {formatBytes(file.size)} → {formatBytes(result.bytes)} ({result.width} ×{' '}
-            {result.height} px)
-          </p>
-          <div className="mt-3 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => downloadBlob(result.blob, outputFileName(file.name, targetFormat))}
-              className="rounded-lg bg-green-700 px-4 py-2 font-medium text-white hover:bg-green-800"
-            >
-              Download {outputFileName(file.name, targetFormat)}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setResult(null)
-                setStatus('ready')
-              }}
-              className="rounded-lg border border-slate-300 px-4 py-2 font-medium text-slate-700 hover:bg-white dark:border-slate-600 dark:text-slate-200"
-            >
-              Convert again with different settings
-            </button>
-          </div>
-        </div>
-      )}
-    </section>
+                Convert again with different settings
+              </Button>
+            </Stack>
+          </Box>
+        )}
+      </Stack>
+    </Box>
   )
 }

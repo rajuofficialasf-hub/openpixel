@@ -1,7 +1,7 @@
 # Web Application — OpenPixel Engine (Phase 7, draft — coordinator verifies)
 
 Local-only React web app in `apps/web/` (React 19 + TypeScript + Vite
-+ Tailwind CSS 3). There is no server component: the app is static
++ Material UI 7 + Three.js). There is no server component: the app is static
 files, and every image operation runs in the browser. Files never
 leave the device.
 
@@ -36,12 +36,61 @@ User drops a file
   in the browser — the CLI allows 8) converts files concurrently;
   per-file status/error; individual downloads plus a client-side zip
   (`jszip`) for "Download all". A failed file never stops the batch.
-- **Theme**: Tailwind `darkMode: 'class'`, toggled by a header button
-  and the Settings theme selector; `system` follows the OS.
+- **Theme**: MUI palette mode (`src/theme/theme.ts`), toggled by a header button
+  and the Settings theme selector; `system` follows the OS. The `dark` class
+  is still toggled on `<html>` — the e2e suite asserts on it, not because
+  the theme needs it.
+- **3D background**: `src/components/Background3D.tsx` — plain Three.js
+  (no react-three-fiber), slow-floating brand-coloured particles and
+  wireframe shapes on a fixed transparent canvas behind the app,
+  lazy-loaded so it never blocks first paint. It respects
+  `prefers-reduced-motion` (one static frame, no loop), pauses when the
+  tab is hidden, and disposes everything on unmount. Toggled in
+  Settings ("3D background", on by default, persisted in localStorage
+  as `show3dBackground`).
 - **Accessibility**: labelled controls, `role="tablist"` tabs with
   `aria-selected`, `role="status"`/`role="alert"` live regions for
   progress and errors, visible `:focus-visible` outlines, keyboard
   operable drop zone (Enter/Space opens the picker).
+
+## Design system
+
+The look lives in one place so new workspaces reuse it instead of
+reinventing it. Tailwind was removed entirely (16 Nov 2026 redesign)
+— no Tailwind package, config, or directive remains anywhere in
+`apps/web/`; MUI and Tailwind must not coexist in this app.
+
+- **`src/theme/theme.ts`** — `getTheme(mode: 'light' | 'dark')`, the
+  single source of truth. Palette: brand blue primary `#2563eb`
+  (unchanged from the Tailwind build), teal secondary, slate
+  neutrals; system font stack (no webfont download); `borderRadius`
+  12; component overrides for Button / Tabs / Select / Slider /
+  Table / Card / Alert so every view looks consistent. Global
+  rules that used to live in `src/index.css` (body font, visible
+  `:focus-visible` outline, `color-scheme`) are `MuiCssBaseline`
+  overrides here. `src/index.css` no longer exists.
+- **`App.tsx` is the shared shell** — header (brand + theme toggle),
+  tab navigation, `Container maxWidth="lg"` main area, footer. A new
+  workspace plugs in as one more tab: add its id to `TABS`, its
+  panel to the `tabpanel` switch, and its component under
+  `src/components/`. It gets the theme, the 3D background, the
+  header/footer and the tab keyboard behaviour for free.
+- **Shared components** (`src/components/`): `DropZone` (drag-and-drop
+  + keyboard-operable file picker, reused by Convert and Batch),
+  `Background3D` (see above). Conversion logic stays in `src/lib/`
+  and is UI-agnostic — a new workspace calls the same `probeImage` /
+  `convertImage` / `useWasmSupport` helpers.
+- **Hard UI contracts** (the Playwright e2e suites depend on these —
+  keep them or update `apps/web/e2e/` to match): `#convert-file`
+  file input; `#target-format` is a real native `<select>` (MUI
+  `Select` with the `native` prop); tab ids `#tab-batch`,
+  `#tab-formats`, `#tab-settings`; panel ids `#panel-formats`,
+  `#panel-settings`; `role="status"` for conversion notes,
+  `role="alert"` for errors; button texts "Choose a different file",
+  "Convert to …", "Download …", "Download all (2) as .zip"; drop-zone
+  text "Drop an image here" with Tab-focus + Enter-to-open behaviour;
+  theme toggle aria-labels "Switch to dark theme" / "Switch to light
+  theme"; "WASM engine" note texts unchanged.
 
 ## What converts where
 
