@@ -217,6 +217,24 @@ jobs:
         if: runner.os == 'Linux'
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # --- All OSes: libpdfium (pinned) for the render/text tests.
+      # Six openpixel-pdf tests render real pages / extract real
+      # text and unwrap the result — they need the actual runtime
+      # library, not just the compiled-in `pdfium` feature. Without
+      # it the run fails exactly the way e9cfc29 and 9f01bd5 did
+      # (all three CLI jobs, "Test workspace"). The fetch script
+      # downloads the PINNED bblanchon/pdfium-binaries release
+      # chromium/8152 into target/pdfium/ (gitignored, never
+      # committed) and verifies the Linux sha256 against
+      # LICENSE_AUDIT.md. macOS/Windows archives have no recorded
+      # sha yet — the script prints the downloaded sha; record it
+      # in LICENSE_AUDIT.md from a green run before relying on it.
+      # `shell: bash` makes Windows use Git Bash (the script needs
+      # uname/curl/sha256sum/tar, all present there).
+      - name: Fetch libpdfium (pinned)
+        shell: bash
+        run: bash scripts/pdfium/fetch-pdfium.sh
+
       - name: Test workspace
         run: cargo test --workspace
 
