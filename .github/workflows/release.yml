@@ -92,6 +92,12 @@ jobs:
       # anymore. The vendored build needs meson + ninja + nasm
       # (x86_64 asm, nasm >= 2.14) and MSVC (preinstalled on
       # windows-latest; meson finds it via vswhere).
+      # meson comes from pip, NOT choco: choco's meson is an MSI
+      # that only updates the registry PATH, which later steps of
+      # the same job do not see — run 43850509466 failed on
+      # "meson failed: program not found" even though choco had
+      # installed meson 1.12.1. pip puts meson.exe in the Python
+      # Scripts dir, which is already on PATH.
       # History — the old dynamic-link traps, all gone now:
       #  1. vcpkg provides NO pkg-config binary (run 43832448184).
       #  2. ${{ env.VCPKG_INSTALLATION_ROOT }} renders empty in
@@ -101,7 +107,9 @@ jobs:
       #     dav1d.dll entirely (verified 16 Nov 2026).
       - name: Install dav1d build tools (Windows)
         if: runner.os == 'Windows'
-        run: choco install nasm meson ninja -y
+        run: |
+          choco install nasm ninja -y
+          python -m pip install meson
 
       # --- macOS: dav1d is built from source (static), so Homebrew
       # only provides the build tools. No gas-preprocessor needed:
@@ -205,9 +213,12 @@ jobs:
 
       # --- Windows: dav1d is built from source (static) — see the
       # CLI job's note. No vcpkg, no pkg-config, no DLL handling.
+      # (meson comes from pip — see the CLI job's note for why.)
       - name: Install dav1d build tools (Windows)
         if: runner.os == 'Windows'
-        run: choco install nasm meson ninja -y
+        run: |
+          choco install nasm ninja -y
+          python -m pip install meson
 
       # --- macOS: dav1d is built from source (static) — see the
       # CLI job's note.

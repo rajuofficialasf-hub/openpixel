@@ -164,12 +164,17 @@ binary), `openpixel-desktop-<OS>-<arch>` (the installers),
     patchelf libgtk-3-dev libsoup-3.0-dev` (desktop job) — the
     exact list from `docs/DESKTOP.md`. No sysroot workaround on a
     clean runner.
-  - Windows: `choco install nasm meson ninja -y` (dav1d build
-    tools; MSVC and the WebView2 runtime are preinstalled on the
-    runner). No vcpkg, no pkg-config, no DLL handling — the old
-    dynamic-link route failed three CI runs in a row (missing
-    pkg-config, empty `VCPKG_INSTALLATION_ROOT`, DLL not on
-    PATH) and produced installers without `dav1d.dll`.
+  - Windows: `choco install nasm ninja -y` plus `python -m pip
+    install meson` (dav1d build tools; MSVC and the WebView2
+    runtime are preinstalled on the runner). meson must come from
+    pip, not choco: choco's meson MSI only updates the registry
+    PATH, which later steps do not see — run 43850509466 failed
+    on "meson failed: program not found" despite a successful
+    choco install of meson 1.12.1. No vcpkg, no pkg-config, no
+    DLL handling — the old dynamic-link route failed three CI
+    runs in a row (missing pkg-config, empty
+    `VCPKG_INSTALLATION_ROOT`, DLL not on PATH) and produced
+    installers without `dav1d.dll`.
   - macOS: `brew install meson ninja nasm pkg-config`. Xcode
     Command Line Tools are preinstalled on `macos-latest`.
 - Validation: the YAML parses (`python3 -c "yaml.safe_load"`)
