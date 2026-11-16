@@ -37,6 +37,10 @@ conv "$IN/rgba.png" jxl
 conv "$IN/rgba.png" jp2
 conv "$IN/rgba.png" tga
 conv "$IN/rgba.png" ico
+echo "=== 3c. ICO auto-resize (16 Nov 2026): format caps at 256x256 ==="
+# photo.jpg is 1024x768: must succeed at 256x192 with a resize warning,
+# never fail with "image width must be 1..=256" (the live-site bug).
+conv "$IN/photo.jpg" ico
 conv "$IN/rgba.png" pnm
 conv "$IN/photo.jpg" png
 conv "$IN/photo-2048.heic" png
@@ -61,7 +65,7 @@ run "$BIN" extract-frame "$IN/anim.gif" "$OUT/frame1.png" --frame 1
 run "$BIN" info "$OUT/frame1.png"
 echo "=== 6. batch (workers, incl. corrupt file) ==="
 mkdir -p "$IN/batch" && cp "$IN/rgba.png" "$IN/photo.jpg" "$IN/anim.gif" "$IN/corrupt.png" "$IN/checker-64.heic" "$IN/batch/"
-run "$BIN" batch "$IN/batch" "$OUT/batch" --format webp --quality 80 --workers 2
+run "$BIN" batch "$IN/batch" --format webp --quality 80 --workers 2 --out-dir "$OUT/batch"
 ls -la "$OUT/batch"
 for f in "$OUT/batch"/*; do "$BIN" info "$f" | head -1; done
 echo "=== 7. bench --quick ==="

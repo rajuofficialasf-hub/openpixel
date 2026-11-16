@@ -507,6 +507,11 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
               Converted: {formatBytes(file.size)} → {formatBytes(result.bytes)} ({result.width} ×{' '}
               {result.height} px)
             </Typography>
+            {targetFormat === 'ico' && probed && (result.width < probed.width || result.height < probed.height) && (
+              <Typography variant="body2" sx={{ mt: 1 }}>
+                Resized to {result.width}×{result.height} for ICO — ICO supports max 256×256.
+              </Typography>
+            )}
             <Stack direction="row" flexWrap="wrap" spacing={1.5} sx={{ mt: 1.5 }}>
               <Button
                 type="button"

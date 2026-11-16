@@ -107,6 +107,30 @@ impl Encoder for ImageRsCodec {
         } else {
             image
         };
+        // ICO: image-rs writes the input's colour type as the embedded
+        // PNG, and its own ICO decoder only accepts RGBA PNGs — an RGB
+        // source produced an ICO the engine could not read back
+        // ("The PNG is not in RGBA format!", found 16 Nov 2026 via
+        // `openpixel info` on an RGB-source ICO). Normalise to RGBA8
+        // first; ICO supports alpha, so nothing is lost (opaque
+        // pixels get alpha 255).
+        let owned_rgba;
+        let image = if self.format == ImageFormat::Ico
+            && image.pixel_format != PixelFormat::Rgba8
+        {
+            owned_rgba = DecodedImage {
+                width: image.width,
+                height: image.height,
+                pixel_format: PixelFormat::Rgba8,
+                data: image.to_rgba8(),
+                is_animated: image.is_animated,
+                frame_count: image.frame_count,
+                note: image.note.clone(),
+            };
+            &owned_rgba
+        } else {
+            image
+        };
         let mut out: Vec<u8> = Vec::new();
         match self.format {
             ImageFormat::Jpeg => {

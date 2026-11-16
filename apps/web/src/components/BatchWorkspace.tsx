@@ -37,6 +37,8 @@ interface BatchItem {
   error: string | null
   resultBlob: Blob | null
   resultBytes: number
+  resultWidth: number
+  resultHeight: number
 }
 
 interface BatchWorkspaceProps {
@@ -114,6 +116,8 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
       error: null,
       resultBlob: null,
       resultBytes: 0,
+      resultWidth: 0,
+      resultHeight: 0,
     }))
     setItems((prev) => [...prev, ...fresh])
     for (const item of fresh) {
@@ -182,7 +186,14 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
           setItems((prev) =>
             prev.map((p) =>
               p.id === item.id
-                ? { ...p, status: 'done', resultBlob: converted.blob, resultBytes: converted.bytes }
+                ? {
+                    ...p,
+                    status: 'done',
+                    resultBlob: converted.blob,
+                    resultBytes: converted.bytes,
+                    resultWidth: converted.width,
+                    resultHeight: converted.height,
+                  }
                 : p,
             ),
           )
@@ -348,6 +359,15 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
                             {item.error}
                           </Typography>
                         )}
+                        {item.status === 'done' &&
+                          targetFormat === 'ico' &&
+                          item.width > 0 &&
+                          (item.resultWidth < item.width || item.resultHeight < item.height) && (
+                            <Typography variant="caption" display="block">
+                              Resized to {item.resultWidth}×{item.resultHeight} for ICO — ICO supports max
+                              256×256.
+                            </Typography>
+                          )}
                       </Box>
                       <Chip color={chip.color} label={chip.label} size="small" />
                       {item.status === 'done' && item.resultBlob && (

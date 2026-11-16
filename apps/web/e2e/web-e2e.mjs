@@ -154,6 +154,31 @@ for (const target of ['tiff', 'qoi', 'jxl']) {
   check(`PNG->${target.toUpperCase()} via WASM is a real ${target.toUpperCase()}`, info.ok, info.detail);
 }
 
+// --- 6d. ICO (16 Nov 2026): the format caps at 256x256, so a larger
+// image is auto-resized to fit (aspect preserved) with a note —
+// regression for the live-site failure Raju reported (800x600 PNG
+// failed with "The browser cannot encode ICO" because the WASM
+// engine threw "image width must be 1..=256" and the CLI failed
+// identically). Small images convert unchanged, no note.
+await page.locator('button', { hasText: 'Choose a different file' }).click();
+await uploadConvert(path.join(IN, 'checker-64.png'));
+await page.selectOption('#target-format', 'ico');
+const pngIco64 = await convertAndDownload();
+const pngIco64Info = await BunOrNode(pngIco64, 'ico');
+check('PNG->ICO via WASM is a real ICO 64x64', pngIco64Info.ok && pngIco64Info.detail.includes('size=64x64'), pngIco64Info.detail);
+const ico64Note = await page.locator('[role="status"]').allInnerTexts();
+check('64x64 ICO shows no resize note', !ico64Note.join(' ').includes('Resized to'), ico64Note.join(' | ').slice(0, 200));
+
+await page.locator('button', { hasText: 'Choose a different file' }).click();
+await uploadConvert(path.join(IN, 'photo.jpg'));
+await page.selectOption('#target-format', 'ico');
+const jpgIco = await convertAndDownload();
+const jpgIcoInfo = await BunOrNode(jpgIco, 'ico');
+check('1024x768 photo->ICO via WASM is a real ICO 256x192', jpgIcoInfo.ok && jpgIcoInfo.detail.includes('size=256x192'), jpgIcoInfo.detail);
+const icoNote = await page.locator('[role="status"]').allInnerTexts();
+check('ICO resize note shown for large image', icoNote.join(' ').includes('Resized to 256×192 for ICO'), icoNote.join(' | ').slice(0, 300));
+await shot('16-ico-resize.png');
+
 // --- 6c. SVG source (16 Nov 2026): createImageBitmap rejects SVG
 // blobs, so SVG->JPEG must go through the WASM engine (resvg) —
 // regression for the live-site failure Raju reported

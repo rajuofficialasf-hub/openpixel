@@ -27,6 +27,22 @@ extraction in Phase 5 (see above). TIFF: first page only in plain
 decode; page count + extraction in Phase 5. Animated WebP / APNG:
 frame info in Phase 5, first frame only for decode.
 
+**ICO size cap (16 Nov 2026):** the ICO format stores width and height
+in one byte each (0 = 256), so the encoder rejects anything over
+256×256. The engine auto-resizes to fit instead of failing — aspect
+ratio preserved (Lanczos3), applied in the shared encode tail
+(`Engine::encode_to_bytes`), so CLI, WASM and desktop all behave the
+same. The resize is always reported: a `warning` in `ConvertResult`
+(the CLI prints it as `warning: resized 800x600 to 256x192 for ICO —
+ICO supports max 256x256`) and a note in the web UI next to the
+result. Images at or under 256×256 are untouched. **ICO RGBA
+normalisation (same day):** image-rs writes the input's colour type
+as the embedded PNG, and its own ICO decoder only accepts RGBA PNGs —
+an RGB source produced an ICO the engine could not read back ("The
+PNG is not in RGBA format!"). The codec (`ImageRsCodec::encode`)
+normalises ICO input to RGBA8 first, so every ICO the engine writes
+decodes back.
+
 `image-rs` 0.25.10 was chosen after checking crates.io on 15 Nov 2026:
 actively maintained, pure Rust for these formats, no C toolchain beyond
 the Rust compiler, dual MIT/Apache-2.0 licence. Its transitive

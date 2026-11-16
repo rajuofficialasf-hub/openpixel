@@ -295,3 +295,7 @@ WebP (canvas) plus BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM,
 TGA and GIF (WASM engine). AVIF conversion, metadata preservation,
 image processing (resize/crop/filters/watermark) and frame/page
 extraction are CLI/desktop-only and are not in the web app.
+**ICO:** the format caps at 256×256, so a larger image is auto-resized
+to fit (aspect preserved) and the UI shows a note — "Resized to
+256×192 for ICO — ICO supports max 256×256" — next to the result;
+the CLI prints the same as a warning.

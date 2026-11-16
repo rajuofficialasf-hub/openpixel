@@ -26,7 +26,7 @@ real PNG/JPEG/TIFF/HEIC/GIF into that directory with the same names.
 ## Run
 
 ```bash
-node apps/web/e2e/web-e2e.mjs        # 33 checks, Chromium vs :8321
+node apps/web/e2e/web-e2e.mjs        # 37 checks, Chromium vs :8321
 node apps/web/e2e/web-nowasm.mjs     # 9 checks, WASM-absent fallback vs :8322
 ```
 
@@ -49,7 +49,11 @@ HEIC→PNG via the WASM engine with the "Converted with the built-in
 WASM engine" note; PNG→HEIC via WASM re-detected as HEIC;
 PNG→BMP via the WASM engine re-detected as a real BMP (the canvas
 cannot encode BMP — see below); QOI source → PNG via WASM;
-PNG→TIFF/QOI/JXL via WASM, each re-detected; SVG→JPEG via the WASM
+PNG→TIFF/QOI/JXL via WASM, each re-detected; ICO via WASM — 64×64
+PNG→ICO re-detected as a real ICO with no resize note, and a
+1024×768 photo→ICO auto-resized to 256×192 (ICO caps at 256×256)
+with the "Resized to 256×192 for ICO" note shown (see docs/E2E.md
+§2.18); SVG→JPEG via the WASM
 engine (resvg — `createImageBitmap` rejects SVG blobs, so the
 canvas path can never convert SVG; see docs/E2E.md §2.17); GIF
 first-frame note + GIF→WebP; batch of 3 files incl. an unsupported
@@ -58,7 +62,7 @@ contain 2 real WebP files; Formats tab lists 21 formats; theme
 toggle light/dark persists across reload; keyboard-only Tab to the
 drop zone + Enter opens the file picker. Screenshots land in
 `screenshots/` (`01-home.png` … `09-settings-dark.png`,
-`14-polish-qoi.png`, `15-svg-wasm.png`).
+`14-polish-qoi.png`, `15-svg-wasm.png`, `16-ico-resize.png`).
 
 `web-nowasm.mjs` — with `public/wasm/` removed: the app loads and
 the intro no longer claims WASM targets; PNG→JPEG still converts

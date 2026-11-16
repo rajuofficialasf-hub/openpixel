@@ -8,6 +8,7 @@ use openpixel_metadata::{
     extract_tiff_page, normalize_orientation, orientation_description, AnimationInfo, Metadata,
     MetadataPolicy,
 };
+use openpixel_pipeline::{Operation, Pipeline};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -630,6 +631,30 @@ impl Engine {
         let target_codec = self.registry.get(target).ok_or_else(|| {
             OpenPixelError::NotImplemented(format!("no encoder registered for {}", target.id()))
         })?;
+        // ICO cap (verified 16 Nov 2026): the format stores width and
+        // height in one byte each (0 = 256), so the encoder rejects
+        // anything over 256x256 ("image width must be 1..=256"). Resize
+        // to fit instead of failing — aspect preserved (Lanczos3) — and
+        // say so in the warnings, never silently. This is the one place
+        // every entry point funnels through (convert / convert_bytes /
+        // process), so CLI, WASM and desktop all get the same behaviour.
+        // `ConvertResult` below reports `img`'s dimensions, so the
+        // resized size is what callers see.
+        let owned_image;
+        let img = if target == ImageFormat::Ico && (img.width > 256 || img.height > 256) {
+            let (src_w, src_h) = (img.width, img.height);
+            let resized =
+                Pipeline::from_operations(vec![Operation::ResizeFit { width: 256, height: 256 }])
+                    .apply(img)?;
+            warnings.push(format!(
+                "resized {src_w}x{src_h} to {}x{} for ICO — ICO supports max 256x256",
+                resized.width, resized.height
+            ));
+            owned_image = resized;
+            &owned_image
+        } else {
+            img
+        };
         let mut params = options.to_encode_params();
         if params.quality.is_none() {
             params.quality = Some(self.config.default_jpeg_quality);
@@ -788,6 +813,79 @@ mod tests {
             .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
             .unwrap();
         buf
+    }
+
+    /// PNG bytes of an arbitrary-size RGB gradient — for tests that
+    /// need dimensions the 8x6 fixture cannot provide.
+    fn png_bytes_sized(width: u32, height: u32) -> Vec<u8> {
+        let mut im = image::RgbImage::new(width, height);
+        for (x, y, px) in im.enumerate_pixels_mut() {
+            *px = Rgb([
+                (x % 256) as u8,
+                (y % 256) as u8,
+                ((x + y) % 256) as u8,
+            ]);
+        }
+        let mut buf = Vec::new();
+        DynamicImage::ImageRgb8(im)
+            .write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+            .unwrap();
+        buf
+    }
+
+    #[test]
+    fn convert_ico_auto_resizes_large_images() {
+        // ICO cap (verified 16 Nov 2026): the format stores width and
+        // height in one byte each, so the encoder rejects anything over
+        // 256x256. The engine resizes to fit instead of failing — the
+        // same path the CLI and the WASM build take.
+        let engine = Engine::default();
+        let png = png_bytes_sized(800, 600);
+        let (r, out) = engine
+            .convert_bytes(&png, ImageFormat::Ico, &ConvertOptions::default())
+            .unwrap();
+        assert_eq!((r.width, r.height), (256, 192));
+        assert_eq!(engine.detect_format(&out), ImageFormat::Ico);
+        assert_eq!(&out[0..4], &[0x00, 0x00, 0x01, 0x00]);
+        // The resized ICO must decode back — an RGB source used to
+        // produce an ICO image-rs itself rejected ("The PNG is not in
+        // RGBA format!"), see the codec's ICO normalisation.
+        let (fmt, img) = engine.decode_bytes(&out, None).unwrap();
+        assert_eq!(fmt, ImageFormat::Ico);
+        assert_eq!((img.width, img.height), (256, 192));
+        assert!(
+            r.warnings
+                .iter()
+                .any(|w| w == "resized 800x600 to 256x192 for ICO — ICO supports max 256x256"),
+            "warnings: {:?}",
+            r.warnings
+        );
+    }
+
+    #[test]
+    fn convert_ico_small_image_is_unchanged() {
+        // At or under the cap nothing is resized and no warning is
+        // added — the resize only ever triggers above 256x256.
+        let engine = Engine::default();
+        let png = png_bytes_sized(64, 64);
+        let (r, out) = engine
+            .convert_bytes(&png, ImageFormat::Ico, &ConvertOptions::default())
+            .unwrap();
+        assert_eq!((r.width, r.height), (64, 64));
+        assert_eq!(engine.detect_format(&out), ImageFormat::Ico);
+        assert_eq!(&out[0..4], &[0x00, 0x00, 0x01, 0x00]);
+        // RGB source (the sized helper builds an RGB gradient): the
+        // ICO must decode back — without the codec's RGBA
+        // normalisation this failed with "The PNG is not in RGBA
+        // format!".
+        let (fmt, img) = engine.decode_bytes(&out, None).unwrap();
+        assert_eq!(fmt, ImageFormat::Ico);
+        assert_eq!((img.width, img.height), (64, 64));
+        assert!(
+            !r.warnings.iter().any(|w| w.contains("resized")),
+            "warnings: {:?}",
+            r.warnings
+        );
     }
 
     #[test]
