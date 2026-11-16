@@ -92,6 +92,27 @@ export function info(bytes: Uint8Array | number[]): any;
 export function pdf_compress(bytes: Uint8Array | number[], options_json: string): any;
 
 /**
+ * Add overlay content to a PDF (Phase 5): `ops_json` is a JSON array
+ * of overlay ops, e.g.
+ * `[{"kind":"text","page":1,"x":72,"y":700,"text":"Hi","size":14,"color":{"r":0,"g":0,"b":0},"font":"helvetica"}]`
+ * (kinds: text, image, rect, line, circle, highlight, draw,
+ * comment, page_numbers, header_footer); `images` is a JS array of
+ * `Uint8Array` (or undefined) supplying the image bytes for `image`
+ * ops, by index. Overlays are NEW content layered on top of the
+ * page — existing text is never edited in place.
+ * Returns a JS object `{ data: Uint8Array, ops_applied,
+ * pages_touched, comments_added, warnings }`.
+ */
+export function pdf_edit(bytes: Uint8Array | number[], ops_json: string, images: any): any;
+
+/**
+ * Flatten annotations and form fields into page content (Phase 5).
+ * Returns a JS object `{ data: Uint8Array, annotations_flattened,
+ * annotations_dropped, form_fields_removed, warnings }`.
+ */
+export function pdf_flatten(bytes: Uint8Array | number[]): any;
+
+/**
  * Build a PDF from images (a JS array of `Uint8Array` — PNG, JPEG,
  * WebP, anything the engine decodes), one page per image, in order.
  * `page_size` is a named size ("A4", "Letter", "A5") or undefined
@@ -104,6 +125,14 @@ export function pdf_from_images(images: any, page_size?: string | null): Uint8Ar
  * Returns the `PdfInfo` as a JS object.
  */
 export function pdf_info(bytes: Uint8Array | number[]): any;
+
+/**
+ * List JavaScript actions and embedded files in a PDF (Phase 5) —
+ * never executes anything. Returns the `PdfThreats` object
+ * (`javascript`, `embedded_files`, `launch_actions`,
+ * `auto_actions`, `warnings`).
+ */
+export function pdf_inspect(bytes: Uint8Array | number[]): any;
 
 /**
  * Merge several PDFs (a JS array of `Uint8Array`) into one, in order.
@@ -129,6 +158,41 @@ export function pdf_merge(documents: any): Uint8Array;
  * document (one for every op, one per range for split).
  */
 export function pdf_process(bytes: Uint8Array | number[], ops_json: string): any;
+
+/**
+ * Really remove text from a PDF (Phase 5): `redactions_json` is a
+ * JSON array of redactions, e.g.
+ * `[{"kind":"rect","page":1,"x":72,"y":600,"width":200,"height":20}]`
+ * or `[{"kind":"text","page":null,"text":"SECRET"}]`. The text is
+ * deleted from the content stream, not covered with a black box.
+ * Returns a JS object `{ data: Uint8Array, pages_touched,
+ * runs_removed, characters_removed, annotations_removed,
+ * redacted_texts, warnings }`.
+ */
+export function pdf_redact(bytes: Uint8Array | number[], redactions_json: string): any;
+
+/**
+ * Rebuild the cross-reference table of a damaged PDF (Phase 5).
+ * Returns a JS object `{ data: Uint8Array, recovery, warnings }`.
+ */
+export function pdf_repair(bytes: Uint8Array | number[]): any;
+
+/**
+ * Strip JavaScript, embedded files, launch actions and
+ * auto-actions from a PDF (Phase 5). The document is kept; the
+ * dangerous parts are removed, not hidden. Returns a JS object
+ * `{ data: Uint8Array, javascript_removed, embedded_files_removed,
+ * launch_actions_removed, auto_actions_removed, warnings }`.
+ */
+export function pdf_sanitize(bytes: Uint8Array | number[]): any;
+
+/**
+ * Set document metadata (Phase 5): `metadata_json` is e.g.
+ * `{"title":"…","author":null,"subject":"…","keywords":""}` — a
+ * null leaves a field unchanged, an empty string clears it.
+ * Returns the new PDF bytes.
+ */
+export function pdf_set_metadata(bytes: Uint8Array | number[], metadata_json: string): Uint8Array;
 
 /**
  * Process `bytes` with a resize pipeline, then encode to `target`
@@ -192,10 +256,17 @@ export interface InitOutput {
     readonly discover: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
     readonly info: (a: number, b: number) => [number, number, number];
     readonly pdf_compress: (a: number, b: number, c: number, d: number) => [number, number, number];
+    readonly pdf_edit: (a: number, b: number, c: number, d: number, e: any) => [number, number, number];
+    readonly pdf_flatten: (a: number, b: number) => [number, number, number];
     readonly pdf_from_images: (a: any, b: number, c: number) => [number, number, number, number];
     readonly pdf_info: (a: number, b: number) => [number, number, number];
+    readonly pdf_inspect: (a: number, b: number) => [number, number, number];
     readonly pdf_merge: (a: any) => [number, number, number, number];
     readonly pdf_process: (a: number, b: number, c: number, d: number) => [number, number, number];
+    readonly pdf_redact: (a: number, b: number, c: number, d: number) => [number, number, number];
+    readonly pdf_repair: (a: number, b: number) => [number, number, number];
+    readonly pdf_sanitize: (a: number, b: number) => [number, number, number];
+    readonly pdf_set_metadata: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly process: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number, number];
     readonly process_to_size: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number) => [number, number, number];
     readonly supported_formats: () => any;

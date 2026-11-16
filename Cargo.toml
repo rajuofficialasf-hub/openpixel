@@ -97,6 +97,36 @@ tintbox = "=0.5.0"
 # prototype in `crates/openpixel-pdf/examples/pdfium_render.rs`.
 lopdf = "=0.47.0"
 pdfium-render = "=0.9.5"
+# Studio Phase 5 — digital signatures, pure Rust (all MIT OR
+# Apache-2.0, no system libraries, no new platform burden):
+# `cms` builds/verifies PKCS#7 SignedData, `x509-cert` parses
+# certificates, `rsa` does RSA PKCS#1 v1.5 sign/verify,
+# `rcgen` generates the self-signed test certificates (dev-only).
+# `sha2` 0.10 is the version cms 0.2.3's builder uses (the tree
+# also has sha2 0.11 elsewhere — two majors coexist fine);
+# `der`/`const-oid`/`signature` are the ASN.1/OID/trait crates
+# the signing code uses directly. `rsa` is pinned to 0.9.6 (not
+# 0.9.0) because cms's builder requires rsa ^0.9.6. All seven
+# are optional behind the `sign` feature of `openpixel-pdf`
+# (the CLI enables it; the WASM build does not — signatures
+# stay CLI/desktop-only, see docs/PDF.md).
+cms = "=0.2.3"
+x509-cert = "=0.2.5"
+rsa = "=0.9.6"
+rcgen = "=0.13.0"
+sha2 = "=0.10.9"
+der = "=0.7.10"
+const-oid = "=0.9.6"
+signature = "=2.2.0"
+# spki 0.7.3 is the crate cms 0.2.3 uses for
+# AlgorithmIdentifierOwned / DecodePublicKey (the signing code
+# needs both directly).
+spki = "=0.7.3"
+# pkcs8/pkcs1 are the traits rsa's PEM/DER key parsing lives
+# behind (DecodePrivateKey / DecodeRsaPrivateKey); both are
+# already in the lockfile as transitive deps.
+pkcs8 = "=0.10.2"
+pkcs1 = "=0.7.5"
 
 [profile.release]
 opt-level = 3

@@ -53,6 +53,8 @@ pub struct PdfInfo {
     pub version: String,
     pub title: Option<String>,
     pub author: Option<String>,
+    pub subject: Option<String>,
+    pub keywords: Option<String>,
     pub creator: Option<String>,
     pub producer: Option<String>,
     pub encrypted: bool,
@@ -309,6 +311,8 @@ impl PdfEngine {
             version: doc.version.clone(),
             title: get_str(b"Title"),
             author: get_str(b"Author"),
+            subject: get_str(b"Subject"),
+            keywords: get_str(b"Keywords"),
             creator: get_str(b"Creator"),
             producer: get_str(b"Producer"),
             encrypted,
@@ -825,6 +829,71 @@ pub(crate) fn num(v: f64) -> Object {
     } else {
         Object::Real(v as f32)
     }
+}
+
+/// Add `name → id` to the page's Resources `category` dict
+/// (`Font`, `ExtGState` or `XObject`), creating the dicts when
+/// missing. Works on the page's own Resources or the inherited
+/// one. The reads and the writes are separate phases: lopdf
+/// borrows the whole document for a mutable dictionary, so
+/// nothing may be borrowed while another dictionary is being
+/// written. Shared by the watermark (Phase 3) and the editor
+/// (Phase 5) — one helper, one behaviour.
+pub(crate) fn add_resource(
+    doc: &mut Document,
+    page_id: ObjectId,
+    category: &[u8],
+    name: &str,
+    id: ObjectId,
+) -> Result<()> {
+    // Phase 1 (reads only): resolve the Resources object id,
+    // materialising it as its own object when the page carries an
+    // inline dict or inherits one.
+    let resources_id = match doc
+        .get_dictionary(page_id)
+        .and_then(|d| d.get(b"Resources"))
+    {
+        Ok(Object::Reference(rid)) => *rid,
+        _ => {
+            let inherited = inherited_attribute(doc, page_id, b"Resources");
+            let dict = match inherited {
+                Some(Object::Dictionary(d)) => d,
+                Some(Object::Reference(rid)) => {
+                    doc.get_dictionary(rid).cloned().unwrap_or_default()
+                }
+                _ => Dictionary::new(),
+            };
+            let new_id = doc.add_object(Object::Dictionary(dict));
+            doc.get_dictionary_mut(page_id)?
+                .set("Resources", Object::Reference(new_id));
+            new_id
+        }
+    };
+    // Phase 2 (reads only): the current category dict, cloned.
+    let (cat_id, mut category_dict) = match doc
+        .get_dictionary(resources_id)
+        .and_then(|r| r.get(category))
+    {
+        Ok(Object::Reference(cid)) => (
+            Some(*cid),
+            doc.get_dictionary(*cid).cloned().unwrap_or_default(),
+        ),
+        Ok(Object::Dictionary(d)) => (None, d.clone()),
+        _ => (None, Dictionary::new()),
+    };
+    category_dict.set(name, Object::Reference(id));
+    // Phase 3 (writes only): store the category dict back.
+    match cat_id {
+        Some(cid) => {
+            doc.set_object(cid, Object::Dictionary(category_dict));
+        }
+        None => {
+            let cid = doc.add_object(Object::Dictionary(category_dict));
+            doc.get_dictionary_mut(resources_id)?
+                .set(category, Object::Reference(cid));
+        }
+    }
+    Ok(())
 }
 
 /// Decode a PDF string object: UTF-16BE with BOM, otherwise

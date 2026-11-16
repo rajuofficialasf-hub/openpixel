@@ -379,6 +379,15 @@ openpixel pdf protect <input> <output> --user-password <pw> [--owner-password <p
 openpixel pdf unlock <input> <output> --password <pw>
 openpixel pdf watermark <input> <output> --text <text> [--font-size 48] [--opacity 0.25] [--angle 45]
 openpixel pdf extract-text <input> [-o <out>] [--pages 1,3] [--format txt|html|epub|docx]
+openpixel pdf edit <input> <output> [--text <text> --page 1 --x 72 --y 700 --size 14 --color #000000 --font helvetica] [--op '<json>' ...] [--image <img> --page 1 --x 72 --y 600] [--page-numbers] [--header <text>] [--footer <text>]
+openpixel pdf redact <input> <output> [--text <text> ...] [--rect x,y,w,h --page 1 ...]
+openpixel pdf sign <input> <output> --key <key.pem> --cert <cert.pem> [--reason <text>] [--location <text>] [--contact <text>]
+openpixel pdf verify-sign <input> [--trust <cert.pem> ...] [--json]
+openpixel pdf flatten <input> <output>
+openpixel pdf set-metadata <input> <output> [--title <text>] [--author <text>] [--subject <text>] [--keywords <text>]
+openpixel pdf repair <input> <output>
+openpixel pdf sanitize <input> <output>
+openpixel pdf inspect <input> [--json]
 openpixel doc convert <input> --to <fmt> [-o <out>] [--timeout-secs 120]
 openpixel doc formats [--json]
 openpixel ocr <image> [-o <out.txt>] [--lang eng|ben|eng+ben] [--psm 0..=13] [--preprocess none|light|full] [--format txt|html|json]
@@ -440,6 +449,44 @@ engine.extract_text(bytes, pages: Option<&[u32]>) -> Result<Vec<PageText>>
 //   text_to_txt(pages) -> String | text_to_html(pages) -> String
 //   text_to_epub(pages, title) -> Vec<u8>   // EPUB 3, mimetype first + stored, one chapter per page
 //   text_to_docx(pages) -> Vec<u8>          // minimal OOXML, one paragraph per line
+// Editing and security (Phase 5) — overlays are NEW content; existing text is never edited in place
+engine.edit(bytes, ops: &[OverlayOp], images: &[Vec<u8>]) -> Result<(Vec<u8>, EditOutcome)>
+//   OverlayOp (serde-tagged `kind`): Text { page, x, y, text, size, color: Rgb, font: OverlayFont }
+//     | Image { page, x, y, width, height, image_index } | Rect { page, x, y, width, height, fill, stroke, stroke_width }
+//     | Line { page, x1, y1, x2, y2, stroke, stroke_width } | Circle { page, x, y, radius, fill, stroke, stroke_width }
+//     | Highlight { page, x, y, width, height, color, opacity } | Draw { page, points: Vec<(f64,f64)>, stroke, stroke_width }
+//     | Comment { page, x, y, text, author } | PageNumbers { pages, format, position, size }
+//     | HeaderFooter { pages, header, footer, size }
+//   EditOutcome { ops_applied, pages_touched, comments_added, warnings }
+//   Rgb { r, g, b } (0.0..=1.0); OverlayFont: Helvetica | HelveticaBold | HelveticaOblique | HelveticaBoldOblique | TimesRoman | Courier
+//   PageNumberPosition: BottomCenter | BottomRight | TopCenter | TopRight; format uses {n} / {total}
+//   Non-ASCII text becomes '?' (WinAnsi, same rule as the watermark). Empty op list = error.
+// Signatures (Phase 5, optional `sign` feature — cms + rsa + x509-cert, pure Rust; CLI/desktop only)
+//   SignOptions { reason, location, contact_info } (all Option<String>)
+//   engine.sign(bytes, key_pem: &str, cert_pem: &str, options: SignOptions) -> Result<Vec<u8>>
+//     key: PKCS#8 or PKCS#1 PEM; cert: PEM or DER; RSA only (ECDSA reported unsupported)
+//   engine.verify_signatures(bytes, trust_anchors: &[Vec<u8>]) -> Result<VerifyOutcome>
+//     VerifyOutcome { signatures: Vec<SignatureInfo> }; SignatureInfo { signer, issuer, serial,
+//     digest_algorithm, signing_time, not_before, not_after, valid, trusted, checks, warnings }
+//     valid = the crypto checks out; trusted = the signer IS an anchor or an anchor issued it.
+//     No CRL/OCSP, no TSA. Malformed signatures report valid: false, never a panic.
+// Redaction (Phase 5) — real removal, not a black box; see docs/PDF.md for the limits
+engine.redact(bytes, redactions: &[Redaction]) -> Result<(Vec<u8>, RedactOutcome)>
+//   Redaction: Rect { page, x, y, width, height } | Text { page: Option<u32>, text }
+//   RedactOutcome { pages_touched, runs_removed, characters_removed, annotations_removed, redacted_texts, warnings }
+// Flatten / metadata / repair / sanitise / inspect (Phase 5)
+engine.flatten(bytes) -> Result<(Vec<u8>, FlattenOutcome)>
+//   FlattenOutcome { annotations_flattened, annotations_dropped, form_fields_removed, warnings }
+//   Annotations without an appearance stream are DROPPED (counted, warned), never faked as flattened.
+// engine.set_metadata(bytes, edit: MetadataEdit) -> Result<Vec<u8>>
+//   MetadataEdit { title, author, subject, keywords } — Some("") clears, None leaves unchanged.
+// engine.repair(bytes) -> Result<(Vec<u8>, RepairOutcome)>   // RepairOutcome { recovery, warnings }
+//   recovery: "as written" | "offset corrected" | "reconstructed" | "recovered"
+// engine.sanitize(bytes) -> Result<(Vec<u8>, SanitizeOutcome)>
+//   SanitizeOutcome { javascript_removed, embedded_files_removed, launch_actions_removed, auto_actions_removed, warnings }
+// engine.inspect_threats(bytes) -> Result<PdfThreats>
+//   PdfThreats { javascript: Vec<String>, embedded_files: Vec<String>, launch_actions: Vec<String>,
+//     auto_actions: Vec<String>, warnings: Vec<String> } + is_clean() — never executes anything.
 // Document detection (signature-first, never the extension)
 discover_document(bytes, extension, mime) -> DocumentDiscovery  // DocumentFormat::Pdf | Office | ...
 ```
@@ -466,6 +513,14 @@ pdf_from_images(images: Uint8Array[], page_size?: "A4"|"Letter"|"A5") -> Uint8Ar
 pdf_compress(bytes, options_json) -> { data, input_bytes, output_bytes, saved_bytes, saved_percent, images_recompressed, images_skipped, note }
 //   options_json: {"mode":"screen"|"ebook"|"printer","strip_metadata":bool}
 //   No linearise option: lopdf ignores it (see docs/PDF.md) — offering it would be fake.
+// Phase 5 WASM exports (pure lopdf; NO signing export — a private key must never enter the browser):
+pdf_edit(bytes, ops_json, images: Uint8Array[]) -> { data, ops_applied, pages_touched, comments_added, warnings }
+pdf_redact(bytes, redactions_json) -> { data, pages_touched, runs_removed, characters_removed, annotations_removed, redacted_texts, warnings }
+pdf_flatten(bytes) -> { data, annotations_flattened, annotations_dropped, form_fields_removed, warnings }
+pdf_set_metadata(bytes, metadata_json) -> Uint8Array   // {"title":"…","author":"","subject":null,"keywords":null} — "" clears, null keeps
+pdf_sanitize(bytes) -> { data, javascript_removed, embedded_files_removed, launch_actions_removed, auto_actions_removed, warnings }
+pdf_repair(bytes) -> { data, recovery, warnings }       // recovery: "as written" | "offset corrected" | "reconstructed" | "recovered"
+pdf_inspect(bytes) -> PdfThreats                        // { javascript, embedded_files, launch_actions, auto_actions, warnings } (string arrays)
 // No render export: PDFium cannot run in the browser — the web UI
 // renders PDF pages with pdf.js instead.
 // No protect/unlock/watermark/extract-text exports: native-only

@@ -376,5 +376,155 @@ cer "$OUT/skew-cleaned.txt" "$IN/eng-clean.txt" 0.02 0.10 || { echo "FAIL: --op 
 "$BIN" process "$IN/eng-clean.png" "$OUT/threshold.png" --op threshold:128 > /dev/null 2>&1 || { echo "FAIL: --op threshold:128 should work"; exit 1; }
 "$BIN" process "$IN/eng-clean.png" "$OUT/bad.png" --op bogus > /dev/null 2>&1
 [ $? -eq 1 ] || { echo "FAIL: --op bogus should exit 1"; exit 1; }
+echo "=== 13. pdf editing + signatures + redaction + sanitisation (Studio Phase 5) ==="
+# Fixtures: a 2-page TEXT pdf (overlays must be visible when rendered,
+# redaction needs real text) and a malicious PDF (JS + embedded file +
+# Launch), both built inline with python — no checked-in PDFs, no
+# external tool. The xref is computed programmatically.
+python3 - "$IN" <<'PYEOF'
+import sys
+out = sys.argv[1]
+def build_pdf(pages_text, malicious=False):
+    objs = {}
+    objs[1] = b"<< /Type /Catalog /Pages 2 0 R >>"
+    if malicious:
+        objs[1] = b"<< /Type /Catalog /Pages 2 0 R /OpenAction 7 0 R /Names 8 0 R >>"
+    n = len(pages_text)
+    page_ids = [3 + 2*i for i in range(n)]
+    content_ids = [4 + 2*i for i in range(n)]
+    # The malicious fixture's extra objects use ids 5,7-12, so its
+    # font/info live at 20/21 instead of colliding with them.
+    font_id = 20 if malicious else 3 + 2*n
+    info_id = 21 if malicious else font_id + 1
+    objs[2] = ("<< /Type /Pages /Kids [%s] /Count %d >>" % (" ".join(f"{p} 0 R" for p in page_ids), n)).encode()
+    for i, text in enumerate(pages_text):
+        annots = b" /Annots [9 0 R]" if (malicious and i == 0) else b""
+        objs[page_ids[i]] = f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 {font_id} 0 R >> >> /Contents {content_ids[i]} 0 R{annots.decode()} >>".encode()
+        stream = f"BT /F1 24 Tf 72 720 Td ({text}) Tj ET".encode()
+        objs[content_ids[i]] = b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream"
+    objs[font_id] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"
+    objs[info_id] = b"<< /Title (Test doc) /Author (OpenPixel test) >>"
+    if malicious:
+        objs[5] = b"<< /Type /Filespec /F (evil.txt) /EF << /F 10 0 R >> >>"
+        objs[7] = b"<< /S /JavaScript /JS (app.alert('pwned');) >>"
+        objs[8] = b"<< /EmbeddedFiles << /Names [(evil.txt) 5 0 R] >> >>"
+        objs[9] = b"<< /Type /Annot /Subtype /Link /Rect [72 700 200 720] /A 11 0 R >>"
+        objs[10] = b"<< /Length 4 >>\nstream\nevil\nendstream"
+        objs[11] = b"<< /S /Launch /Win << /F (cmd.exe) >> >>"
+        objs[12] = b"<< /Title (Malicious doc) >>"
+        del objs[info_id]
+    data = bytearray(b"%PDF-1.5\n")
+    offsets = {}
+    for oid in sorted(objs):
+        offsets[oid] = len(data)
+        data += f"{oid} 0 obj\n".encode() + objs[oid] + b"\nendobj\n"
+    xref_pos = len(data)
+    max_id = max(objs)
+    data += f"xref\n0 {max_id+1}\n".encode() + b"0000000000 65535 f \n"
+    for oid in range(1, max_id+1):
+        # Unused ids (the malicious fixture skips 6 and 13-19) are free entries.
+        if oid in offsets:
+            data += f"{offsets[oid]:010d} 00000 n \n".encode()
+        else:
+            data += b"0000000000 65535 f \n"
+    info_ref = 12 if malicious else info_id
+    data += f"trailer\n<< /Size {max_id+1} /Root 1 0 R /Info {info_ref} 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n".encode()
+    return bytes(data)
+open(f"{out}/text2.pdf", "wb").write(build_pdf(["SECRET-123 is here. PUBLIC line.", "Second page. SECRET-123 again."]))
+open(f"{out}/malicious.pdf", "wb").write(build_pdf(["Hello malicious"], malicious=True))
+print("fixtures written")
+PYEOF
+# --- 13a. edit: text + page numbers + header/footer + rect + comment + image ---
+run "$BIN" pdf edit "$IN/text2.pdf" "$OUT/edit.pdf" --text "DRAFT" --page 1 --x 72 --y 750 --size 18 --color "#ff0000" --page-numbers --header "Confidential" --footer "Page footer"
+run "$BIN" pdf edit "$OUT/edit.pdf" "$OUT/edit2.pdf" --op '{"kind":"rect","page":1,"x":72,"y":650,"width":200,"height":30,"fill":{"r":1,"g":0.9,"b":0},"stroke":null,"stroke_width":1}' --op '{"kind":"comment","page":2,"x":100,"y":700,"text":"Review this page","author":"Raju"}' --image "$IN/checker-64.heic" --page 1 --x 400 --y 600
+pdfinfo "$OUT/edit2.pdf" | grep -Eq "Pages:\\s+2" || { echo "FAIL: edited PDF page count"; exit 1; }
+# The overlay is visible when rendered (a genuine PNG) and the text is extractable.
+run "$BIN" pdf render "$OUT/edit2.pdf" --scale 1.0 --out-dir "$OUT/edit-pages"
+file "$OUT/edit-pages/edit2-p1.png" | grep -q "PNG image data, 612 x 792" || { echo "FAIL: rendered edited page is not a genuine 612x792 PNG"; exit 1; }
+run "$BIN" pdf extract-text "$OUT/edit2.pdf" --output "$OUT/edit2.txt"
+grep -q "DRAFT" "$OUT/edit2.txt" || { echo "FAIL: overlay text DRAFT should be extractable"; exit 1; }
+grep -q "Page 1 of 2" "$OUT/edit2.txt" || { echo "FAIL: page number should be extractable"; exit 1; }
+grep -q "Confidential" "$OUT/edit2.txt" || { echo "FAIL: header should be extractable"; exit 1; }
+grep -q "SECRET-123 is here" "$OUT/edit2.txt" || { echo "FAIL: edit must keep the original text"; exit 1; }
+# --- 13b. redact --text: byte-proof (the secret is gone from the file bytes) ---
+run "$BIN" pdf redact "$IN/text2.pdf" "$OUT/redacted.pdf" --text "SECRET-123"
+grep -a -q "SECRET-123" "$OUT/redacted.pdf" && { echo "FAIL: SECRET-123 still in the redacted file bytes"; exit 1; }
+grep -a -q "PUBLIC line" "$OUT/redacted.pdf" || { echo "FAIL: PUBLIC line should survive redaction"; exit 1; }
+pdfinfo "$OUT/redacted.pdf" | grep -Eq "Pages:\\s+2" || { echo "FAIL: redacted PDF page count"; exit 1; }
+run "$BIN" pdf extract-text "$OUT/redacted.pdf" --output "$OUT/redacted.txt"
+grep -q "SECRET-123" "$OUT/redacted.txt" && { echo "FAIL: SECRET-123 still in the redacted text layer"; exit 1; }
+grep -q "PUBLIC line" "$OUT/redacted.txt" || { echo "FAIL: PUBLIC line should survive in the text layer"; exit 1; }
+# --- 13c. redact --rect: the text inside the rectangle is gone, the rest survives ---
+# The rect is only on page 1, so page 2's SECRET-123 legitimately
+# remains — the check is per page, via the extracted text layer.
+run "$BIN" pdf redact "$IN/text2.pdf" "$OUT/redacted-rect.pdf" --rect "72,700,120,30" --page 1
+run "$BIN" pdf extract-text "$OUT/redacted-rect.pdf" --output "$OUT/redacted-rect.txt"
+grep -q "SECRET-123 is here" "$OUT/redacted-rect.txt" && { echo "FAIL: page 1 SECRET-123 should be gone after rect redaction"; exit 1; }
+grep -q "SECRET-123 again" "$OUT/redacted-rect.txt" || { echo "FAIL: page 2 SECRET-123 should survive rect redaction on page 1"; exit 1; }
+grep -q "PUBLIC line" "$OUT/redacted-rect.txt" || { echo "FAIL: PUBLIC line should survive rect redaction"; exit 1; }
+# --- 13d. sign -> verify round-trip on a real (openssl) certificate ---
+openssl req -x509 -newkey rsa:2048 -keyout "$OUT/test-key.pem" -out "$OUT/test-cert.pem" -days 365 -nodes -subj "/CN=OpenPixel Test Signer/O=OpenPixel Test" 2>/dev/null || { echo "FAIL: openssl could not make a test certificate"; exit 1; }
+run "$BIN" pdf sign "$IN/text2.pdf" "$OUT/signed.pdf" --key "$OUT/test-key.pem" --cert "$OUT/test-cert.pem" --reason "Test signature" --location "Dhaka"
+pdfinfo "$OUT/signed.pdf" | grep -Eq "Pages:\\s+2" || { echo "FAIL: signed PDF page count"; exit 1; }
+"$BIN" pdf verify-sign "$OUT/signed.pdf" --trust "$OUT/test-cert.pem" | grep -q "valid: yes, trusted: yes" || { echo "FAIL: signature should verify valid + trusted with its anchor"; exit 1; }
+"$BIN" pdf verify-sign "$OUT/signed.pdf" | grep -q "valid: yes, trusted: no" || { echo "FAIL: signature should be valid but untrusted without an anchor"; exit 1; }
+"$BIN" pdf verify-sign "$IN/text2.pdf" | grep -q "no signatures" || { echo "FAIL: unsigned PDF should report no signatures"; exit 1; }
+# Tamper: flip one byte of page content — the digest must no longer match.
+python3 - "$OUT/signed.pdf" "$OUT/tampered.pdf" <<'PYEOF'
+import sys
+data = bytearray(open(sys.argv[1], 'rb').read())
+i = data.find(b'SECRET-123')
+data[i] = ord('X')
+open(sys.argv[2], 'wb').write(bytes(data))
+PYEOF
+"$BIN" pdf verify-sign "$OUT/tampered.pdf" --trust "$OUT/test-cert.pem" | grep -q "valid: no" || { echo "FAIL: tampered PDF should verify invalid"; exit 1; }
+"$BIN" pdf verify-sign "$OUT/tampered.pdf" --trust "$OUT/test-cert.pem" | grep -q "DOES NOT match" || { echo "FAIL: tamper should be reported as a digest mismatch"; exit 1; }
+# --- 13e. flatten: the comment added by edit has no appearance stream,
+# so flatten honestly DROPS it (with a warning) instead of pretending
+# to render it into the page — 0 flattened, 1 dropped.
+run "$BIN" pdf flatten "$OUT/edit2.pdf" "$OUT/flat.pdf"
+pdfinfo "$OUT/flat.pdf" | grep -Eq "Pages:\\s+2" || { echo "FAIL: flattened PDF page count"; exit 1; }
+"$BIN" pdf flatten "$OUT/edit2.pdf" "$OUT/flat2.pdf" | grep -q "0 annotation(s) flattened, 1 dropped" || { echo "FAIL: flatten should report 0 flattened, 1 dropped"; exit 1; }
+# --- 13f. set-metadata: title set, author cleared with an empty string ---
+run "$BIN" pdf set-metadata "$IN/text2.pdf" "$OUT/meta.pdf" --title "New title" --author ""
+"$BIN" pdf info "$OUT/meta.pdf" | grep -q "title:     New title" || { echo "FAIL: metadata title should be set"; exit 1; }
+"$BIN" pdf info "$OUT/meta.pdf" | grep -q "author:" && { echo "FAIL: metadata author should be cleared"; exit 1; }
+# --- 13g. repair: a healthy file reads "as written"; a broken xref is reconstructed ---
+run "$BIN" pdf repair "$IN/text2.pdf" "$OUT/repaired.pdf"
+"$BIN" pdf repair "$IN/text2.pdf" "$OUT/repaired2.pdf" | grep -q "recovery: as written" || { echo "FAIL: healthy file should repair as written"; exit 1; }
+python3 - "$IN/text2.pdf" "$OUT/broken.pdf" <<'PYEOF'
+import sys, re
+data = open(sys.argv[1], 'rb').read()
+m = re.search(rb'startxref\n(\d+)\n', data)
+data = data[:m.start(1)] + b'0' * len(m.group(1)) + data[m.end(1):]
+open(sys.argv[2], 'wb').write(data)
+PYEOF
+run "$BIN" pdf repair "$OUT/broken.pdf" "$OUT/repaired-broken.pdf"
+"$BIN" pdf repair "$OUT/broken.pdf" "$OUT/repaired-broken2.pdf" | grep -q "recovery: reconstructed" || { echo "FAIL: broken xref should be reconstructed"; exit 1; }
+pdfinfo "$OUT/repaired-broken.pdf" | grep -Eq "Pages:\\s+2" || { echo "FAIL: repaired broken PDF page count"; exit 1; }
+# --- 13h. inspect + sanitize: the malicious fixture, before and after ---
+run "$BIN" pdf inspect "$IN/malicious.pdf"
+"$BIN" pdf inspect "$IN/malicious.pdf" | grep -q "javascript:    PRESENT" || { echo "FAIL: inspect should report JavaScript present"; exit 1; }
+"$BIN" pdf inspect "$IN/malicious.pdf" | grep -q "embedded files: PRESENT" || { echo "FAIL: inspect should report embedded files present"; exit 1; }
+"$BIN" pdf inspect "$IN/malicious.pdf" | grep -q "launch actions: PRESENT" || { echo "FAIL: inspect should report launch actions present"; exit 1; }
+"$BIN" pdf inspect "$IN/malicious.pdf" | grep -q "auto actions:   PRESENT" || { echo "FAIL: inspect should report auto actions present"; exit 1; }
+run "$BIN" pdf sanitize "$IN/malicious.pdf" "$OUT/clean.pdf"
+for marker in "/JavaScript" "/Launch" "/EmbeddedFiles" "app.alert" "evil.txt" "cmd.exe"; do
+  grep -a -q "$marker" "$OUT/clean.pdf" && { echo "FAIL: $marker still in the sanitized file bytes"; exit 1; }
+done
+"$BIN" pdf inspect "$OUT/clean.pdf" | grep -q "javascript:    absent" || { echo "FAIL: sanitized PDF should report JavaScript absent"; exit 1; }
+"$BIN" pdf inspect "$OUT/clean.pdf" | grep -q "embedded files: absent" || { echo "FAIL: sanitized PDF should report embedded files absent"; exit 1; }
+pdfinfo "$OUT/clean.pdf" | grep -Eq "Pages:\\s+1" || { echo "FAIL: sanitized PDF should still open with 1 page"; exit 1; }
+# --- 13i. error cases (exit 1, clean error, no crash) ---
+"$BIN" pdf edit "$IN/text2.pdf" "$OUT/x.pdf" > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: pdf edit with no ops should exit 1"; exit 1; }
+"$BIN" pdf redact "$IN/text2.pdf" "$OUT/x.pdf" > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: pdf redact with no redactions should exit 1"; exit 1; }
+"$BIN" pdf edit "$IN/text2.pdf" "$OUT/x.pdf" --op 'not json' > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: pdf edit with bad --op JSON should exit 1"; exit 1; }
+"$BIN" pdf sign "$IN/text2.pdf" "$OUT/x.pdf" --key "$IN/text2.pdf" --cert "$OUT/test-cert.pem" > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: pdf sign with a bad key should exit 1"; exit 1; }
+"$BIN" pdf set-metadata "$IN/text2.pdf" "$OUT/x.pdf" > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: pdf set-metadata with no fields should exit 1"; exit 1; }
 echo "=== DONE ==="
 ls -la "$OUT" | head -50

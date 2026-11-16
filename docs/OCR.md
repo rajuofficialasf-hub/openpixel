@@ -204,6 +204,19 @@ ln -sf /usr/lib/x86_64-linux-gnu/liblept.so.5 /usr/local/lib/liblept.so
 ln -sf /usr/lib/x86_64-linux-gnu/liblept.so.5 /usr/lib/x86_64-linux-gnu/liblept.so
 ldconfig
 # + pkg-config files /usr/local/lib/pkgconfig/{tesseract,lept}.pc (5.3.4 / 1.82.0)
+#   (copy them from extracted/usr/lib/x86_64-linux-gnu/pkgconfig/ and
+#   point includedir at /usr/local/include, not /usr/include)
+# tesseract.pc also links -larchive -lcurl, and libarchive-dev /
+# libcurl4-openssl-dev cannot install either (they pull libzstd-dev,
+# same conflict). Same workaround — unversioned symlinks. rust-lld
+# only searches the -L paths, so the symlinks must ALSO exist in
+# /usr/lib/x86_64-linux-gnu (a /usr/local/lib symlink alone does not
+# satisfy the linker):
+ln -sf /usr/lib/x86_64-linux-gnu/libarchive.so.13 /usr/local/lib/libarchive.so
+ln -sf /usr/lib/x86_64-linux-gnu/libcurl.so.4 /usr/local/lib/libcurl.so
+ln -sf /usr/lib/x86_64-linux-gnu/libarchive.so.13 /usr/lib/x86_64-linux-gnu/libarchive.so
+ln -sf /usr/lib/x86_64-linux-gnu/libcurl.so.4 /usr/lib/x86_64-linux-gnu/libcurl.so
+ldconfig
 ```
 
 Builds then need `PKG_CONFIG_PATH=/usr/local/lib/pkgconfig` and

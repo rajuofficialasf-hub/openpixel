@@ -8,8 +8,9 @@
 //! Phase 3: compression (screen/ebook/printer — image
 //! downsample + structure pass), security (RC4-128 protect/
 //! unlock, watermarks), text extraction (PDFium) with TXT/HTML/
-//! EPUB/DOCX exports. Editing beyond watermarks lands in
-//! Phase 5 — `optimize()` is real since Phase 3.
+//! EPUB/DOCX exports. Phase 5: overlay editing, real redaction,
+//! digital signatures (optional `sign` feature), flatten,
+//! metadata editing, sanitisation, repair and threat inspection.
 //!
 //! PDFium rendering and text extraction share one optional
 //! `pdfium` feature (dynamic libpdfium binary, see
@@ -17,25 +18,37 @@
 //! with fetch instructions instead of a fake result.
 
 pub mod compress;
+pub mod edit;
 pub mod engine;
 pub mod error;
 pub mod format;
 pub mod images;
 pub mod pages;
+pub mod redact;
 pub mod render;
+pub mod sanitize;
 pub mod security;
+#[cfg(feature = "sign")]
+pub mod sign;
 pub mod text;
 pub mod zip;
 
 pub use compress::{CompressMode, CompressOptions, CompressOutcome};
+pub use edit::{
+    EditOutcome, FlattenOutcome, MetadataEdit, OverlayFont, OverlayOp, PageNumberPosition, Rgb,
+};
 pub use engine::{PdfConfig, PdfEngine, PdfInfo, PdfOperation, PdfOptions};
 pub use error::{PdfError, Result};
 pub use format::{
     detect_document_format, discover_document, is_ole2, DocumentDiscovery, DocumentFormat,
 };
 pub use images::{named_page_size, PageSize};
+pub use redact::{RectRedaction, RedactOutcome, Redaction, TextRedaction};
 pub use render::RenderedPage;
+pub use sanitize::{PdfThreats, RepairOutcome, SanitizeOutcome};
 pub use security::{PdfPermissions, WatermarkOptions};
+#[cfg(feature = "sign")]
+pub use sign::{SignOptions, SignatureInfo, VerifyOutcome};
 pub use text::{PageText, TextLine};
 pub use zip::{build_zip, ZipEntry};
 

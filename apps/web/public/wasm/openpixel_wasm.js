@@ -190,6 +190,58 @@ export function pdf_compress(bytes, options_json) {
 }
 
 /**
+ * Add overlay content to a PDF (Phase 5): `ops_json` is a JSON array
+ * of overlay ops, e.g.
+ * `[{"kind":"text","page":1,"x":72,"y":700,"text":"Hi","size":14,"color":{"r":0,"g":0,"b":0},"font":"helvetica"}]`
+ * (kinds: text, image, rect, line, circle, highlight, draw,
+ * comment, page_numbers, header_footer); `images` is a JS array of
+ * `Uint8Array` (or undefined) supplying the image bytes for `image`
+ * ops, by index. Overlays are NEW content layered on top of the
+ * page — existing text is never edited in place.
+ * Returns a JS object `{ data: Uint8Array, ops_applied,
+ * pages_touched, comments_added, warnings }`.
+ * @param {Uint8Array | number[]} bytes
+ * @param {string} ops_json
+ * @param {any} images
+ * @returns {any}
+ */
+export function pdf_edit(bytes, ops_json, images) {
+    let ptr0, len0, ptr1, len1;
+    try {
+        ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = passStringToWasm0(ops_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len1 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+        if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+        throw e;
+    }
+    const ret = wasm.pdf_edit(ptr0, len0, ptr1, len1, images);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Flatten annotations and form fields into page content (Phase 5).
+ * Returns a JS object `{ data: Uint8Array, annotations_flattened,
+ * annotations_dropped, form_fields_removed, warnings }`.
+ * @param {Uint8Array | number[]} bytes
+ * @returns {any}
+ */
+export function pdf_flatten(bytes) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.pdf_flatten(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * Build a PDF from images (a JS array of `Uint8Array` — PNG, JPEG,
  * WebP, anything the engine decodes), one page per image, in order.
  * `page_size` is a named size ("A4", "Letter", "A5") or undefined
@@ -220,6 +272,24 @@ export function pdf_info(bytes) {
     const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
     const len0 = WASM_VECTOR_LEN;
     const ret = wasm.pdf_info(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * List JavaScript actions and embedded files in a PDF (Phase 5) —
+ * never executes anything. Returns the `PdfThreats` object
+ * (`javascript`, `embedded_files`, `launch_actions`,
+ * `auto_actions`, `warnings`).
+ * @param {Uint8Array | number[]} bytes
+ * @returns {any}
+ */
+export function pdf_inspect(bytes) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.pdf_inspect(ptr0, len0);
     if (ret[2]) {
         throw takeFromExternrefTable0(ret[1]);
     }
@@ -279,6 +349,103 @@ export function pdf_process(bytes, ops_json) {
         throw takeFromExternrefTable0(ret[1]);
     }
     return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Really remove text from a PDF (Phase 5): `redactions_json` is a
+ * JSON array of redactions, e.g.
+ * `[{"kind":"rect","page":1,"x":72,"y":600,"width":200,"height":20}]`
+ * or `[{"kind":"text","page":null,"text":"SECRET"}]`. The text is
+ * deleted from the content stream, not covered with a black box.
+ * Returns a JS object `{ data: Uint8Array, pages_touched,
+ * runs_removed, characters_removed, annotations_removed,
+ * redacted_texts, warnings }`.
+ * @param {Uint8Array | number[]} bytes
+ * @param {string} redactions_json
+ * @returns {any}
+ */
+export function pdf_redact(bytes, redactions_json) {
+    let ptr0, len0, ptr1, len1;
+    try {
+        ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = passStringToWasm0(redactions_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len1 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+        if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+        throw e;
+    }
+    const ret = wasm.pdf_redact(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Rebuild the cross-reference table of a damaged PDF (Phase 5).
+ * Returns a JS object `{ data: Uint8Array, recovery, warnings }`.
+ * @param {Uint8Array | number[]} bytes
+ * @returns {any}
+ */
+export function pdf_repair(bytes) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.pdf_repair(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Strip JavaScript, embedded files, launch actions and
+ * auto-actions from a PDF (Phase 5). The document is kept; the
+ * dangerous parts are removed, not hidden. Returns a JS object
+ * `{ data: Uint8Array, javascript_removed, embedded_files_removed,
+ * launch_actions_removed, auto_actions_removed, warnings }`.
+ * @param {Uint8Array | number[]} bytes
+ * @returns {any}
+ */
+export function pdf_sanitize(bytes) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.pdf_sanitize(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Set document metadata (Phase 5): `metadata_json` is e.g.
+ * `{"title":"…","author":null,"subject":"…","keywords":""}` — a
+ * null leaves a field unchanged, an empty string clears it.
+ * Returns the new PDF bytes.
+ * @param {Uint8Array | number[]} bytes
+ * @param {string} metadata_json
+ * @returns {Uint8Array}
+ */
+export function pdf_set_metadata(bytes, metadata_json) {
+    let ptr0, len0, ptr1, len1;
+    try {
+        ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = passStringToWasm0(metadata_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len1 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+        if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+        throw e;
+    }
+    const ret = wasm.pdf_set_metadata(ptr0, len0, ptr1, len1);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v3 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v3;
 }
 
 /**
@@ -424,6 +591,14 @@ function __wbg_get_imports() {
             getDataViewMemory0().setInt32((arg0 >>> 0) + 4 * 1, len1, true);
             getDataViewMemory0().setInt32((arg0 >>> 0) + 4 * 0, ptr1, true);
         },
+        __wbg___wbindgen_is_null_c22311b1cc228e3a: function(arg0) {
+            const ret = arg0 === null;
+            return ret;
+        },
+        __wbg___wbindgen_is_undefined_be5b34249ff1fc15: function(arg0) {
+            const ret = arg0 === undefined;
+            return ret;
+        },
         __wbg___wbindgen_throw_4c88d8bf264fd984: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
@@ -493,12 +668,17 @@ function __wbg_get_imports() {
             const ret = arg0;
             return ret;
         },
-        __wbindgen_generic_0000000000000002: function(arg0, arg1) {
+        __wbindgen_generic_0000000000000002: function(arg0) {
+            // Cast intrinsic for `I64 -> Externref`.
+            const ret = arg0;
+            return ret;
+        },
+        __wbindgen_generic_0000000000000003: function(arg0, arg1) {
             // Cast intrinsic for `Ref(String) -> Externref`.
             const ret = getStringFromWasm0(arg0, arg1);
             return ret;
         },
-        __wbindgen_generic_0000000000000003: function(arg0) {
+        __wbindgen_generic_0000000000000004: function(arg0) {
             // Cast intrinsic for `U64 -> Externref`.
             const ret = BigInt.asUintN(64, arg0);
             return ret;

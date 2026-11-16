@@ -15,7 +15,9 @@ openpixel-jobs = { path = "../../crates/openpixel-jobs" }
 # Studio Phase 2: PDF page ops + render (pdfium feature = dynamic
 # libpdfium, loaded only when `pdf render` runs; every other pdf
 # command works without it).
-openpixel-pdf = { path = "../../crates/openpixel-pdf", features = ["pdfium"] }
+# Studio Phase 5: digital signatures (sign feature = pure-Rust
+# PKCS#7/RSA; no system library, so no new platform burden).
+openpixel-pdf = { path = "../../crates/openpixel-pdf", features = ["pdfium", "sign"] }
 # Studio Phase 3: document conversion (LibreOffice headless +
 # PDF text exports).
 openpixel-documents = { path = "../../crates/openpixel-documents" }

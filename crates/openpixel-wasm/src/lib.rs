@@ -380,6 +380,231 @@ fn pdf_compress_inner(
     )
 }
 
+/// Unit-testable core of [`pdf_edit`]: parse the ops JSON and run
+/// the engine. `images` supplies the image bytes for `image` ops,
+/// by index.
+fn pdf_edit_inner(
+    bytes: &[u8],
+    ops_json: &str,
+    images: &[Vec<u8>],
+) -> Result<(Vec<u8>, openpixel_pdf::EditOutcome), openpixel_pdf::PdfError> {
+    let ops: Vec<openpixel_pdf::OverlayOp> = serde_json::from_str(ops_json)
+        .map_err(|e| openpixel_pdf::PdfError::InvalidPdf(format!("invalid edit ops: {e}")))?;
+    pdf_engine().edit(bytes, &ops, images)
+}
+
+/// Unit-testable core of [`pdf_redact`]: parse the redactions JSON
+/// and run the engine.
+fn pdf_redact_inner(
+    bytes: &[u8],
+    redactions_json: &str,
+) -> Result<(Vec<u8>, openpixel_pdf::RedactOutcome), openpixel_pdf::PdfError> {
+    let redactions: Vec<openpixel_pdf::Redaction> = serde_json::from_str(redactions_json)
+        .map_err(|e| openpixel_pdf::PdfError::InvalidPdf(format!("invalid redactions: {e}")))?;
+    pdf_engine().redact(bytes, &redactions)
+}
+
+/// Unit-testable core of [`pdf_set_metadata`]: parse the metadata
+/// JSON and run the engine.
+fn pdf_set_metadata_inner(
+    bytes: &[u8],
+    metadata_json: &str,
+) -> Result<Vec<u8>, openpixel_pdf::PdfError> {
+    let edit: openpixel_pdf::MetadataEdit = serde_json::from_str(metadata_json)
+        .map_err(|e| openpixel_pdf::PdfError::InvalidPdf(format!("invalid metadata: {e}")))?;
+    pdf_engine().set_metadata(bytes, edit)
+}
+
+// ---------------------------------------------------------------------------
+// PDF editing (Studio Phase 5) — overlays, redaction, flatten, metadata,
+// repair, sanitisation, threat inspection. All pure Rust (lopdf), so they
+// run in WASM for real. Digital signatures are NOT here: signing needs
+// a private key, which must never be handed to a web page — sign with
+// the native CLI or desktop app instead (see docs/PDF.md).
+// ---------------------------------------------------------------------------
+
+/// Start a `{ data: Uint8Array, ... }` result object for a PDF op.
+fn pdf_data_obj(data: &[u8]) -> Result<js_sys::Object, JsValue> {
+    let obj = js_sys::Object::new();
+    let uint = js_sys::Uint8Array::new_with_length(data.len() as u32);
+    uint.copy_from(data);
+    set_field(&obj, "data", uint.into())?;
+    Ok(obj)
+}
+
+/// A Rust `Vec<String>` as a JS string array.
+fn js_string_array(items: &[String]) -> JsValue {
+    let arr = js_sys::Array::new();
+    for item in items {
+        arr.push(&JsValue::from(item.as_str()));
+    }
+    arr.into()
+}
+
+/// Add overlay content to a PDF (Phase 5): `ops_json` is a JSON array
+/// of overlay ops, e.g.
+/// `[{"kind":"text","page":1,"x":72,"y":700,"text":"Hi","size":14,"color":{"r":0,"g":0,"b":0},"font":"helvetica"}]`
+/// (kinds: text, image, rect, line, circle, highlight, draw,
+/// comment, page_numbers, header_footer); `images` is a JS array of
+/// `Uint8Array` (or undefined) supplying the image bytes for `image`
+/// ops, by index. Overlays are NEW content layered on top of the
+/// page — existing text is never edited in place.
+/// Returns a JS object `{ data: Uint8Array, ops_applied,
+/// pages_touched, comments_added, warnings }`.
+#[wasm_bindgen]
+pub fn pdf_edit(bytes: &[u8], ops_json: &str, images: JsValue) -> Result<JsValue, JsValue> {
+    let imgs: Vec<Vec<u8>> = if images.is_undefined() || images.is_null() {
+        Vec::new()
+    } else {
+        js_array_of_bytes(&images).map_err(js_err)?
+    };
+    let (out, outcome) = pdf_edit_inner(bytes, ops_json, &imgs).map_err(js_err)?;
+    let obj = pdf_data_obj(&out)?;
+    set_field(
+        &obj,
+        "ops_applied",
+        JsValue::from(outcome.ops_applied as u32),
+    )?;
+    set_field(
+        &obj,
+        "pages_touched",
+        JsValue::from(outcome.pages_touched as u32),
+    )?;
+    set_field(
+        &obj,
+        "comments_added",
+        JsValue::from(outcome.comments_added as u32),
+    )?;
+    set_field(&obj, "warnings", js_string_array(&outcome.warnings))?;
+    Ok(obj.into())
+}
+
+/// Really remove text from a PDF (Phase 5): `redactions_json` is a
+/// JSON array of redactions, e.g.
+/// `[{"kind":"rect","page":1,"x":72,"y":600,"width":200,"height":20}]`
+/// or `[{"kind":"text","page":null,"text":"SECRET"}]`. The text is
+/// deleted from the content stream, not covered with a black box.
+/// Returns a JS object `{ data: Uint8Array, pages_touched,
+/// runs_removed, characters_removed, annotations_removed,
+/// redacted_texts, warnings }`.
+#[wasm_bindgen]
+pub fn pdf_redact(bytes: &[u8], redactions_json: &str) -> Result<JsValue, JsValue> {
+    let (out, outcome) = pdf_redact_inner(bytes, redactions_json).map_err(js_err)?;
+    let obj = pdf_data_obj(&out)?;
+    set_field(
+        &obj,
+        "pages_touched",
+        JsValue::from(outcome.pages_touched as u32),
+    )?;
+    set_field(&obj, "runs_removed", JsValue::from(outcome.runs_removed))?;
+    set_field(
+        &obj,
+        "characters_removed",
+        JsValue::from(outcome.characters_removed),
+    )?;
+    set_field(
+        &obj,
+        "annotations_removed",
+        JsValue::from(outcome.annotations_removed),
+    )?;
+    set_field(
+        &obj,
+        "redacted_texts",
+        js_string_array(&outcome.redacted_texts),
+    )?;
+    set_field(&obj, "warnings", js_string_array(&outcome.warnings))?;
+    Ok(obj.into())
+}
+
+/// Flatten annotations and form fields into page content (Phase 5).
+/// Returns a JS object `{ data: Uint8Array, annotations_flattened,
+/// annotations_dropped, form_fields_removed, warnings }`.
+#[wasm_bindgen]
+pub fn pdf_flatten(bytes: &[u8]) -> Result<JsValue, JsValue> {
+    let (out, outcome) = pdf_engine().flatten(bytes).map_err(js_err)?;
+    let obj = pdf_data_obj(&out)?;
+    set_field(
+        &obj,
+        "annotations_flattened",
+        JsValue::from(outcome.annotations_flattened),
+    )?;
+    set_field(
+        &obj,
+        "annotations_dropped",
+        JsValue::from(outcome.annotations_dropped),
+    )?;
+    set_field(
+        &obj,
+        "form_fields_removed",
+        JsValue::from(outcome.form_fields_removed),
+    )?;
+    set_field(&obj, "warnings", js_string_array(&outcome.warnings))?;
+    Ok(obj.into())
+}
+
+/// Set document metadata (Phase 5): `metadata_json` is e.g.
+/// `{"title":"…","author":null,"subject":"…","keywords":""}` — a
+/// null leaves a field unchanged, an empty string clears it.
+/// Returns the new PDF bytes.
+#[wasm_bindgen]
+pub fn pdf_set_metadata(bytes: &[u8], metadata_json: &str) -> Result<Vec<u8>, JsValue> {
+    pdf_set_metadata_inner(bytes, metadata_json).map_err(js_err)
+}
+
+/// Strip JavaScript, embedded files, launch actions and
+/// auto-actions from a PDF (Phase 5). The document is kept; the
+/// dangerous parts are removed, not hidden. Returns a JS object
+/// `{ data: Uint8Array, javascript_removed, embedded_files_removed,
+/// launch_actions_removed, auto_actions_removed, warnings }`.
+#[wasm_bindgen]
+pub fn pdf_sanitize(bytes: &[u8]) -> Result<JsValue, JsValue> {
+    let (out, outcome) = pdf_engine().sanitize(bytes).map_err(js_err)?;
+    let obj = pdf_data_obj(&out)?;
+    set_field(
+        &obj,
+        "javascript_removed",
+        JsValue::from(outcome.javascript_removed),
+    )?;
+    set_field(
+        &obj,
+        "embedded_files_removed",
+        JsValue::from(outcome.embedded_files_removed),
+    )?;
+    set_field(
+        &obj,
+        "launch_actions_removed",
+        JsValue::from(outcome.launch_actions_removed),
+    )?;
+    set_field(
+        &obj,
+        "auto_actions_removed",
+        JsValue::from(outcome.auto_actions_removed),
+    )?;
+    set_field(&obj, "warnings", js_string_array(&outcome.warnings))?;
+    Ok(obj.into())
+}
+
+/// Rebuild the cross-reference table of a damaged PDF (Phase 5).
+/// Returns a JS object `{ data: Uint8Array, recovery, warnings }`.
+#[wasm_bindgen]
+pub fn pdf_repair(bytes: &[u8]) -> Result<JsValue, JsValue> {
+    let (out, outcome) = pdf_engine().repair(bytes).map_err(js_err)?;
+    let obj = pdf_data_obj(&out)?;
+    set_field(&obj, "recovery", JsValue::from(outcome.recovery.as_str()))?;
+    set_field(&obj, "warnings", js_string_array(&outcome.warnings))?;
+    Ok(obj.into())
+}
+
+/// List JavaScript actions and embedded files in a PDF (Phase 5) —
+/// never executes anything. Returns the `PdfThreats` object
+/// (`javascript`, `embedded_files`, `launch_actions`,
+/// `auto_actions`, `warnings`).
+#[wasm_bindgen]
+pub fn pdf_inspect(bytes: &[u8]) -> Result<JsValue, JsValue> {
+    let threats = pdf_engine().inspect_threats(bytes).map_err(js_err)?;
+    serde_wasm_bindgen::to_value(&threats).map_err(js_err)
+}
+
 /// A JS array of `Uint8Array` → `Vec<Vec<u8>>`. Anything else is a
 /// caller error, never a silent empty list.
 fn js_array_of_bytes(value: &JsValue) -> Result<Vec<Vec<u8>>, openpixel_core::OpenPixelError> {
@@ -903,6 +1128,89 @@ mod tests {
         let info = pdf_engine().inspect(&built).unwrap();
         assert_eq!(info.page_count, 2);
         assert_eq!(info.page_sizes, vec![(595.0, 842.0); 2]);
+    }
+
+    #[test]
+    fn pdf_edit_inner_applies_overlays_and_rejects_bad_ops() {
+        let doc = make_test_pdf(2);
+        // Text overlay: the text is in the output bytes (a literal
+        // string in the appended content stream) and the page
+        // count is unchanged.
+        let (out, outcome) = pdf_edit_inner(
+            &doc,
+            r#"[{"kind":"text","page":1,"x":72,"y":700,"text":"Hello from WASM","size":14,"color":{"r":0,"g":0,"b":0},"font":"helvetica"}]"#,
+            &[],
+        )
+        .unwrap();
+        assert_eq!(outcome.ops_applied, 1);
+        assert_eq!(outcome.pages_touched, 1);
+        assert_eq!(pdf_page_count(&out), 2);
+        assert!(out
+            .windows(b"Hello from WASM".len())
+            .any(|w| w == b"Hello from WASM"));
+        // Page numbers + header/footer on every page.
+        let (out, outcome) = pdf_edit_inner(
+            &doc,
+            r#"[{"kind":"page_numbers","pages":null,"format":"Page {n} of {total}","position":"bottom_center","size":10},{"kind":"header_footer","pages":null,"header":"Draft","footer":null,"size":10}]"#,
+            &[],
+        )
+        .unwrap();
+        assert_eq!(outcome.ops_applied, 4);
+        assert_eq!(outcome.pages_touched, 2);
+        assert_eq!(pdf_page_count(&out), 2);
+        // Bad JSON, an empty op list and a bad page are errors.
+        assert!(pdf_edit_inner(&doc, "not json", &[]).is_err());
+        assert!(pdf_edit_inner(&doc, "[]", &[]).is_err());
+        assert!(pdf_edit_inner(
+            &doc,
+            r#"[{"kind":"text","page":9,"x":72,"y":700,"text":"x","size":14,"color":{"r":0,"g":0,"b":0},"font":"helvetica"}]"#,
+            &[],
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn pdf_redact_inner_and_the_other_phase5_wrappers() {
+        let doc = make_test_pdf(1);
+        // The fixture has no text, so a text redaction finds
+        // nothing — it warns and changes nothing, and the file
+        // still opens. The real byte-proof lives in the pdf
+        // crate tests and the CLI e2e (§13), which use a text PDF.
+        let (out, outcome) =
+            pdf_redact_inner(&doc, r#"[{"kind":"text","page":null,"text":"SECRET"}]"#).unwrap();
+        assert_eq!(outcome.runs_removed, 0);
+        assert_eq!(pdf_page_count(&out), 1);
+        assert!(!outcome.warnings.is_empty());
+        // A rect redaction on a textless page still draws its
+        // cover and touches the page.
+        let (out, outcome) = pdf_redact_inner(
+            &doc,
+            r#"[{"kind":"rect","page":1,"x":10,"y":10,"width":20,"height":20}]"#,
+        )
+        .unwrap();
+        assert_eq!(outcome.pages_touched, 1);
+        assert_eq!(pdf_page_count(&out), 1);
+        assert!(pdf_redact_inner(&doc, "[]").is_err());
+        assert!(pdf_redact_inner(&doc, "not json").is_err());
+        // Flatten, metadata, sanitize, repair and inspect all run
+        // on the same fixture and return a valid document.
+        let (out, outcome) = pdf_engine().flatten(&doc).unwrap();
+        assert_eq!(pdf_page_count(&out), 1);
+        assert_eq!(outcome.annotations_flattened, 0);
+        let out = pdf_set_metadata_inner(&doc, r#"{"title":"WASM title","author":null,"subject":null,"keywords":null,"creator":null,"producer":null}"#).unwrap();
+        assert_eq!(
+            pdf_engine().inspect(&out).unwrap().title.as_deref(),
+            Some("WASM title")
+        );
+        assert!(pdf_set_metadata_inner(&doc, "{}").is_err());
+        let (out, outcome) = pdf_engine().sanitize(&doc).unwrap();
+        assert_eq!(outcome.javascript_removed, 0);
+        assert_eq!(pdf_page_count(&out), 1);
+        let (out, outcome) = pdf_engine().repair(&doc).unwrap();
+        assert_eq!(outcome.recovery, "as written");
+        assert_eq!(pdf_page_count(&out), 1);
+        let threats = pdf_engine().inspect_threats(&doc).unwrap();
+        assert!(threats.is_clean());
     }
 }
 

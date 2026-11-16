@@ -29,7 +29,7 @@ real PNG/JPEG/TIFF/HEIC/GIF into that directory with the same names.
 node apps/web/e2e/web-e2e.mjs        # 37 checks, Chromium vs :8321
 node apps/web/e2e/web-nowasm.mjs     # 9 checks, WASM-absent fallback vs :8322
 node apps/web/e2e/resize-e2e.mjs     # 16 checks, Resize tab vs :8321
-node apps/web/e2e/pdf-e2e.mjs        # 15 checks, PDF tab vs :8323
+node apps/web/e2e/pdf-e2e.mjs        # 24 checks, PDF tab vs :8323
 node apps/web/e2e/ocr-e2e.mjs        # 14 checks, OCR tab vs :8324
 ```
 
@@ -39,7 +39,10 @@ as 8321 above (`python3 -m http.server 8323 --bind 127.0.0.1` in
 `/tmp/op-e2e/pdf-in/` (`doc4.pdf`, 4 pages; `doc2.pdf`, 2 pages),
 generated with the debug CLI (`openpixel pdf from-images` on the
 `/tmp/op-e2e/cli/in/` PNG/JPEG fixtures) — regenerate them with
-those commands if `/tmp` was wiped.
+those commands if `/tmp` was wiped. The Phase 5 Edit checks use
+a third fixture, `text2.pdf` (2 pages of real text), which the
+script builds itself in JS at startup (programmatically
+computed xref offsets) — no regeneration needed.
 
 Serve `apps/web/dist` on port 8324 for the OCR run the same way.
 Its fixtures are the Rust crate's accuracy fixtures

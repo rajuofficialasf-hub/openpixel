@@ -110,6 +110,72 @@ export interface WasmPackage {
   pdf_from_images: (images: unknown, pageSize: string | undefined) => Uint8Array
   // PDF compression (Studio Phase 3) — see src/lib/pdf.ts.
   pdf_compress: (bytes: Uint8Array, optionsJson: string) => WasmPdfCompressResult
+  // PDF editing (Studio Phase 5) — see src/lib/pdf.ts. No sign
+  // export: signing needs a private key, which must never be
+  // handed to a web page — sign with the native CLI or desktop
+  // app instead.
+  pdf_edit: (bytes: Uint8Array, opsJson: string, images: unknown) => WasmPdfEditResult
+  pdf_redact: (bytes: Uint8Array, redactionsJson: string) => WasmPdfRedactResult
+  pdf_flatten: (bytes: Uint8Array) => WasmPdfFlattenResult
+  pdf_set_metadata: (bytes: Uint8Array, metadataJson: string) => Uint8Array
+  pdf_sanitize: (bytes: Uint8Array) => WasmPdfSanitizeResult
+  pdf_repair: (bytes: Uint8Array) => WasmPdfRepairResult
+  pdf_inspect: (bytes: Uint8Array) => WasmPdfThreats
+}
+
+/** What the WASM `pdf_edit` export returns: edited bytes + outcome. */
+export interface WasmPdfEditResult {
+  data: Uint8Array<ArrayBuffer>
+  ops_applied: number
+  pages_touched: number
+  comments_added: number
+  warnings: string[]
+}
+
+/** What the WASM `pdf_redact` export returns: redacted bytes + outcome. */
+export interface WasmPdfRedactResult {
+  data: Uint8Array<ArrayBuffer>
+  pages_touched: number
+  runs_removed: number
+  characters_removed: number
+  annotations_removed: number
+  redacted_texts: string[]
+  warnings: string[]
+}
+
+/** What the WASM `pdf_flatten` export returns. */
+export interface WasmPdfFlattenResult {
+  data: Uint8Array<ArrayBuffer>
+  annotations_flattened: number
+  annotations_dropped: number
+  form_fields_removed: number
+  warnings: string[]
+}
+
+/** What the WASM `pdf_sanitize` export returns. */
+export interface WasmPdfSanitizeResult {
+  data: Uint8Array<ArrayBuffer>
+  javascript_removed: number
+  embedded_files_removed: number
+  launch_actions_removed: number
+  auto_actions_removed: number
+  warnings: string[]
+}
+
+/** What the WASM `pdf_repair` export returns. */
+export interface WasmPdfRepairResult {
+  data: Uint8Array<ArrayBuffer>
+  recovery: string
+  warnings: string[]
+}
+
+/** What the WASM `pdf_inspect` export returns: the threats found. */
+export interface WasmPdfThreats {
+  javascript: string[]
+  embedded_files: string[]
+  launch_actions: string[]
+  auto_actions: string[]
+  warnings: string[]
 }
 
 /** What the WASM `pdf_compress` export returns: compressed bytes + measured outcome. */

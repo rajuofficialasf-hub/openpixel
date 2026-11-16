@@ -536,6 +536,153 @@ enum PdfCommands {
         #[arg(long, default_value = "3.0")]
         scale: f32,
     },
+    /// Add overlay content to a PDF — text, images, shapes,
+    /// highlight, freehand strokes, comments, page numbers,
+    /// header/footer. Overlays are NEW content layered on top of
+    /// the page; existing text is never edited in place (see
+    /// docs/PDF.md). At least one op is required.
+    Edit {
+        input: PathBuf,
+        output: PathBuf,
+        /// Overlay op as JSON, repeatable, e.g.
+        /// --op '{"kind":"text","page":1,"x":72,"y":700,"text":"Hi","size":14,"color":{"r":0,"g":0,"b":0},"font":"helvetica"}'
+        /// (kinds: text, image, rect, line, circle, highlight,
+        /// draw, comment, page_numbers, header_footer)
+        #[arg(long)]
+        op: Vec<String>,
+        /// Add one line of text (with --page, --x, --y, --size, --color)
+        #[arg(long)]
+        text: Option<String>,
+        /// Page for --text / --image (1-based, default 1)
+        #[arg(long, default_value = "1")]
+        page: u32,
+        /// X position in points for --text / --image (default 72)
+        #[arg(long, default_value = "72")]
+        x: f64,
+        /// Y position in points for --text / --image (default 700)
+        #[arg(long, default_value = "700")]
+        y: f64,
+        /// Font size in points for --text (default 14)
+        #[arg(long, default_value = "14")]
+        size: f64,
+        /// Text colour as #RRGGBB (default #000000)
+        #[arg(long, default_value = "#000000")]
+        color: String,
+        /// Add an image file at (--x, --y); drawn at
+        /// --image-width/--image-height, or its own pixel size
+        #[arg(long)]
+        image: Option<PathBuf>,
+        /// Image width in points (default: the image's own width)
+        #[arg(long)]
+        image_width: Option<f64>,
+        /// Image height in points (default: the image's own height)
+        #[arg(long)]
+        image_height: Option<f64>,
+        /// Add page numbers to every page ("Page {n} of {total}")
+        #[arg(long)]
+        page_numbers: bool,
+        /// Page-number format with {n} and {total}
+        /// (default "Page {n} of {total}")
+        #[arg(long, default_value = "Page {n} of {total}")]
+        page_number_format: String,
+        /// Where page numbers go: bottom-center, bottom-right,
+        /// top-center, top-right (default bottom-center)
+        #[arg(long, default_value = "bottom-center")]
+        page_number_position: String,
+        /// Header line on every page
+        #[arg(long)]
+        header: Option<String>,
+        /// Footer line on every page
+        #[arg(long)]
+        footer: Option<String>,
+    },
+    /// Really remove text from a PDF — the text is deleted from
+    /// the content stream, not covered with a black box. Verify
+    /// with `grep`: the redacted text must be absent from the
+    /// output bytes (see docs/PDF.md).
+    Redact {
+        input: PathBuf,
+        output: PathBuf,
+        /// Rectangle to redact: x,y,width,height in points
+        /// (repeatable; --page applies to every --rect)
+        #[arg(long)]
+        rect: Vec<String>,
+        /// Page for --rect (1-based, default 1)
+        #[arg(long, default_value = "1")]
+        page: u32,
+        /// Text to redact everywhere it occurs (repeatable,
+        /// all pages, case-sensitive)
+        #[arg(long)]
+        text: Vec<String>,
+    },
+    /// Sign a PDF with an RSA private key + certificate (PEM
+    /// files). The signature is an invisible field on the first
+    /// page; verify it with `pdf verify-sign`. Bring your own
+    /// key and certificate — see docs/PDF.md for how to make a
+    /// self-signed test certificate with openssl.
+    Sign {
+        input: PathBuf,
+        output: PathBuf,
+        /// Private key PEM (PKCS#8 or PKCS#1)
+        #[arg(long)]
+        key: PathBuf,
+        /// Certificate PEM (or DER)
+        #[arg(long)]
+        cert: PathBuf,
+        /// Reason for signing
+        #[arg(long)]
+        reason: Option<String>,
+        /// Signing location
+        #[arg(long)]
+        location: Option<String>,
+        /// Contact info
+        #[arg(long)]
+        contact: Option<String>,
+    },
+    /// Verify the signatures in a PDF: validity (cryptography),
+    /// trust (against --trust anchors), digest, signing time and
+    /// certificate window. With no anchors every signer is
+    /// reported untrusted — that is the honest answer for a
+    /// self-signed certificate, not a failure.
+    VerifySign {
+        input: PathBuf,
+        /// Trust anchor certificate (PEM or DER), repeatable
+        #[arg(long)]
+        trust: Vec<PathBuf>,
+    },
+    /// Flatten annotations and form fields into page content
+    /// (annotations with an appearance become part of the page;
+    /// bare ones are dropped and reported)
+    Flatten { input: PathBuf, output: PathBuf },
+    /// Set document metadata (title/author/subject/keywords).
+    /// An empty string clears a field; an omitted flag leaves
+    /// it unchanged.
+    SetMetadata {
+        input: PathBuf,
+        output: PathBuf,
+        /// New title ("" clears it)
+        #[arg(long)]
+        title: Option<String>,
+        /// New author ("" clears it)
+        #[arg(long)]
+        author: Option<String>,
+        /// New subject ("" clears it)
+        #[arg(long)]
+        subject: Option<String>,
+        /// New keywords ("" clears it)
+        #[arg(long)]
+        keywords: Option<String>,
+    },
+    /// Rebuild the cross-reference table of a damaged PDF where
+    /// lopdf can (reports how the file was recovered)
+    Repair { input: PathBuf, output: PathBuf },
+    /// Strip JavaScript, embedded files, launch actions and
+    /// auto-actions from a PDF. The document is kept; the
+    /// dangerous parts are removed, not hidden.
+    Sanitize { input: PathBuf, output: PathBuf },
+    /// List JavaScript actions and embedded files in a PDF
+    /// (never executes anything) plus the basic document info
+    Inspect { input: PathBuf },
 }
 
 /// The `openpixel doc ...` subcommands (Studio Phase 3).
@@ -1411,6 +1558,62 @@ fn parse_ranges(s: &str) -> Result<Vec<(u32, u32)>, openpixel_core::OpenPixelErr
     Ok(ranges)
 }
 
+/// Parse a colour as #RRGGBB (the leading # is optional).
+fn parse_hex_color(s: &str) -> Result<openpixel_pdf::Rgb, openpixel_core::OpenPixelError> {
+    let err = || {
+        openpixel_core::OpenPixelError::InvalidArgument(format!(
+            "invalid colour '{s}' — use #RRGGBB, e.g. #ff0000"
+        ))
+    };
+    let hex = s.strip_prefix('#').unwrap_or(s);
+    if hex.len() != 6 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(err());
+    }
+    let channel = |i: usize| -> std::result::Result<f64, openpixel_core::OpenPixelError> {
+        u8::from_str_radix(&hex[i..i + 2], 16)
+            .map(|v| v as f64 / 255.0)
+            .map_err(|_| err())
+    };
+    Ok(openpixel_pdf::Rgb {
+        r: channel(0)?,
+        g: channel(2)?,
+        b: channel(4)?,
+    })
+}
+
+/// Parse "x,y,width,height" (points) for `pdf redact --rect`.
+fn parse_rect_arg(s: &str) -> Result<(f64, f64, f64, f64), openpixel_core::OpenPixelError> {
+    let err = || {
+        openpixel_core::OpenPixelError::InvalidArgument(format!(
+            "invalid rectangle '{s}' — use x,y,width,height in points, e.g. 72,600,200,20"
+        ))
+    };
+    let parts: Vec<&str> = s.split(',').collect();
+    if parts.len() != 4 {
+        return Err(err());
+    }
+    let mut vals = [0.0f64; 4];
+    for (i, p) in parts.iter().enumerate() {
+        vals[i] = p.trim().parse().map_err(|_| err())?;
+    }
+    Ok((vals[0], vals[1], vals[2], vals[3]))
+}
+
+/// Parse a page-number position name for `pdf edit --page-numbers`.
+fn parse_page_number_position(
+    s: &str,
+) -> Result<openpixel_pdf::PageNumberPosition, openpixel_core::OpenPixelError> {
+    match s.trim().to_ascii_lowercase().as_str() {
+        "bottom-center" => Ok(openpixel_pdf::PageNumberPosition::BottomCenter),
+        "bottom-right" => Ok(openpixel_pdf::PageNumberPosition::BottomRight),
+        "top-center" => Ok(openpixel_pdf::PageNumberPosition::TopCenter),
+        "top-right" => Ok(openpixel_pdf::PageNumberPosition::TopRight),
+        _ => Err(openpixel_core::OpenPixelError::InvalidArgument(format!(
+            "unknown page-number position '{s}' — use bottom-center, bottom-right, top-center or top-right"
+        ))),
+    }
+}
+
 /// Default `--out-dir` for a multi-output PDF command: a directory
 /// named `<input-stem>-<suffix>` next to the input file.
 fn default_pdf_out_dir(input: &Path, suffix: &str) -> PathBuf {
@@ -2090,6 +2293,494 @@ fn run_pdf(
             }
             Ok(())
         }
+        PdfCommands::Edit {
+            input,
+            output,
+            op,
+            text,
+            page,
+            x,
+            y,
+            size,
+            color,
+            image,
+            image_width,
+            image_height,
+            page_numbers,
+            page_number_format,
+            page_number_position,
+            header,
+            footer,
+        } => {
+            let mut ops: Vec<openpixel_pdf::OverlayOp> = Vec::new();
+            // --op JSON first (in the order given), then the
+            // convenience flags — later ops draw on top of
+            // earlier ones.
+            for json in op {
+                let parsed: openpixel_pdf::OverlayOp = serde_json::from_str(json).map_err(|e| {
+                    openpixel_core::OpenPixelError::InvalidArgument(format!(
+                        "could not parse --op as an overlay operation: {e}"
+                    ))
+                })?;
+                ops.push(parsed);
+            }
+            if let Some(text) = text {
+                let color = parse_hex_color(color)?;
+                ops.push(openpixel_pdf::OverlayOp::Text {
+                    page: *page,
+                    x: *x,
+                    y: *y,
+                    text: text.clone(),
+                    size: *size,
+                    color,
+                    font: openpixel_pdf::OverlayFont::Helvetica,
+                });
+            }
+            let mut images: Vec<Vec<u8>> = Vec::new();
+            if let Some(image_path) = image {
+                let image_bytes = read_pdf_bytes(image_path)?;
+                let (width, height) = match (image_width, image_height) {
+                    (Some(w), Some(h)) => (*w, *h),
+                    _ => {
+                        // The image's own size in points (1 px = 1 pt).
+                        let info = engine.get_image_info_bytes(&image_bytes)?;
+                        (
+                            image_width.unwrap_or(info.width as f64),
+                            image_height.unwrap_or(info.height as f64),
+                        )
+                    }
+                };
+                images.push(image_bytes);
+                ops.push(openpixel_pdf::OverlayOp::Image {
+                    page: *page,
+                    x: *x,
+                    y: *y,
+                    width,
+                    height,
+                    image_index: images.len() - 1,
+                });
+            }
+            if *page_numbers {
+                let position = parse_page_number_position(page_number_position)?;
+                ops.push(openpixel_pdf::OverlayOp::PageNumbers {
+                    pages: None,
+                    format: page_number_format.clone(),
+                    position,
+                    size: 10.0,
+                });
+            }
+            if header.is_some() || footer.is_some() {
+                ops.push(openpixel_pdf::OverlayOp::HeaderFooter {
+                    pages: None,
+                    header: header.clone(),
+                    footer: footer.clone(),
+                    size: 10.0,
+                });
+            }
+            if ops.is_empty() {
+                return Err(openpixel_core::OpenPixelError::InvalidArgument(
+                    "pdf edit needs at least one op: --op, --text, --image, --page-numbers, --header or --footer".to_string(),
+                ));
+            }
+            let bytes = read_pdf_bytes(input)?;
+            let (out, outcome) = pdf.edit(&bytes, &ops, &images).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&PdfEditSummary {
+                        command: "edit",
+                        output: output.clone(),
+                        bytes: out.len() as u64,
+                        outcome,
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                println!(
+                    "edited {} -> {} ({} op(s), {} page(s), {} comment(s), {} bytes)",
+                    input.display(),
+                    output.display(),
+                    outcome.ops_applied,
+                    outcome.pages_touched,
+                    outcome.comments_added,
+                    out.len()
+                );
+                for w in &outcome.warnings {
+                    println!("warning: {w}");
+                }
+            }
+            Ok(())
+        }
+        PdfCommands::Redact {
+            input,
+            output,
+            rect,
+            page,
+            text,
+        } => {
+            let mut redactions: Vec<openpixel_pdf::Redaction> = Vec::new();
+            for r in rect {
+                let (x, y, w, h) = parse_rect_arg(r)?;
+                redactions.push(openpixel_pdf::Redaction::Rect(
+                    openpixel_pdf::RectRedaction {
+                        page: *page,
+                        x,
+                        y,
+                        width: w,
+                        height: h,
+                    },
+                ));
+            }
+            for t in text {
+                redactions.push(openpixel_pdf::Redaction::Text(
+                    openpixel_pdf::TextRedaction {
+                        page: None,
+                        text: t.clone(),
+                    },
+                ));
+            }
+            if redactions.is_empty() {
+                return Err(openpixel_core::OpenPixelError::InvalidArgument(
+                    "pdf redact needs at least one --rect or --text".to_string(),
+                ));
+            }
+            let bytes = read_pdf_bytes(input)?;
+            let (out, outcome) = pdf.redact(&bytes, &redactions).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&PdfRedactSummary {
+                        command: "redact",
+                        output: output.clone(),
+                        bytes: out.len() as u64,
+                        outcome,
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                println!(
+                    "redacted {} -> {} ({} run(s), {} character(s) removed, {} page(s), {} bytes)",
+                    input.display(),
+                    output.display(),
+                    outcome.runs_removed,
+                    outcome.characters_removed,
+                    outcome.pages_touched,
+                    out.len()
+                );
+                if !outcome.redacted_texts.is_empty() {
+                    println!("removed: {}", outcome.redacted_texts.join(", "));
+                }
+                for w in &outcome.warnings {
+                    println!("warning: {w}");
+                }
+            }
+            Ok(())
+        }
+        PdfCommands::Sign {
+            input,
+            output,
+            key,
+            cert,
+            reason,
+            location,
+            contact,
+        } => {
+            let key_pem = std::fs::read_to_string(key).map_err(|e| {
+                openpixel_core::OpenPixelError::InvalidArgument(format!(
+                    "could not read private key {}: {e}",
+                    key.display()
+                ))
+            })?;
+            let cert_pem = std::fs::read_to_string(cert).map_err(|e| {
+                openpixel_core::OpenPixelError::InvalidArgument(format!(
+                    "could not read certificate {}: {e}",
+                    cert.display()
+                ))
+            })?;
+            let bytes = read_pdf_bytes(input)?;
+            let options = openpixel_pdf::SignOptions {
+                reason: reason.clone(),
+                location: location.clone(),
+                contact_info: contact.clone(),
+            };
+            let out = pdf
+                .sign(&bytes, &key_pem, &cert_pem, &options)
+                .map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            let pages = pdf.page_count(&bytes).unwrap_or(0);
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&PdfOpSummary {
+                        command: "sign",
+                        output: output.clone(),
+                        pages,
+                        bytes: out.len() as u64,
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                println!(
+                    "signed {} -> {} ({} pages, {} bytes; verify with `openpixel pdf verify-sign`)",
+                    input.display(),
+                    output.display(),
+                    pages,
+                    out.len()
+                );
+            }
+            Ok(())
+        }
+        PdfCommands::VerifySign { input, trust } => {
+            let mut anchors: Vec<Vec<u8>> = Vec::new();
+            for path in trust {
+                anchors.push(std::fs::read(path).map_err(|e| {
+                    openpixel_core::OpenPixelError::InvalidArgument(format!(
+                        "could not read trust anchor {}: {e}",
+                        path.display()
+                    ))
+                })?);
+            }
+            let bytes = read_pdf_bytes(input)?;
+            let outcome = pdf.verify_signatures(&bytes, &anchors).map_err(pdf_err)?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&outcome).unwrap());
+            } else if !cli.quiet {
+                if outcome.signatures.is_empty() {
+                    println!("no signatures in {}", input.display());
+                }
+                for (i, sig) in outcome.signatures.iter().enumerate() {
+                    println!(
+                        "signature {}: valid: {}, trusted: {}, signer: {}, digest: {}",
+                        i + 1,
+                        yes(sig.valid),
+                        yes(sig.trusted),
+                        sig.signer.as_deref().unwrap_or("(unknown)"),
+                        sig.digest_algorithm
+                    );
+                    if let Some(t) = &sig.signing_time {
+                        println!("  signing time: {t}");
+                    }
+                    for c in &sig.checks {
+                        println!("  check: {c}");
+                    }
+                    for w in &sig.warnings {
+                        println!("  warning: {w}");
+                    }
+                }
+            }
+            // The report IS the answer: an invalid or untrusted
+            // signature is reported, not an error — exit 0.
+            Ok(())
+        }
+        PdfCommands::Flatten { input, output } => {
+            let bytes = read_pdf_bytes(input)?;
+            let (out, outcome) = pdf.flatten(&bytes).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&PdfFlattenSummary {
+                        command: "flatten",
+                        output: output.clone(),
+                        bytes: out.len() as u64,
+                        outcome,
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                println!(
+                    "flattened {} -> {} ({} annotation(s) flattened, {} dropped, {} form field(s) removed, {} bytes)",
+                    input.display(),
+                    output.display(),
+                    outcome.annotations_flattened,
+                    outcome.annotations_dropped,
+                    outcome.form_fields_removed,
+                    out.len()
+                );
+                for w in &outcome.warnings {
+                    println!("warning: {w}");
+                }
+            }
+            Ok(())
+        }
+        PdfCommands::SetMetadata {
+            input,
+            output,
+            title,
+            author,
+            subject,
+            keywords,
+        } => {
+            if title.is_none() && author.is_none() && subject.is_none() && keywords.is_none() {
+                return Err(openpixel_core::OpenPixelError::InvalidArgument(
+                    "pdf set-metadata needs at least one of --title, --author, --subject, --keywords (an empty string clears a field)".to_string(),
+                ));
+            }
+            let bytes = read_pdf_bytes(input)?;
+            let out = pdf
+                .set_metadata(
+                    &bytes,
+                    openpixel_pdf::MetadataEdit {
+                        title: title.clone(),
+                        author: author.clone(),
+                        subject: subject.clone(),
+                        keywords: keywords.clone(),
+                        creator: None,
+                        producer: None,
+                    },
+                )
+                .map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            let pages = pdf.page_count(&bytes).unwrap_or(0);
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&PdfOpSummary {
+                        command: "set-metadata",
+                        output: output.clone(),
+                        pages,
+                        bytes: out.len() as u64,
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                println!(
+                    "metadata set: {} -> {} ({} pages, {} bytes)",
+                    input.display(),
+                    output.display(),
+                    pages,
+                    out.len()
+                );
+            }
+            Ok(())
+        }
+        PdfCommands::Repair { input, output } => {
+            let bytes = read_pdf_bytes(input)?;
+            let (out, outcome) = pdf.repair(&bytes).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&PdfRepairSummary {
+                        command: "repair",
+                        output: output.clone(),
+                        bytes: out.len() as u64,
+                        outcome,
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                println!(
+                    "repaired {} -> {} (recovery: {}, {} bytes)",
+                    input.display(),
+                    output.display(),
+                    outcome.recovery,
+                    out.len()
+                );
+                for w in &outcome.warnings {
+                    println!("warning: {w}");
+                }
+            }
+            Ok(())
+        }
+        PdfCommands::Sanitize { input, output } => {
+            let bytes = read_pdf_bytes(input)?;
+            let (out, outcome) = pdf.sanitize(&bytes).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&PdfSanitizeSummary {
+                        command: "sanitize",
+                        output: output.clone(),
+                        bytes: out.len() as u64,
+                        outcome,
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                println!(
+                    "sanitized {} -> {} ({} JavaScript, {} embedded file(s), {} launch action(s), {} auto-action(s) removed, {} bytes)",
+                    input.display(),
+                    output.display(),
+                    outcome.javascript_removed,
+                    outcome.embedded_files_removed,
+                    outcome.launch_actions_removed,
+                    outcome.auto_actions_removed,
+                    out.len()
+                );
+                for w in &outcome.warnings {
+                    println!("warning: {w}");
+                }
+            }
+            Ok(())
+        }
+        PdfCommands::Inspect { input } => {
+            let bytes = read_pdf_bytes(input)?;
+            let info = pdf.inspect(&bytes).map_err(pdf_err)?;
+            let threats = pdf.inspect_threats(&bytes).map_err(pdf_err)?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&PdfInspectSummary {
+                        command: "inspect",
+                        info,
+                        threats,
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                println!("file:      {}", input.display());
+                println!(
+                    "pages:     {}",
+                    if info.encrypted {
+                        "unknown (encrypted)".to_string()
+                    } else {
+                        info.page_count.to_string()
+                    }
+                );
+                println!("version:   {}", info.version);
+                println!("encrypted: {}", yes(info.encrypted));
+                println!(
+                    "javascript:    {}",
+                    if threats.javascript.is_empty() {
+                        "absent".to_string()
+                    } else {
+                        format!("PRESENT — {}", threats.javascript.join("; "))
+                    }
+                );
+                println!(
+                    "embedded files: {}",
+                    if threats.embedded_files.is_empty() {
+                        "absent".to_string()
+                    } else {
+                        format!("PRESENT — {}", threats.embedded_files.join("; "))
+                    }
+                );
+                println!(
+                    "launch actions: {}",
+                    if threats.launch_actions.is_empty() {
+                        "absent".to_string()
+                    } else {
+                        format!("PRESENT — {}", threats.launch_actions.join("; "))
+                    }
+                );
+                println!(
+                    "auto actions:   {}",
+                    if threats.auto_actions.is_empty() {
+                        "absent".to_string()
+                    } else {
+                        format!("PRESENT — {}", threats.auto_actions.join("; "))
+                    }
+                );
+                for w in &threats.warnings {
+                    println!("warning: {w}");
+                }
+            }
+            Ok(())
+        }
     }
 }
 
@@ -2132,6 +2823,59 @@ struct PdfOcrSummary {
     words: u64,
     mean_confidence: f64,
     bytes: u64,
+}
+
+/// What `pdf edit` reports, in text and `--json`.
+#[derive(Debug, serde::Serialize)]
+struct PdfEditSummary {
+    command: &'static str,
+    output: PathBuf,
+    bytes: u64,
+    outcome: openpixel_pdf::EditOutcome,
+}
+
+/// What `pdf redact` reports, in text and `--json`.
+#[derive(Debug, serde::Serialize)]
+struct PdfRedactSummary {
+    command: &'static str,
+    output: PathBuf,
+    bytes: u64,
+    outcome: openpixel_pdf::RedactOutcome,
+}
+
+/// What `pdf flatten` reports, in text and `--json`.
+#[derive(Debug, serde::Serialize)]
+struct PdfFlattenSummary {
+    command: &'static str,
+    output: PathBuf,
+    bytes: u64,
+    outcome: openpixel_pdf::FlattenOutcome,
+}
+
+/// What `pdf repair` reports, in text and `--json`.
+#[derive(Debug, serde::Serialize)]
+struct PdfRepairSummary {
+    command: &'static str,
+    output: PathBuf,
+    bytes: u64,
+    outcome: openpixel_pdf::RepairOutcome,
+}
+
+/// What `pdf sanitize` reports, in text and `--json`.
+#[derive(Debug, serde::Serialize)]
+struct PdfSanitizeSummary {
+    command: &'static str,
+    output: PathBuf,
+    bytes: u64,
+    outcome: openpixel_pdf::SanitizeOutcome,
+}
+
+/// What `pdf inspect` reports, in text and `--json`.
+#[derive(Debug, serde::Serialize)]
+struct PdfInspectSummary {
+    command: &'static str,
+    info: openpixel_pdf::PdfInfo,
+    threats: openpixel_pdf::PdfThreats,
 }
 
 /// What `doc convert` reports, in text and `--json`.

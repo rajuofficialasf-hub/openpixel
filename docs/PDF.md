@@ -1,4 +1,4 @@
-# PDF — Studio Phase 3: Conversion and Compression (16 Nov 2026)
+# PDF — Studio Phases 2–5: Page ops, Compression, Editing and Security (17 Nov 2026)
 
 First user-facing PDF support: page operations, PDF info, PDF→image
 rendering (PDFium), image→PDF, a CLI `pdf` subcommand, a web PDF tab
@@ -9,7 +9,13 @@ Phase 3 adds **compression** (screen/ebook/printer), **security**
 (password protect, permissions, watermark), **text extraction**
 (PDF→TXT/HTML/EPUB/DOCX via PDFium), and **document conversion**
 via LibreOffice headless (CLI/desktop only), plus a conversion
-registry that says honestly what runs where.
+registry that says honestly what runs where. Phase 4 adds **OCR**
+(see `docs/OCR.md`). Phase 5 adds **editing and security**:
+overlay editor (text/images/shapes/highlight/draw/comments/page
+numbers/header-footer), **real digital signatures** (sign + verify,
+CMS/PKCS#7), **real redaction** (text removed from the content
+stream, byte-verified), flatten, metadata editing, repair and
+sanitisation (JavaScript/embedded files/launch actions removed).
 
 ## Capabilities
 
@@ -37,6 +43,15 @@ registry that says honestly what runs where.
 | **extract text (PDFium)** | `extract_text` | `extract-text` | — (CLI/desktop) | — |
 | **PDF→TXT/HTML/EPUB/DOCX (text-only)** | `text_to_*` | via `extract-text` | — (CLI/desktop) | — |
 | **Office↔PDF (LibreOffice)** | `DocumentEngine::convert` | `doc convert` | — (CLI/desktop, honest note) | — |
+| **overlay editor (text/image/shapes/highlight/draw/comments/page numbers/header-footer)** | `edit` | `edit` | yes (text, shapes, highlight, page numbers, header/footer, comment) | `pdf_edit` |
+| **digital signature (sign)** | `sign` | `sign` | — (CLI/desktop, needs a private key) | — |
+| **signature verification** | `verify_signatures` | `verify-sign` | — (CLI/desktop) | — |
+| **redaction (real content removal)** | `redact` | `redact` | yes (text + rect) | `pdf_redact` |
+| **flatten (annotations/form fields into page content)** | `flatten` | `flatten` | yes | `pdf_flatten` |
+| **metadata editing (Title/Author/Subject/Keywords)** | `set_metadata` | `set-metadata` | yes | `pdf_set_metadata` |
+| **repair (rebuild xref)** | `repair` | `repair` | yes | `pdf_repair` |
+| **sanitisation (strip JS/embedded files/launch/auto-actions)** | `sanitize` | `sanitize` | yes | `pdf_sanitize` |
+| **threat inspection (JS/embedded files/launch/auto-actions)** | `inspect_threats` | `inspect` | yes | `pdf_inspect` |
 
 All page numbers are **1-based** in the engine, the CLI and the
 WASM JSON. Ranges are inclusive (`1-3` = pages 1, 2, 3).
@@ -106,7 +121,9 @@ unreachable orphans. Fixed with a regression test:
   Letter 612×792, A5 420×595) — the image is fitted inside,
   aspect preserved, centred.
 - **PDF/A is out of scope** — nothing in this phase claims it.
-- **No form handling** — that is Phase 5.
+- **No form handling in Phases 2–4** — Phase 5 adds flatten
+  (annotations/form fields into page content); interactive form
+  filling is still not a feature.
 - **Render scale is 0.25..=6.0** and rendered dimensions are capped
   at the image engine's 16,384 px limit.
 
@@ -316,6 +333,172 @@ apart — the caller must pass the extension as the source hint.
 (24.2.7.2) — no `apt` install was needed. `LICENSE_AUDIT.md`
 records the MPL-2.0 row (system dependency, not bundled).
 
+## Editing and security (Phase 5)
+
+### Overlay editor — NEW content, never in-place text editing
+
+`PdfEngine::edit(bytes, ops, images)` appends one content stream
+per touched page **after** the existing content, so overlays draw
+on top. The UI and the CLI say this plainly: **overlays are new
+content layered on the page; existing text objects are never
+edited in place** — lopdf cannot do that reliably, and OpenPixel
+never claims to.
+
+Ops (`OverlayOp`, serde-tagged `kind`):
+
+- `text` — text at (x, y) in points (origin bottom-left), size,
+  colour, one of six standard fonts (helvetica, helvetica-bold,
+  helvetica-oblique, helvetica-bold-oblique, times-roman,
+  courier). WinAnsi only: non-ASCII characters become `?`
+  (same rule as the Phase 3 watermark).
+- `image` — an image (any decodable format) embedded as a
+  FlateDecode RGB XObject at (x, y, width, height); alpha is
+  flattened to white, like `from_images`.
+- `rect` / `line` / `circle` — shapes with fill and/or stroke
+  colours and a stroke width.
+- `highlight` — a translucent rectangle (opacity 0..1) behind
+  text; drawn as a filled rect with an ExtGState.
+- `draw` — a freehand stroke (a polyline through the given
+  points).
+- `comment` — a `/Text` annotation (a sticky note), not page
+  content; it carries text + author and opens in a PDF reader.
+- `page_numbers` — "Page {n} of {total}" (customisable format
+  with `{n}` / `{total}`) on the listed pages, at the bottom
+  centre/right or top centre/right.
+- `header_footer` — a header line and/or a footer line on the
+  listed pages.
+
+Shared font objects (F1..F6) and one ExtGState per opacity are
+created once per document, not once per op. `EditOutcome`
+reports `ops_applied`, `pages_touched`, `comments_added` and
+warnings. An empty op list is an error.
+
+### Digital signatures — real CMS/PKCS#7, RSA only
+
+`PdfEngine::sign(bytes, key_pem, cert_pem, options)` (feature
+`sign`, CLI/desktop only) creates a detached PKCS#7 signature
+(`SubFilter adbe.pkcs7.detached`) with a SHA-256 digest, built
+with the pure-Rust `cms` crate (builder API) + `rsa` + `x509-cert`.
+The key is read from a PKCS#8 or PKCS#1 PEM file; the cert from
+PEM or DER. **Two-pass placeholder:** pass 1 writes an 8192-byte
+`/Contents` placeholder, the CMS DER length is measured, then
+pass 2 writes an exactly-sized placeholder (no zero padding left
+behind). The `/ByteRange` is patched in place so the signature
+covers everything except the `/Contents` itself.
+
+`PdfEngine::verify_signatures(bytes, trust_anchors)` walks
+`/AcroForm /Fields` for `/FT /Sig` fields and, per signature,
+checks: (1) the message digest matches the signed byte ranges
+(tamper detection — one changed byte fails this), (2) the CMS
+signature verifies with the signer's certificate over the signed
+attributes, (3) the signing time falls inside the certificate's
+validity window (else it is checked against now), (4) a
+self-signed certificate's own signature verifies. The report is
+honest: `valid` = the cryptography checks out; `trusted` = the
+signer IS a supplied trust anchor, or an anchor issued it (one
+level). `valid: yes, trusted: no` is the normal result for a
+self-signed certificate verified without its anchor — it is not
+an error.
+
+**How a real user supplies a certificate:** generate a key + a
+self-signed certificate with `openssl req -x509 -newkey rsa:2048
+-keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=Your
+Name"`, then `openpixel pdf sign in.pdf out.pdf --key key.pem
+--cert cert.pem`. A certificate from a real CA works the same
+way — pass the CA's certificate with `--trust` at verify time.
+The test fixtures use a throwaway self-signed certificate
+generated with `openssl` inside the e2e run (never a checked-in
+private key).
+
+**Honest limits:** RSA only — an ECDSA certificate is reported
+as unsupported, never silently accepted. No revocation checking
+(CRL/OCSP), no timestamp authority (TSA), no long-term validation
+(LTV). A signature whose CMS is malformed is reported `valid:
+false` with reasons, never a panic. Signatures are
+CLI/desktop-only: a private key must never be uploaded to a web
+page, and the WASM build has no signing export.
+
+### Redaction — real content removal, not a black box
+
+`PdfEngine::redact(bytes, redactions)` removes the text from the
+content stream **and** the text layer, then draws a black cover
+rect over the area so the gap is visible. A black rectangle over
+live text is NOT redaction and is never offered as one.
+
+- `RectRedaction {page, x, y, width, height}` — every glyph whose
+  box strictly overlaps the rectangle is removed (a glyph merely
+  touching the edge is kept).
+- `TextRedaction {page, text}` — the text is searched (within a
+  single content-stream run) and becomes a rect redaction.
+
+The old content streams are replaced and deleted from the
+document when uniquely referenced (a shared-stream refcount
+guard keeps streams other pages still use). Annotations
+intersecting a redaction rect are removed. **Self-check:** the
+rebuilt ops must contain exactly the original characters minus
+the removed ones, or the whole operation fails loudly instead of
+shipping a fake redaction. The output is re-parsed before it is
+returned.
+
+**Verify it yourself:** `grep -a "SECRET-123" redacted.pdf`
+must print nothing, and `openpixel pdf extract-text
+redacted.pdf` must not contain the secret either. The CLI e2e
+§13 does exactly this (byte-proof + text-layer proof).
+
+**Honest limits:** text inside Form XObjects is not reached
+(the cover rect still hides it visually, but the bytes remain —
+the module docs say so); vector-outline text has no text to
+remove; character positions are estimated (font size × 0.5
+width, like the watermark); search works within one run only;
+`/Info` metadata is not redacted — use `set-metadata` for that.
+
+### Flatten, metadata, repair, sanitisation, inspection
+
+- **`flatten`** inlines each annotation's appearance stream into
+  the page content (with its rect/bbox/matrix transform and a
+  resource merge that renames on collision) and removes
+  `/AcroForm` + field dictionaries. An annotation **without** an
+  appearance stream cannot be rendered into content, so it is
+  counted as dropped with a warning — the CLI prints
+  `0 annotation(s) flattened, 1 dropped` for a plain comment
+  rather than pretending it was flattened.
+- **`set_metadata`** writes Title/Author/Subject/Keywords into
+  `/Info` (creating it if missing). Passing an empty string
+  clears that field; omitting it leaves it unchanged. At least
+  one field is required.
+- **`repair`** loads leniently and re-saves; `RepairOutcome`
+  reports `as written` (healthy), `offset corrected` or
+  `reconstructed` (damaged xref, rebuilt from object offsets).
+  An unparseable file is an honest error, never a silent empty
+  PDF.
+- **`sanitize`** removes JavaScript actions, launch actions,
+  auto-actions (`/OpenAction`, `/AA`), embedded files
+  (`/EmbeddedFiles`, `/Filespec` + their streams) and XFA forms,
+  then sweeps every reference to the deleted objects out of the
+  surviving document and re-inspects the output — if anything
+  dangerous survives, it fails loudly instead of returning a
+  half-clean file. A GoTo `/OpenAction` (a plain page jump) is
+  kept. The document stays openable (the e2e checks the
+  sanitised file with `pdfinfo`).
+- **`inspect_threats`** lists JavaScript, embedded files, launch
+  actions and auto-actions as present/absent (with names where
+  known) **without executing anything** — it is a structural
+  walk of the catalog and object dictionaries. The Phase 1
+  byte-scan (`openpixel-security`) is the same detection at the
+  raw-bytes level; `inspect_threats` is the structural one.
+
+### lopdf vs qpdf — the honest unknown, resolved with evidence
+
+Phase 5 was built entirely on lopdf 0.47.0 and every exit
+criterion passed on it: overlays, signatures, redaction,
+flatten, repair and sanitisation all work. No lopdf wall was
+hit that blocks any criterion, so **qpdf was not added** (it is
+a C++ FFI dependency and would change the build). The known
+lopdf gaps that remain are the ones listed above (no in-place
+text editing, no Form XObject redaction, no AES encryption,
+no linearisation, no font subsetting) — each is documented
+rather than worked around with a second library.
+
 ## PDF→image rendering (PDFium)
 
 `PdfEngine::render_to_images(bytes, pages, scale)` renders pages
@@ -415,6 +598,10 @@ through PDFium in the tests.
 | Password protect / unlock / watermark | **no** — passwords and native-only ops stay in the CLI/desktop | yes |
 | Text extraction (PDF→TXT/HTML/EPUB/DOCX) | **no** — needs PDFium (native) | yes (needs libpdfium) |
 | Office↔PDF conversion | **no** — LibreOffice cannot run in a browser; the PDF tab says so plainly | yes (`openpixel doc convert`) |
+| Overlay editor | yes — WASM (`pdf_edit`): text, shapes, highlight, page numbers, header/footer, comment; image overlay via file upload | yes |
+| Redaction | yes — WASM (`pdf_redact`): text + rect, real removal | yes |
+| Flatten / metadata / repair / sanitise / threat check | yes — WASM (`pdf_flatten`, `pdf_set_metadata`, `pdf_repair`, `pdf_sanitize`, `pdf_inspect`) | yes |
+| Digital signatures | **no** — a private key must never be uploaded to a web page; signing and verification stay in the CLI/desktop, with the reason shown in the tab | yes (`pdf sign` / `pdf verify-sign`) |
 
 The browser render path (pdf.js) and the native render path
 (PDFium) are different rasterisers: same pages, possibly slightly
@@ -446,6 +633,40 @@ In `crates/openpixel-wasm` (dav1d-free build, `pdfium` feature
   The TS wrapper also coerces with `Number()` as defence.
   Any future export that returns a size must do the same.
 
+## WASM exports (Phase 5)
+
+Pure lopdf, no signing export (a private key must never enter
+the browser):
+
+- `pdf_edit(bytes, ops_json, images)` → `{ data, ops_applied,
+  pages_touched, comments_added, warnings }`. Ops JSON: an
+  array of `OverlayOp` (`kind`: `text` | `image` | `rect` |
+  `line` | `circle` | `highlight` | `draw` | `comment` |
+  `page_numbers` | `header_footer`); `images` is a JS array of
+  `Uint8Array`, one per image op, in order.
+- `pdf_redact(bytes, redactions_json)` → `{ data,
+  pages_touched, runs_removed, characters_removed,
+  annotations_removed, redacted_texts, warnings }`.
+  Redactions JSON: `{"kind":"text","page":null,"text":"…"}` or
+  `{"kind":"rect","page":1,"x":72,"y":700,"width":120,"height":30}`.
+- `pdf_flatten(bytes)` → `{ data, annotations_flattened,
+  annotations_dropped, form_fields_removed, warnings }`.
+- `pdf_set_metadata(bytes, metadata_json)` → `Uint8Array`.
+  `{"title":"…","author":"","subject":null,"keywords":null}` —
+  `""` clears, `null` leaves unchanged.
+- `pdf_sanitize(bytes)` → `{ data, javascript_removed,
+  embedded_files_removed, launch_actions_removed,
+  auto_actions_removed, warnings }`.
+- `pdf_repair(bytes)` → `{ data, recovery, warnings }`.
+  `recovery` is `"as written"` | `"offset corrected"` |
+  `"reconstructed"` | `"recovered"`.
+- `pdf_inspect(bytes)` → the `PdfThreats` object: `javascript`,
+  `embedded_files`, `launch_actions`, `auto_actions` (arrays of
+  what was found — action descriptions / file names, empty when
+  absent) and `warnings`. Clean = all four arrays empty (the
+  Rust `is_clean()` check; the TS wrapper computes it the same
+  way).
+
 ## CLI reference
 
 ```
@@ -469,9 +690,31 @@ openpixel pdf protect <input> <output> --user-password <pw> [--owner-password <p
 openpixel pdf unlock <input> <output> --password <pw>
 openpixel pdf watermark <input> <output> --text <text> [--font-size 48] [--opacity 0.25] [--angle 45]
 openpixel pdf extract-text <input> [-o <out>] [--pages 1,3] [--format txt|html|epub|docx]
+openpixel pdf edit <input> <output> [--text <text> --page 1 --x 72 --y 700 --size 14 --color #000000 --font helvetica] [--op '<json>' ...] [--image <img> --page 1 --x 72 --y 600] [--page-numbers] [--header <text>] [--footer <text>]
+openpixel pdf redact <input> <output> [--text <text> ...] [--rect x,y,w,h --page 1 ...]
+openpixel pdf sign <input> <output> --key <key.pem> --cert <cert.pem> [--reason <text>] [--location <text>] [--contact <text>]
+openpixel pdf verify-sign <input> [--trust <cert.pem> ...] [--json]
+openpixel pdf flatten <input> <output>
+openpixel pdf set-metadata <input> <output> [--title <text>] [--author <text>] [--subject <text>] [--keywords <text>]
+openpixel pdf repair <input> <output>
+openpixel pdf sanitize <input> <output>
+openpixel pdf inspect <input> [--json]
 openpixel doc convert <input> --to <pdf|docx|xlsx|...> [-o <out>] [--timeout-secs 120]
 openpixel doc formats [--json]
 ```
+
+`edit --op` takes a JSON overlay op (`{"kind":"text","page":1,
+"x":72,"y":700,"text":"DRAFT","size":14,"color":{"r":0,"g":0,"b":0},
+"font":"helvetica"}` — `kind` is `text` | `image` | `rect` |
+`line` | `circle` | `highlight` | `draw` | `comment` |
+`page_numbers` | `header_footer`; see `docs/API.md`). `--image`
+embeds the file at `--x/--y` (default 72/600, 200×150 pt);
+`--text`/`--page-numbers`/`--header`/`--footer` are shortcuts
+for the common ops. `redact --text` searches all pages unless
+`--page` is given; `--rect x,y,w,h` needs `--page`. `sign`
+needs a PEM private key + certificate (see the Phase 5 section
+above for how to make one with `openssl`). `set-metadata`
+clears a field with an empty string (`--author ""`).
 
 Passwords are command-line arguments — use `protect`/`unlock`
 only on your own machine, never in shared shell history you
@@ -517,8 +760,36 @@ Split/render default `--out-dir` is `<input-stem>-split` /
   formats (docx round-trips back through LibreOffice),
   LibreOffice conversions across the matrix with pdftotext
   verification, honest refusals (pdf→xlsx, pptx→txt) exit 1.
-- Web e2e `apps/web/e2e/pdf-e2e.mjs` (15 checks): upload a real
+- Web e2e `apps/web/e2e/pdf-e2e.mjs` (23 checks): upload a real
   PDF, info shown (page count is just the number — the
   "Pages | Pages: 4" duplication is fixed), merge/split works,
   PDF→PNG is a genuine image at the requested dimensions,
-  compress downloads a real PDF no bigger than the input.
+  compress downloads a real PDF no bigger than the input,
+  **Phase 5**: add-text overlay (extractable, original kept),
+  page numbers ("Page 1 of 2" in the text layer), redact by text
+  (byte-proof: `SECRET-123` absent from the file bytes and the
+  text layer, `PUBLIC line` survives), metadata (new title),
+  threat check (clean), sanitize (clean input, nothing removed),
+  flatten and repair (real PDFs, "as written").
+- `cargo test -p openpixel-pdf --features sign,pdfium` (Phase 5):
+  editor (text/shapes/page-numbers/header-footer/image/comment,
+  bad-input rejections), redaction (rect + text-search, partial
+  overlap, byte-proof, shared-stream guard), signatures
+  (sign→verify round-trip, tamper detection, PKCS#1 key,
+  garbage CMS, untrusted without an anchor), sanitisation
+  (JS/embedded file/launch removed, byte-proof, idempotent,
+  orphan-object sweep), repair (broken xref reconstructed,
+  healthy file "as written"), ZIP-bomb (300 MiB of zeros in a
+  Flate stream is refused by the decompression limit).
+- CLI e2e `scripts/test/cli-e2e.sh` **§13 (Phase 5)**: edit on a
+  real 2-page text PDF (overlay visible when rendered, text
+  extractable), redact `--text` + `--rect` (byte-proof),
+  sign→verify round-trip on a real openssl certificate
+  (valid+trusted with the anchor, valid+untrusted without,
+  invalid after one tampered byte), flatten (a comment without
+  an appearance is honestly dropped, not flattened),
+  set-metadata (title set, author cleared), repair (healthy "as
+  written", broken xref reconstructed), inspect + sanitize on a
+  malicious fixture (JS + embedded file + Launch: all gone from
+  the bytes, file still opens), error cases (no ops, bad JSON,
+  bad key, no metadata fields → exit 1).

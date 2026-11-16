@@ -266,7 +266,7 @@ deferred, not promised); handwriting recognition is
   for counts), web 76/76, CLI e2e §12, ocr-e2e 14/14,
   pdf-e2e 15/15. Full details: `docs/OCR.md`.
 
-## Phase 5 — Advanced Editing and Security
+## Phase 5 — Advanced Editing and Security — DONE 17 Nov 2026
 
 **Entry:** Phase 2 exit green.
 **Work:** PDF editor — overlay content (text/images/shapes/
@@ -286,6 +286,98 @@ JavaScript inspection.
 **Honest unknowns:** how far lopdf reaches for editing vs
 where qpdf becomes necessary (defer the qpdf decision to
 evidence from this phase); certificate-based signing UX.
+
+**Done 17 Nov 2026 — what actually shipped:**
+- **Overlay editor** (`crates/openpixel-pdf/src/edit.rs`):
+  text, images, rect/line/circle, highlight, freehand draw,
+  comments (`/Text` annotations), page numbers, header/footer.
+  One content stream appended per touched page (overlays draw
+  on top); shared font objects + one ExtGState per opacity.
+  The UI and CLI state plainly that overlays are NEW content —
+  existing text is never edited in place (lopdf cannot do that
+  reliably). Non-ASCII text becomes `?` (WinAnsi, same rule as
+  the Phase 3 watermark). Text watermark from Phase 3 reused
+  (not duplicated).
+- **Digital signatures** (`sign.rs`, feature `sign`, CLI/desktop
+  only): real CMS/PKCS#7 detached signatures (SHA-256, RSA
+  only) via the pure-Rust `cms` + `rsa` + `x509-cert` crates —
+  no new licence (all MIT OR Apache-2.0, see
+  `LICENSE_AUDIT.md`). Two-pass placeholder (8192-byte
+  `/Contents`, then exactly-sized — no zero padding left).
+  `verify_signatures` checks the digest over the ByteRange,
+  the CMS signature over the signed attributes, the signing
+  time against the cert validity, and self-signed certs;
+  reports `valid` (crypto OK) vs `trusted` (signer IS an
+  anchor or an anchor issued it) honestly. No CRL/OCSP, no
+  TSA, ECDSA reported unsupported. Test certs are generated
+  with `rcgen` (dev-dep only) + an `rsa`-generated key;
+  the CLI e2e uses a real openssl self-signed certificate.
+- **Redaction** (`redact.rs`): REAL content removal — the text
+  is deleted from the content stream (old streams replaced +
+  deleted when uniquely referenced), a black cover rect is
+  drawn over the area, intersecting annotations are removed,
+  and a self-check fails loudly if the rebuilt ops are not
+  exactly the original minus the removed characters.
+  Byte-proof in the CLI e2e (§13b) and the pdf-e2e (§2.20.14):
+  `grep` finds no trace of the secret in the output bytes or
+  the text layer. Limits (documented): Form XObject text is
+  not reached (cover still hides it visually), vector-outline
+  text has no text to remove, positions are estimated, search
+  is within one run, `/Info` is not redacted (use
+  `set-metadata`).
+- **Flatten** (`edit.rs`): appearance streams inlined into
+  page content (rect/bbox/matrix transform, resource merge
+  with rename-on-collision); `/AcroForm` + field dicts
+  removed. An annotation WITHOUT an appearance stream is
+  counted as dropped with a warning — never faked as
+  flattened (the CLI e2e asserts "0 flattened, 1 dropped"
+  for a plain comment).
+- **Metadata / repair / sanitisation / inspection**
+  (`edit.rs`, `sanitize.rs`): `set_metadata` (empty string
+  clears, omitted leaves unchanged); `repair` (lenient load +
+  fresh save, reports `as written` / `offset corrected` /
+  `reconstructed`); `sanitize` (removes JS/launch/auto-actions,
+  embedded files, XFA, sweeps orphan references, re-inspects
+  the output and fails loudly if anything dangerous survives);
+  `inspect_threats` (structural, never executes anything).
+  ZIP-bomb test: 300 MiB of zeros in a Flate stream is refused
+  by the decompression limit (`decompressed_content()` itself
+  is unbounded — never call it on untrusted input).
+- **CLI:** `pdf edit` / `redact` / `sign` / `verify-sign` /
+  `flatten` / `set-metadata` / `repair` / `sanitize` /
+  `inspect` (clap derive, `--json` where sensible, honest
+  errors, exit 1).
+- **Web:** Edit card in the PDF tab (overlay ops + redaction
+  via WASM `pdf_edit` / `pdf_redact` / `pdf_flatten` /
+  `pdf_set_metadata` / `pdf_repair` / `pdf_sanitize` /
+  `pdf_inspect`; WASM rebuilt to 8.37 MB). Signatures stay
+  CLI/desktop-only with an honest reason (a private key must
+  never be uploaded). pdf-e2e 24/24 (8 new Edit checks).
+- **lopdf vs qpdf — resolved with evidence:** every exit
+  criterion passed on lopdf 0.47.0; no lopdf wall was hit, so
+  **qpdf was not added**. The known lopdf gaps (no in-place
+  text editing, no Form XObject redaction, no AES, no
+  linearisation, no font subsetting) are documented in
+  `docs/PDF.md` rather than worked around with a second
+  library.
+- **Not done:** OCR→Word/Excel is still not built (Phase 4
+  item, unchanged). Interactive form filling is not a feature
+  (flatten only).
+- **Environment note:** the VM was reset mid-phase — the
+  Tesseract provisioning (`/usr/local` headers + pkg-config +
+  `.so` symlinks), the libarchive/libcurl dev symlinks and
+  python-pptx were wiped. Re-provisioned per `docs/OCR.md`
+  (now also recording the libarchive/libcurl symlinks, which
+  rust-lld needs in `/usr/lib/x86_64-linux-gnu`, not just
+  `/usr/local/lib`) and the fixtures regenerated before the
+  final runs.
+- Tests: `cargo test --workspace` **336/336** (pdf crate
+  `--features sign,pdfium` 66 lib + 4 integration), web
+  **79/79**, lint 0, clippy `-D warnings` clean, fmt clean,
+  `cargo deny check licenses` green, wasm32 green, CLI e2e
+  exit 0 (§13), pdf-e2e 24/24, web e2e 36/37 (known keyboard
+  flake only), resize e2e 16/16, ocr-e2e 14/14, no-WASM 9/9.
+  Full details: `docs/PDF.md`, `docs/E2E.md` (§1.18, §2.20).
 
 ## Phase 6 — Unified Frontend
 

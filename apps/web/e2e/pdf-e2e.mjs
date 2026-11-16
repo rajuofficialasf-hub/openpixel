@@ -32,6 +32,50 @@ function check(name, ok, detail = '') {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
 }
 
+// Minimal 2-page TEXT pdf (the doc4/doc2 fixtures are image-based, so
+// text overlay + redaction need a real text layer). Built in JS with
+// programmatically computed xref offsets — no python, no checked-in PDF.
+// Page 1: "SECRET-123 is here. PUBLIC line."  Page 2: "Second page.
+// SECRET-123 again." (same content as the CLI e2e §13 fixture).
+function makeTextPdf() {
+  const pages = ['SECRET-123 is here. PUBLIC line.', 'Second page. SECRET-123 again.'];
+  const n = pages.length;
+  const pageIds = pages.map((_, i) => 3 + 2 * i);
+  const contentIds = pages.map((_, i) => 4 + 2 * i);
+  const fontId = 3 + 2 * n;
+  const infoId = fontId + 1;
+  const objs = new Map();
+  objs.set(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  objs.set(2, `<< /Type /Pages /Kids [${pageIds.map((p) => `${p} 0 R`).join(' ')}] /Count ${n} >>`);
+  pages.forEach((text, i) => {
+    objs.set(pageIds[i], `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`);
+    const stream = `BT /F1 24 Tf 72 720 Td (${text}) Tj ET`;
+    objs.set(contentIds[i], `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+  });
+  objs.set(fontId, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+  objs.set(infoId, '<< /Title (Test doc) /Author (OpenPixel test) >>');
+  const chunks = [Buffer.from('%PDF-1.5\n')];
+  const offsets = new Map();
+  let pos = chunks[0].length;
+  for (const oid of [...objs.keys()].sort((a, b) => a - b)) {
+    offsets.set(oid, pos);
+    const b = Buffer.from(`${oid} 0 obj\n${objs.get(oid)}\nendobj\n`);
+    chunks.push(b);
+    pos += b.length;
+  }
+  const xrefPos = pos;
+  const maxId = Math.max(...objs.keys());
+  let xref = `xref\n0 ${maxId + 1}\n0000000000 65535 f \n`;
+  for (let oid = 1; oid <= maxId; oid++) {
+    xref += `${String(offsets.get(oid)).padStart(10, '0')} 00000 n \n`;
+  }
+  xref += `trailer\n<< /Size ${maxId + 1} /Root 1 0 R /Info ${infoId} 0 R >>\nstartxref\n${xrefPos}\n%%EOF\n`;
+  chunks.push(Buffer.from(xref));
+  return Buffer.concat(chunks);
+}
+fs.mkdirSync(IN, { recursive: true });
+fs.writeFileSync(path.join(IN, 'text2.pdf'), makeTextPdf());
+
 const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
 const ctx = await browser.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 } });
 const page = await ctx.newPage();
@@ -184,6 +228,108 @@ check(
   compressedInfo.ok && compOut <= compIn,
   `${compressedInfo.detail} | ${compIn} -> ${compOut} bytes | status: ${compStatus}`,
 );
+
+// --- 8c-8j. Edit (Phase 5) on the text PDF: overlay, page numbers,
+// redaction (byte-proof), metadata, threat check, sanitize, flatten,
+// repair. The text PDF is uploaded fresh so the Edit card works on it.
+function extractText(p) {
+  const out = path.join(DL, `${path.basename(p, '.pdf')}.txt`);
+  execFileSync(CLI_IMG, ['pdf', 'extract-text', p, '--output', out], { encoding: 'utf8' });
+  return fs.readFileSync(out, 'utf8');
+}
+// The DropZone (#pdf-file) only renders when no file is loaded, so
+// switch files with the "Choose a different file" button first.
+await page.getByRole('button', { name: 'Choose a different file' }).click();
+await page.waitForSelector('#pdf-file', { timeout: 10000 });
+await page.setInputFiles('#pdf-file', path.join(IN, 'text2.pdf'));
+await page.waitForSelector('#pdf-page-count', { timeout: 30000 });
+check('text PDF uploads with 2 pages', (await page.locator('#pdf-page-count').innerText()).trim() === '2');
+
+// --- 8c. add a text overlay: the overlay is extractable, original kept ---
+await page.fill('#pdf-edit-text', 'DRAFT');
+await page.locator('#pdf-edit-text-button').click();
+await waitStatus('Edited PDF: 1 op');
+const editedPath = await downloadResult(0);
+const editedInfo = verifyPdf(editedPath, 2);
+const editedText = editedInfo.ok ? extractText(editedPath) : '';
+check(
+  'add text downloads a real 2-page PDF with the overlay extractable',
+  editedInfo.ok && editedText.includes('DRAFT') && editedText.includes('SECRET-123 is here'),
+  `${editedInfo.detail} | text: ${editedText.replace(/\n/g, ' | ').slice(0, 160)}`,
+);
+
+// --- 8d. page numbers: "Page 1 of 2" appears in the text layer ---
+// (A page-numbers op expands to one text op per page, so the status
+// counts 2 ops on 2 pages.)
+await page.locator('#pdf-edit-pagenum-button').click();
+await waitStatus('Edited PDF: 2 ops on 2 pages');
+const numberedPath = await downloadResult(0);
+const numberedInfo = verifyPdf(numberedPath, 2);
+const numberedText = numberedInfo.ok ? extractText(numberedPath) : '';
+check(
+  'page numbers downloads a real 2-page PDF with "Page 1 of 2"',
+  numberedInfo.ok && numberedText.includes('Page 1 of 2'),
+  `${numberedInfo.detail} | text: ${numberedText.replace(/\n/g, ' | ').slice(0, 160)}`,
+);
+
+// --- 8e. redact the secret by text: byte-proof (absent from the file
+// bytes) AND absent from the text layer, while PUBLIC line survives ---
+await page.fill('#pdf-redact-text', 'SECRET-123');
+await page.locator('#pdf-redact-text-button').click();
+await waitStatus('Redacted PDF: 2 runs, 20 characters removed');
+const redactedPath = await downloadResult(0);
+const redactedInfo = verifyPdf(redactedPath, 2);
+const redactedBytes = redactedInfo.ok ? fs.readFileSync(redactedPath) : Buffer.alloc(0);
+const redactedText = redactedInfo.ok ? extractText(redactedPath) : '';
+check(
+  'redact removes SECRET-123 from the file bytes and the text layer',
+  redactedInfo.ok
+    && !redactedBytes.includes(Buffer.from('SECRET-123'))
+    && !redactedText.includes('SECRET-123')
+    && redactedText.includes('PUBLIC line'),
+  `${redactedInfo.detail} | text: ${redactedText.replace(/\n/g, ' | ').slice(0, 160)}`,
+);
+
+// --- 8f. metadata: title set, author cleared ---
+await page.fill('#pdf-meta-title', 'Web edit title');
+await page.fill('#pdf-meta-author', '');
+await page.locator('#pdf-meta-button').click();
+await waitStatus('Metadata PDF: title/author/subject/keywords updated');
+const metaPath = await downloadResult(0);
+const metaInfo = verifyPdf(metaPath, 2);
+const metaOut = metaInfo.ok ? execFileSync(CLI_IMG, ['pdf', 'info', metaPath], { encoding: 'utf8' }) : '';
+check(
+  'metadata downloads a real 2-page PDF with the new title',
+  metaInfo.ok && metaOut.includes('title:     Web edit title'),
+  `${metaInfo.detail} | info: ${metaOut.replace(/\n/g, ' | ').slice(0, 160)}`,
+);
+
+// --- 8g. threat check on the clean text PDF: clean ---
+await page.locator('#pdf-inspect-button').click();
+await waitStatus('Threat check: clean');
+check('threat check reports the clean text PDF as clean', true, await page.locator('#pdf-result-status').innerText());
+
+// --- 8h. sanitize a clean PDF: nothing removed, file unchanged ---
+// (The UI labels this "Cleaned PDF", not "Sanitized PDF".)
+await page.locator('#pdf-sanitize-button').click();
+await waitStatus('Cleaned PDF: nothing dangerous was found');
+const cleanPath = await downloadResult(0);
+const cleanInfo = verifyPdf(cleanPath, 2);
+check('sanitize downloads a real 2-page PDF for a clean input', cleanInfo.ok, cleanInfo.detail);
+
+// --- 8i. flatten: still a real 2-page PDF ---
+await page.locator('#pdf-flatten-button').click();
+await waitStatus('Flattened PDF');
+const flatPath = await downloadResult(0);
+const flatInfo = verifyPdf(flatPath, 2);
+check('flatten downloads a real 2-page PDF', flatInfo.ok, flatInfo.detail);
+
+// --- 8j. repair a healthy file: "as written", still a real 2-page PDF ---
+await page.locator('#pdf-repair-button').click();
+await waitStatus('Repaired PDF: cross-reference table read "as written"');
+const repairedPath = await downloadResult(0);
+const repairedInfo = verifyPdf(repairedPath, 2);
+check('repair downloads a real 2-page PDF', repairedInfo.ok, repairedInfo.detail);
 
 // --- 9. dark mode screenshot ---
 await page.locator('button[aria-label="Switch to dark theme"]').click();

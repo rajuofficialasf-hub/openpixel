@@ -28,12 +28,36 @@ export emitted u64/i64 sizes as BigInts, and the UI's
 `formatBytes` divides them — "Cannot mix BigInt and other
 types" at runtime. The export now emits f64 numbers and the TS
 wrapper coerces with `Number()`; see `docs/PDF.md` (WASM
-exports — BigInt rule). This closes the real-browser and desktop
-click-through checklists that were open since Phases 7/8 and the
-WASM checklist from follow-up item 2 — with evidence, not
-assertions. Every scenario below lists what was actually run
-and the observed result; anything not run is marked NOT RUN, never
-passed.
+exports — BigInt rule). Studio Phase 4 run 17 Nov 2026
+(§1.17, §2.21): `cargo test --workspace` 306/306, web `npm
+test` 76/76, lint 0, clippy `-D warnings` clean, fmt clean,
+CLI e2e exit 0 (§12: OCR + searchable PDF + encrypted `pdf
+info`), pdf-e2e 15/15, ocr-e2e 14/14, web e2e 36/37 (the known
+keyboard flake only), resize e2e 16/16, no-WASM fallback 9/9.
+Studio Phase 5 run 17 Nov 2026 (§1.18, §2.20 update): `cargo
+test --workspace` 336/336 (`cargo test -p openpixel-pdf
+--features sign,pdfium` 66 lib + 4 integration), web `npm
+test` 79/79, lint 0, clippy `-D warnings` clean, fmt clean,
+`cargo deny check licenses` green, wasm32 checks green, CLI
+e2e exit 0 (§13: edit / redact / sign / flatten / metadata /
+repair / sanitize / inspect), pdf-e2e 24/24 (incl. the 8 new
+Edit checks), web e2e 36/37 (the known keyboard flake only),
+resize e2e 16/16, ocr-e2e 14/14, no-WASM fallback 9/9. Two
+e2e-expectation defects were found by pdf-e2e and fixed in the
+same run (not app bugs): the page-numbers status counts the
+expanded ops (2 ops on 2 pages, not 1), and three status
+strings did not match the UI ("Metadata PDF: …", "Cleaned
+PDF: …", "Repaired PDF: cross-reference table read …"). The
+VM was reset during this run (the Tesseract provisioning in
+/usr/local + the libarchive/libcurl dev symlinks + python-pptx
+were wiped); re-provisioned per docs/OCR.md (now also
+recording the libarchive/libcurl symlinks) and the fixtures
+regenerated before the final runs. This closes the real-browser
+and desktop click-through checklists that were open since
+Phases 7/8 and the WASM checklist from follow-up item 2 —
+with evidence, not assertions. Every scenario below lists
+what was actually run and the observed result; anything not
+run is marked NOT RUN, never passed.
 
 Reproduce: `scripts/test/cli-e2e.sh` (CLI), `apps/web/e2e/web-e2e.mjs`
 + `apps/web/e2e/web-nowasm.mjs` + `apps/web/e2e/resize-e2e.mjs`
@@ -69,6 +93,7 @@ Full command log: `/tmp/op-e2e/cli/log.txt` + `log2.txt`.
 | 1.15 | `pdf` subcommand (Studio Phase 2, 16 Nov 2026; §10 in `scripts/test/cli-e2e.sh`) | Fixtures are real PDFs built with `pdf from-images` (rgba.png + photo.jpg + checker-64.heic → 3-page `doc3.pdf`; 2-page `doc2.pdf`). `info` → 3 pages, version 1.5, page sizes in pt, `--json` parses with `page_count` 3. `merge` 3+2 → 5 pages; `split --ranges 1-3,5` → 3+1 pages; `rotate --pages 1 --degrees 90` → `/Rotate 90` in the bytes, 3 pages; `extract`/`remove` → 2 pages; `reorder 3,2,1` → 3; `duplicate` → 4; `insert --at 2` → 5; `replace --page 2` → 4; `reverse` → 3; `booklet` → 4 (padded to a multiple of 4); `nup 2x2` → 1 sheet — every output re-verified with `pdfinfo`. `render --scale 1.0` → genuine PNGs at exactly the page sizes (256×192, 1024×768, 64×64; `file` + `openpixel info`); `--format jpg` → genuine JFIF; `--pages 2 --scale 2.0` → exactly 1 file, 2048×1536. Error cases exit 1, clean message, no crash: rotate 45, extract page 9, `info` on a PNG, render to SVG (decode-only), merge with a non-PDF. |
 | 1.16 | PDF compression / security / text extraction + `doc` conversion (Studio Phase 3, 16 Nov 2026; §11 in `scripts/test/cli-e2e.sh`) | Office fixtures generated inline with python-docx/openpyxl/python-pptx (no checked-in Office files). **Compression** on `doc3.pdf` (1,798,354 B, 3 pages, Flate RGB images): screen → 74,829 B (**95.8%**), ebook → 125,772 B (**93.0%**), printer → 266,873 B (**85.2%**); 3 recompressed, 0 skipped; all modes keep 3 pages (`pdfinfo`); screen ≤ ebook ≤ printer. **Security:** `protect` (user + owner passwords, `--no-print --no-copy`) → `pdfinfo -upw` reports `Encrypted: yes (print:no copy:no … algorithm:RC4)`, 3 pages; `unlock` with the user password → `Encrypted: no`, 3 pages; wrong password exit 1, no password exit 2 (clap). **Watermark:** 3 pages, "CONFIDENTIAL" in the content stream. **`doc formats`:** human table + `--json` (LibreOffice 24.2.7.2, `pdf_text_extraction: true`, 31 rows; the JSON asserts the honest gaps are absent — no pdf→xlsx, no pptx→txt — and every row is `cli_desktop`). **Office→PDF (LibreOffice, text verified with `pdftotext`):** docx→pdf 29,216 B, 2 pages; xlsx→pdf 8,104 B, 1 page; pptx→pdf 14,485 B, 2 slides; txt→pdf 9,481 B; csv→pdf 10,259 B; html→pdf 16,577 B; rtf→pdf 14,272 B. **Office→Office:** xlsx→csv is byte-exact back (43 B, `Apple,10,1.5`); docx→txt keeps the heading. **Text extraction (PDFium):** `extract-text` in all four formats from the docx→pdf output (152 chars, 2 pages) — txt 185 B, html 710 B, epub 1,792 B (chapter verified by unzipping), docx 1,734 B (document.xml verified); the docx round-trips through LibreOffice back to PDF (17,087 B) with the text intact; `doc convert` pdf→txt uses the PdfText engine. **Honest refusals:** pdf→xlsx and pptx→txt exit 1 with the alternatives named ("pdf can convert to: html, txt, epub, docx"). |
 | 1.17 | OCR + searchable PDF + encrypted `pdf info` (Studio Phase 4, 17 Nov 2026; §12 in `scripts/test/cli-e2e.sh`) | Fixtures are the committed Rust accuracy fixtures (`crates/openpixel-ocr/tests/fixtures/`). **12a** `ocr` eng-clean → all 3 lines exact, **CER 0.000 / WER 0.000**, 30 words, 96%. **12b** `ocr --lang ben` ben-clean → **CER 0.130 / WER 0.125** (16 words, 93% — the conjunct words are the failure mode, see docs/OCR.md). **12c** `--format json` → language eng, 30 words, mean confidence 96.0%, engine "tesseract 5.3.4", every word with bbox + confidence. **12d** `--format html` → word spans with `bbox …; confidence …` titles. **12e** eng-skewed (+3°): `--preprocess none` baseline **CER 0.349 / WER 0.467**, `--preprocess full` recovers it exactly (**CER 0.000 / WER 0.000**). **12f** `pdf ocr` on a 2-page scanned PDF (eng+ben) → "searchable PDF: 2 pages, 46 words, mean confidence 94%"; `pdfinfo` 2 pages, Producer Tesseract; `pdftotext` finds the English text exactly AND the Bengali text. **12g** `pdf ocr` on a single image → 1 page, 30 words, 95%, text layer findable. **12h** `pdf info` on an encrypted PDF (protect `--no-print --no-copy`) → `pages: unknown (encrypted)`, `encrypted: yes`, `algorithm: RC4-128`, `revision: 3`, `allowed: print:no modify:yes copy:no annotate:yes`; `--json` asserts the same object. **12i** error cases exit 1: `ocr` on a PDF input, `--lang xx`, `--psm 14`, `--preprocess bogus`, missing file. **12j** `process --op deskew --op denoise` on the skewed page, then `ocr --preprocess none` → **CER 0.005 / WER 0.033** (one character, "OpenpPixel"); `--op threshold:128` works; `--op bogus` exits 1. |
+| 1.18 | PDF editing + signatures + redaction + sanitisation (Studio Phase 5, 17 Nov 2026; §13 in `scripts/test/cli-e2e.sh`) | Fixtures are built inline with python (no checked-in PDFs): a 2-page TEXT pdf ("SECRET-123 is here. PUBLIC line." / "Second page. SECRET-123 again.") and a malicious PDF (JavaScript action + embedded file + Launch action). **13a** `edit` (text "DRAFT" + page numbers + header/footer, then rect + comment + image) → 2 pages; rendered pages are genuine 612×792 PNGs; extract-text finds "DRAFT", "Page 1 of 2", "Confidential" and the original text. **13b** `redact --text SECRET-123` → 2 runs, 20 characters removed; **byte-proof: `grep -a SECRET-123` finds nothing in the output**, and the text layer has "PUBLIC line" but no secret. **13c** `redact --rect` on page 1 only → page 1 loses the secret, page 2 keeps "SECRET-123 again". **13d** `sign` with an openssl self-signed certificate → `verify-sign --trust` reports "valid: yes, trusted: yes"; without the anchor "valid: yes, trusted: no"; unsigned PDF "no signatures"; one tampered byte → "valid: no" + "DOES NOT match". **13e** `flatten` on the edited PDF (1 comment, no appearance stream) → honestly "0 annotation(s) flattened, 1 dropped" with a warning, not a fake flatten. **13f** `set-metadata --title "New title" --author ""` → title set, author cleared. **13g** `repair`: healthy file "as written"; broken xref (startxref zeroed) → "reconstructed", 2 pages survive. **13h** `inspect` on the malicious fixture reports JavaScript / embedded files / launch actions / auto-actions all PRESENT; `sanitize` → `/JavaScript`, `/Launch`, `/EmbeddedFiles`, `app.alert`, `evil.txt`, `cmd.exe` all absent from the bytes, inspect reports them absent, `pdfinfo` still opens it (1 page). **13i** error cases exit 1: edit with no ops, redact with no redactions, bad `--op` JSON, bad sign key, set-metadata with no fields. |
 
 ## 2. Web e2e in a real browser — PASS (37/37 checks + fallback; resize run 36/37 + resize suite 16/16 — see §2.19)
 
@@ -121,15 +146,20 @@ stays 36/37 honestly. Real users are unaffected in the normal way:
 the picker path is the standard `input.click()` from a keyboard
 handler, which opens the OS file dialog in a real browser.
 
-### 2.20 PDF tab (Studio Phase 2, extended Phase 3, 16 Nov 2026; `apps/web/e2e/pdf-e2e.mjs`)
+### 2.20 PDF tab (Studio Phase 2, extended Phases 3 + 5, 17 Nov 2026; `apps/web/e2e/pdf-e2e.mjs`)
 
-**15/15 passed, zero console/page errors**, production build
+**24/24 passed, zero console/page errors**, production build
 served on port 8323. Fixtures are real PDFs built by the debug
 CLI (`openpixel pdf from-images`): `doc4.pdf` (4 pages —
 p1 256×192 pt, p2 1024×768 pt, p3 256×192 pt, p4 1024×768 pt)
-and `doc2.pdf` (2 pages). Every downloaded file was verified
-with `file(1)` and the CLI (`openpixel pdf info` for PDFs,
-`openpixel info` for images).
+and `doc2.pdf` (2 pages). The Phase 5 checks use a 2-page
+TEXT pdf (`text2.pdf`, built in JS inside the script with
+programmatically computed xref offsets — no python, no
+checked-in PDF): "SECRET-123 is here. PUBLIC line." /
+"Second page. SECRET-123 again." Every downloaded file was
+verified with `file(1)` and the CLI (`openpixel pdf info` for
+PDFs, `openpixel info` for images); text-layer checks use the
+release CLI's `pdf extract-text`.
 
 | # | Scenario | Observed result |
 |---|---|---|
@@ -144,6 +174,14 @@ with `file(1)` and the CLI (`openpixel pdf info` for PDFs,
 | 2.20.9 | Images→PDF | 2 images (PNG + JPEG) → "Images to PDF: 2 pages"; downloaded `images.pdf` re-verified as a real 2-page PDF |
 | 2.20.10 | Compress (Phase 3) | Screen mode on `doc4.pdf` → status "Compressed PDF: …" with the measured sizes; download re-verified as a real 4-page PDF **no bigger than the input** (Flate RGB images re-encoded as JPEG) |
 | 2.20.11 | Dark mode | Theme toggle on the PDF tab, `<html class="dark">`, screenshot `23-pdf-dark.png` |
+| 2.20.12 | Edit — add text (Phase 5) | Upload `text2.pdf` (2 pages; the DropZone only renders when no file is loaded, so the check clicks "Choose a different file" first) → "DRAFT" overlay; download re-verified as a real 2-page PDF; extract-text finds "DRAFT" AND the original "SECRET-123 is here" |
+| 2.20.13 | Edit — page numbers (Phase 5) | "Page 1 of 2" in the text layer; status "Edited PDF: 2 ops on 2 pages" (a page-numbers op expands to one text op per page — the e2e first expected "1 op" and was fixed, see the header) |
+| 2.20.14 | Redact by text (Phase 5) | "SECRET-123" redacted → **byte-proof**: the downloaded bytes contain no "SECRET-123", and the text layer reads " is here. PUBLIC line." / "Second page. again." — the secret is gone, the public line survives |
+| 2.20.15 | Metadata (Phase 5) | Title set to "Web edit title" (verified with `pdf info`); author left blank, which the UI treats as "leave unchanged" — the CLI e2e covers clearing with `--author ""` |
+| 2.20.16 | Threat check (Phase 5) | Clean text PDF → "Threat check: clean — no JavaScript, embedded files, launch actions or auto-actions found." |
+| 2.20.17 | Sanitise a clean PDF (Phase 5) | "Cleaned PDF: nothing dangerous was found — the file is unchanged."; download re-verified as a real 2-page PDF (the malicious-fixture sanitise is covered by CLI e2e §13h, not in the browser) |
+| 2.20.18 | Flatten (Phase 5) | "Flattened PDF: …" status; download re-verified as a real 2-page PDF |
+| 2.20.19 | Repair a healthy file (Phase 5) | "Repaired PDF: cross-reference table read \"as written\"."; download re-verified as a real 2-page PDF |
 
 **Two real defects found by eyeballing the screenshots and
 fixed in the same run:** (a) the Document card showed empty

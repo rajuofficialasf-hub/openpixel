@@ -18,10 +18,10 @@
 //! not stop anyone copying the underlying text, and it is not a
 //! redaction (real redaction is Phase 5).
 
-use crate::engine::PdfEngine;
+use crate::engine::{add_resource, PdfEngine};
 use crate::error::{PdfError, Result};
 use lopdf::encryption::{EncryptionState, EncryptionVersion, Permissions};
-use lopdf::{dictionary, Dictionary, Document, Object, ObjectId, Stream};
+use lopdf::{dictionary, Dictionary, Document, Object, Stream};
 use serde::{Deserialize, Serialize};
 
 /// Which operations a protected PDF allows. All three default to
@@ -332,69 +332,6 @@ fn ensure_file_id(doc: &mut Document) {
             Object::String(id2.into_bytes(), lopdf::StringFormat::Hexadecimal),
         ]),
     );
-}
-
-/// Add `name → id` to the page's Resources `category` dict
-/// (`Font` or `ExtGState`), creating the dicts when missing.
-/// Works on the page's own Resources or the inherited one. The
-/// reads and the writes are separate phases: lopdf borrows the
-/// whole document for a mutable dictionary, so nothing may be
-/// borrowed while another dictionary is being written.
-fn add_resource(
-    doc: &mut Document,
-    page_id: ObjectId,
-    category: &[u8],
-    name: &str,
-    id: ObjectId,
-) -> Result<()> {
-    // Phase 1 (reads only): resolve the Resources object id,
-    // materialising it as its own object when the page carries an
-    // inline dict or inherits one.
-    let resources_id = match doc
-        .get_dictionary(page_id)
-        .and_then(|d| d.get(b"Resources"))
-    {
-        Ok(Object::Reference(rid)) => *rid,
-        _ => {
-            let inherited = crate::engine::inherited_attribute(doc, page_id, b"Resources");
-            let dict = match inherited {
-                Some(Object::Dictionary(d)) => d,
-                Some(Object::Reference(rid)) => {
-                    doc.get_dictionary(rid).cloned().unwrap_or_default()
-                }
-                _ => Dictionary::new(),
-            };
-            let new_id = doc.add_object(Object::Dictionary(dict));
-            doc.get_dictionary_mut(page_id)?
-                .set("Resources", Object::Reference(new_id));
-            new_id
-        }
-    };
-    // Phase 2 (reads only): the current category dict, cloned.
-    let (cat_id, mut category_dict) = match doc
-        .get_dictionary(resources_id)
-        .and_then(|r| r.get(category))
-    {
-        Ok(Object::Reference(cid)) => (
-            Some(*cid),
-            doc.get_dictionary(*cid).cloned().unwrap_or_default(),
-        ),
-        Ok(Object::Dictionary(d)) => (None, d.clone()),
-        _ => (None, Dictionary::new()),
-    };
-    category_dict.set(name, Object::Reference(id));
-    // Phase 3 (writes only): store the category dict back.
-    match cat_id {
-        Some(cid) => {
-            doc.set_object(cid, Object::Dictionary(category_dict));
-        }
-        None => {
-            let cid = doc.add_object(Object::Dictionary(category_dict));
-            doc.get_dictionary_mut(resources_id)?
-                .set(category, Object::Reference(cid));
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]

@@ -42,6 +42,29 @@ choice to Raju instead of working around it.
 |---|---|---|---|---|---|
 | LibreOffice (headless, system dependency — NOT bundled) | **24.2.7.2** (this VM, Ubuntu 24.04) | MPL-2.0 | libreoffice.org / Ubuntu package `libreoffice` | **External process** — `openpixel-documents` spawns `soffice --headless` (fresh profile per conversion, 120 s default timeout); no code is linked or embedded | Not shipped by OpenPixel. The user installs LibreOffice themselves (desktop/server); the CLI reports `doc formats` with the detected version, or an honest "not available" when it is absent. MPL-2.0 permits this use without source disclosure; the Office formats it reads/writes (OOXML, ODF) are the user's own documents. No conversion API is called — everything runs locally. |
 
+## Phase 5 — Digital signatures (CMS/PKCS#7, pure Rust)
+
+| Component | Version | Licence | Source | Linking | Redistribution |
+|---|---|---|---|---|---|
+| cms | `=0.2.3` | MIT OR Apache-2.0 | crates.io / github.com/RustCrypto/formats (RustCrypto) | Static (Rust crate, compiled into `openpixel-pdf` behind the `sign` feature) | Include the licence text in distributions; no source disclosure required |
+| x509-cert | `=0.2.5` | MIT OR Apache-2.0 | crates.io / RustCrypto | Static (same) | Same |
+| rsa | `=0.9.6` | MIT OR Apache-2.0 | crates.io / RustCrypto | Static (same) | Same — **bumped from 0.9.0**: `cms`'s builder requires `rsa ^0.9.6` |
+| sha2 | `=0.10.9` | MIT OR Apache-2.0 | crates.io / RustCrypto | Static (same) | Same — `cms`'s builder uses sha2 0.10 (the tree also has sha2 0.11.1 elsewhere; two majors coexist) |
+| der | `=0.7.10` | MIT OR Apache-2.0 | crates.io / RustCrypto | Static (same) | Same |
+| const-oid | `=0.9.6` | MIT OR Apache-2.0 | crates.io / RustCrypto | Static (same) | Same — `db` feature enabled (for the `rfc5911`/`rfc5912` OID constants) |
+| signature | `=2.2.0` | MIT OR Apache-2.0 | crates.io / RustCrypto | Static (same) | Same |
+| spki | `=0.7.3` | MIT OR Apache-2.0 | crates.io / RustCrypto | Static (same) | Same |
+| pkcs8 | `=0.10.2` | MIT OR Apache-2.0 | crates.io / RustCrypto | Static (same) | Same |
+| pkcs1 | `=0.7.5` | MIT OR Apache-2.0 | crates.io / RustCrypto | Static (same) | Same |
+| rcgen | `=0.13.0` | MIT OR Apache-2.0 | crates.io / github.com/rustls/rcgen | **Dev-dependency only** — test certificates in `openpixel-pdf` tests; never shipped | Not shipped. The tests generate their own RSA key with the `rsa` crate (rcgen's default ring backend cannot generate RSA keys) and build a self-signed certificate with rcgen. |
+
+**No new licence was added to `deny.toml`** for Phase 5:
+MIT OR Apache-2.0 was already allowed, and `cargo deny check
+licenses` is green. The copyleft bar is unchanged. No signing
+code runs in the browser (no WASM export — a private key must
+never enter a web page); the `sign` feature is off by default
+and only enabled by the CLI (and desktop later).
+
 ## Phase 4 — OCR (Tesseract native + tesseract.js browser)
 
 | Component | Version | Licence | Source | Linking | Redistribution |

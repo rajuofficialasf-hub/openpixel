@@ -287,6 +287,289 @@ export async function pdfCompress(
 }
 
 // ---------------------------------------------------------------------------
+// PDF editing (Studio Phase 5) — overlays, redaction, flatten, metadata,
+// sanitisation, repair, threat inspection. All run through the real Rust
+// engine compiled to WASM (pure lopdf), so they work in the browser for
+// real. Digital signatures are NOT here: signing needs a private key,
+// which must never be handed to a web page — sign with the native CLI
+// (`openpixel pdf sign`) or the desktop app instead.
+// ---------------------------------------------------------------------------
+
+/** One overlay op, as the WASM `pdf_edit` binding expects it. */
+export type PdfOverlayOp =
+  | {
+      kind: 'text'
+      page: number
+      x: number
+      y: number
+      text: string
+      size: number
+      color: { r: number; g: number; b: number }
+      font: 'helvetica' | 'helvetica_bold' | 'times_roman' | 'times_bold' | 'courier' | 'courier_bold'
+    }
+  | { kind: 'image'; page: number; x: number; y: number; width: number; height: number; image_index: number }
+  | {
+      kind: 'rect'
+      page: number
+      x: number
+      y: number
+      width: number
+      height: number
+      fill: { r: number; g: number; b: number } | null
+      stroke: { r: number; g: number; b: number } | null
+      stroke_width: number
+    }
+  | { kind: 'line'; page: number; x1: number; y1: number; x2: number; y2: number; color: { r: number; g: number; b: number }; width: number }
+  | {
+      kind: 'circle'
+      page: number
+      cx: number
+      cy: number
+      r: number
+      fill: { r: number; g: number; b: number } | null
+      stroke: { r: number; g: number; b: number } | null
+      stroke_width: number
+    }
+  | { kind: 'highlight'; page: number; x: number; y: number; width: number; height: number; color: { r: number; g: number; b: number }; opacity: number }
+  | { kind: 'draw'; page: number; points: [number, number][]; color: { r: number; g: number; b: number }; width: number }
+  | { kind: 'comment'; page: number; x: number; y: number; text: string; author: string | null }
+  | { kind: 'page_numbers'; pages: number[] | null; format: string; position: 'bottom_center' | 'bottom_right' | 'top_center' | 'top_right'; size: number }
+  | { kind: 'header_footer'; pages: number[] | null; header: string | null; footer: string | null; size: number }
+
+/** `#RRGGBB` → `{r, g, b}` in 0..1 (the engine's colour form). */
+export function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim())
+  if (!m) return null
+  const n = parseInt(m[1], 16)
+  return { r: ((n >> 16) & 0xff) / 255, g: ((n >> 8) & 0xff) / 255, b: (n & 0xff) / 255 }
+}
+
+/** What `pdfEdit` returns: the output bytes plus the outcome. */
+export interface PdfEditResult {
+  data: Uint8Array<ArrayBuffer>
+  opsApplied: number
+  pagesTouched: number
+  commentsAdded: number
+  warnings: string[]
+}
+
+/**
+ * Add overlay content to a PDF via the WASM engine. `ops` is the
+ * array of overlay ops; `images` supplies the image bytes for
+ * `image` ops, by index. Returns the output bytes plus the
+ * outcome, or `null` when the module is absent or the engine
+ * rejects the input. Overlays are NEW content layered on top of
+ * the page — existing text is never edited in place.
+ */
+export async function pdfEdit(
+  bytes: Uint8Array,
+  ops: PdfOverlayOp[],
+  images: Uint8Array[],
+): Promise<PdfEditResult | null> {
+  const mod = await loadWasmEngine()
+  if (!mod) return null
+  try {
+    const out = mod.pdf_edit(bytes, JSON.stringify(ops), images)
+    return {
+      data: freshCopy(out.data),
+      opsApplied: Number(out.ops_applied),
+      pagesTouched: Number(out.pages_touched),
+      commentsAdded: Number(out.comments_added),
+      warnings: out.warnings ?? [],
+    }
+  } catch {
+    return null
+  }
+}
+
+/** One redaction, as the WASM `pdf_redact` binding expects it. */
+export type PdfRedaction =
+  | { kind: 'rect'; page: number; x: number; y: number; width: number; height: number }
+  | { kind: 'text'; page: number | null; text: string }
+
+/** What `pdfRedact` returns: the output bytes plus the outcome. */
+export interface PdfRedactResult {
+  data: Uint8Array<ArrayBuffer>
+  pagesTouched: number
+  runsRemoved: number
+  charactersRemoved: number
+  annotationsRemoved: number
+  redactedTexts: string[]
+  warnings: string[]
+}
+
+/**
+ * Really remove text from a PDF via the WASM engine. The text is
+ * deleted from the content stream, not covered with a black box —
+ * `redactedTexts` lists what was removed, and the caller can
+ * verify it is absent from the output bytes. Returns the output
+ * bytes plus the outcome, or `null` when the module is absent or
+ * the engine rejects the input.
+ */
+export async function pdfRedact(
+  bytes: Uint8Array,
+  redactions: PdfRedaction[],
+): Promise<PdfRedactResult | null> {
+  const mod = await loadWasmEngine()
+  if (!mod) return null
+  try {
+    const out = mod.pdf_redact(bytes, JSON.stringify(redactions))
+    return {
+      data: freshCopy(out.data),
+      pagesTouched: Number(out.pages_touched),
+      runsRemoved: Number(out.runs_removed),
+      charactersRemoved: Number(out.characters_removed),
+      annotationsRemoved: Number(out.annotations_removed),
+      redactedTexts: out.redacted_texts ?? [],
+      warnings: out.warnings ?? [],
+    }
+  } catch {
+    return null
+  }
+}
+
+/** What `pdfFlatten` returns. */
+export interface PdfFlattenResult {
+  data: Uint8Array<ArrayBuffer>
+  annotationsFlattened: number
+  annotationsDropped: number
+  formFieldsRemoved: number
+  warnings: string[]
+}
+
+/** Flatten annotations and form fields into page content via WASM. */
+export async function pdfFlatten(bytes: Uint8Array): Promise<PdfFlattenResult | null> {
+  const mod = await loadWasmEngine()
+  if (!mod) return null
+  try {
+    const out = mod.pdf_flatten(bytes)
+    return {
+      data: freshCopy(out.data),
+      annotationsFlattened: Number(out.annotations_flattened),
+      annotationsDropped: Number(out.annotations_dropped),
+      formFieldsRemoved: Number(out.form_fields_removed),
+      warnings: out.warnings ?? [],
+    }
+  } catch {
+    return null
+  }
+}
+
+/** Metadata values for `pdfSetMetadata`: `null` leaves a field unchanged, `''` clears it. */
+export interface PdfMetadataEdit {
+  title: string | null
+  author: string | null
+  subject: string | null
+  keywords: string | null
+}
+
+/**
+ * Set document metadata via WASM. Returns the new PDF bytes, or
+ * `null` when the module is absent or the engine rejects the input.
+ */
+export async function pdfSetMetadata(
+  bytes: Uint8Array,
+  edit: PdfMetadataEdit,
+): Promise<Uint8Array<ArrayBuffer> | null> {
+  const mod = await loadWasmEngine()
+  if (!mod) return null
+  try {
+    return freshCopy(mod.pdf_set_metadata(bytes, JSON.stringify(edit)))
+  } catch {
+    return null
+  }
+}
+
+/** What `pdfSanitize` returns. */
+export interface PdfSanitizeResult {
+  data: Uint8Array<ArrayBuffer>
+  javascriptRemoved: number
+  embeddedFilesRemoved: number
+  launchActionsRemoved: number
+  autoActionsRemoved: number
+  warnings: string[]
+}
+
+/**
+ * Strip JavaScript, embedded files, launch actions and
+ * auto-actions from a PDF via WASM. The document is kept; the
+ * dangerous parts are removed, not hidden. Returns the output
+ * bytes plus the outcome, or `null` when the module is absent or
+ * the engine rejects the input.
+ */
+export async function pdfSanitize(bytes: Uint8Array): Promise<PdfSanitizeResult | null> {
+  const mod = await loadWasmEngine()
+  if (!mod) return null
+  try {
+    const out = mod.pdf_sanitize(bytes)
+    return {
+      data: freshCopy(out.data),
+      javascriptRemoved: Number(out.javascript_removed),
+      embeddedFilesRemoved: Number(out.embedded_files_removed),
+      launchActionsRemoved: Number(out.launch_actions_removed),
+      autoActionsRemoved: Number(out.auto_actions_removed),
+      warnings: out.warnings ?? [],
+    }
+  } catch {
+    return null
+  }
+}
+
+/** What `pdfRepair` returns. */
+export interface PdfRepairResult {
+  data: Uint8Array<ArrayBuffer>
+  recovery: string
+  warnings: string[]
+}
+
+/** Rebuild the cross-reference table of a damaged PDF via WASM. */
+export async function pdfRepair(bytes: Uint8Array): Promise<PdfRepairResult | null> {
+  const mod = await loadWasmEngine()
+  if (!mod) return null
+  try {
+    const out = mod.pdf_repair(bytes)
+    return {
+      data: freshCopy(out.data),
+      recovery: out.recovery,
+      warnings: out.warnings ?? [],
+    }
+  } catch {
+    return null
+  }
+}
+
+/** What `pdfInspect` returns: the threats found in the PDF. */
+export interface PdfThreats {
+  javascript: string[]
+  embedded_files: string[]
+  launch_actions: string[]
+  auto_actions: string[]
+  warnings: string[]
+}
+
+/**
+ * List JavaScript actions and embedded files in a PDF via WASM —
+ * never executes anything. Returns the threats, or `null` when
+ * the module is absent or the engine rejects the input.
+ */
+export async function pdfInspect(bytes: Uint8Array): Promise<PdfThreats | null> {
+  const mod = await loadWasmEngine()
+  if (!mod) return null
+  try {
+    const out = mod.pdf_inspect(bytes)
+    return {
+      javascript: out.javascript ?? [],
+      embedded_files: out.embedded_files ?? [],
+      launch_actions: out.launch_actions ?? [],
+      auto_actions: out.auto_actions ?? [],
+      warnings: out.warnings ?? [],
+    }
+  } catch {
+    return null
+  }
+}
+
+// ---------------------------------------------------------------------------
 // pdf.js rendering — the browser's render path (no PDFium in WASM).
 // ---------------------------------------------------------------------------
 

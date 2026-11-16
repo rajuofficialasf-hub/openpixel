@@ -14,14 +14,22 @@ import { describe, expect, it } from 'vitest'
 import {
   formatPageSize,
   getPdfInfo,
+  hexToRgb,
   parsePageList,
   parsePageRanges,
   parseReorder,
   pdfCompress,
+  pdfEdit,
+  pdfFlatten,
   pdfFromImages,
+  pdfInspect,
   pdfMerge,
   pdfOutputName,
   pdfProcess,
+  pdfRedact,
+  pdfRepair,
+  pdfSanitize,
+  pdfSetMetadata,
   PDF_COMPRESS_MODES,
 } from './pdf'
 
@@ -120,7 +128,36 @@ describe('WASM wrappers fall back to null (no generated package under vitest)', 
     await expect(pdfCompress(notPdf, 'ebook', false)).resolves.toBeNull()
   })
 
+  it('the Phase 5 wrappers resolve to null instead of throwing', async () => {
+    await expect(
+      pdfEdit(notPdf, [{ kind: 'text', page: 1, x: 72, y: 700, text: 'Hi', size: 14, color: { r: 0, g: 0, b: 0 }, font: 'helvetica' }], []),
+    ).resolves.toBeNull()
+    await expect(pdfRedact(notPdf, [{ kind: 'text', page: null, text: 'SECRET' }])).resolves.toBeNull()
+    await expect(pdfFlatten(notPdf)).resolves.toBeNull()
+    await expect(pdfSetMetadata(notPdf, { title: 'T', author: null, subject: null, keywords: null })).resolves.toBeNull()
+    await expect(pdfSanitize(notPdf)).resolves.toBeNull()
+    await expect(pdfRepair(notPdf)).resolves.toBeNull()
+    await expect(pdfInspect(notPdf)).resolves.toBeNull()
+  })
+
   it('the compress modes are exactly screen/ebook/printer', () => {
     expect(PDF_COMPRESS_MODES).toEqual(['screen', 'ebook', 'printer'])
+  })
+})
+
+describe('hexToRgb', () => {
+  it('parses #RRGGBB into 0..1 channels', () => {
+    expect(hexToRgb('#ff0000')).toEqual({ r: 1, g: 0, b: 0 })
+    expect(hexToRgb('#000000')).toEqual({ r: 0, g: 0, b: 0 })
+    expect(hexToRgb('#ffffff')).toEqual({ r: 1, g: 1, b: 1 })
+    expect(hexToRgb('ff0000')).toEqual({ r: 1, g: 0, b: 0 })
+    expect(hexToRgb('#ffeb3b')).toEqual({ r: 1, g: 235 / 255, b: 59 / 255 })
+  })
+
+  it('rejects malformed colours', () => {
+    expect(hexToRgb('red')).toBeNull()
+    expect(hexToRgb('#12345')).toBeNull()
+    expect(hexToRgb('#zzzzzz')).toBeNull()
+    expect(hexToRgb('')).toBeNull()
   })
 })

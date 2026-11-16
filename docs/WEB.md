@@ -190,7 +190,7 @@ settings (per-file download, plus a .zip of all results).
   (`apps/web/e2e/pdf-e2e.mjs`, 15/15 — see docs/E2E.md §2.20),
   incl. the compress check and the fixed page-count label.
 
-## PDF tools — PDF tab (Studio Phase 2, extended Phase 3, 16 Nov 2026)
+## PDF tools — PDF tab (Studio Phase 2, extended Phases 3 + 5, 17 Nov 2026)
 
 A sixth tab next to Resize: work with PDFs entirely in the browser.
 Upload one PDF for info, preview and page operations, or build a
@@ -223,6 +223,26 @@ PDF from images — no upload, no server.
   smaller, 1 image recompressed)"), and when a mode cannot shrink
   the file the original is kept and the note says so. Same engine
   as the CLI, same best-of rule.
+- **Edit (Phase 5):** overlay ops via WASM (`pdf_edit`) — add
+  text (page, X/Y, size, colour, font), shapes (rectangle /
+  line / circle, fill + stroke), highlight, page numbers
+  ("Page {n} of {total}", position + format), header/footer,
+  and comments (sticky-note annotations). Image overlay is
+  offered through the same card (upload an image, place it on
+  the page). The card says plainly that overlays are NEW
+  content layered on the page — existing text is never edited
+  in place. **Redaction (Phase 5):** `pdf_redact` — redact by
+  text or by rectangle; the text is really removed from the
+  content stream, not covered with a black box (the e2e
+  byte-proves it). **Flatten / metadata / repair / sanitise /
+  threat check (Phase 5):** `pdf_flatten`, `pdf_set_metadata`
+  (blank fields are left unchanged), `pdf_repair`,
+  `pdf_sanitize` ("Cleaned PDF"), `pdf_inspect` (threat check:
+  JavaScript / embedded files / launch actions / auto-actions,
+  listed, never executed). **Signatures stay CLI/desktop-only:**
+  signing needs a private key, which must never be uploaded to
+  a web page — the tab says so and points to `openpixel pdf
+  sign` / `pdf verify-sign`.
 - **Office documents (Phase 3, honest state):** Word, Excel and
   PowerPoint files cannot be converted in the browser — the
   conversion runs LibreOffice headless, which cannot run in
@@ -247,14 +267,18 @@ PDF from images — no upload, no server.
   complex pages. Encrypted PDFs cannot be opened in the browser
   (the engine refuses them); use the CLI. Password protect,
   unlock, watermark and text extraction are CLI/desktop-only too
-  (no WASM export — see `docs/PDF.md`). Without the WASM
-  module, page operations are disabled with a warning, while
-  preview and PDF→image still work.
-- **Tests:** `apps/web/src/lib/pdf.test.ts` (15 unit tests:
+  (no WASM export — see `docs/PDF.md`). Digital signatures are
+  CLI/desktop-only (a private key must never be uploaded).
+  Without the WASM module, page operations are disabled with a
+  warning, while preview and PDF→image still work.
+- **Tests:** `apps/web/src/lib/pdf.test.ts` (18 unit tests:
   page-list / range / reorder parsing, page-size formatting,
-  output names, WASM-wrapper null fallback incl. `pdfCompress`,
-  compress modes); e2e in
-  `apps/web/e2e/pdf-e2e.mjs` (see docs/E2E.md §2.20).
+  output names, WASM-wrapper null fallback incl. `pdfCompress`
+  and the Phase 5 wrappers (`pdfEdit`, `pdfRedact`,
+  `pdfFlatten`, `pdfSetMetadata`, `pdfSanitize`, `pdfRepair`,
+  `pdfInspect`), hex colour parsing, compress modes); e2e in
+  `apps/web/e2e/pdf-e2e.mjs` (24 checks — see docs/E2E.md
+  §2.20).
 
 ## OCR — OCR tab (Studio Phase 4, 17 Nov 2026)
 

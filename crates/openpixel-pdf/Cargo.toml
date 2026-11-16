@@ -25,6 +25,11 @@ thiserror.workspace = true
 [dev-dependencies]
 image.workspace = true
 tempfile = "=3.27.0"
+# Self-signed test certificates for the signing tests (Phase 5).
+rcgen.workspace = true
+# RSA key generation for the test certificates (rcgen cannot
+# generate RSA keys with its default ring backend).
+rand = "=0.8.8"
 
 [features]
 default = []
@@ -33,7 +38,74 @@ default = []
 # in examples/pdfium_render.rs enables it explicitly, and the
 # `pdfium` test module is compiled only with this feature.
 pdfium = ["dep:pdfium-render"]
+# Digital signatures (PKCS#7 detached, RSA) — pure Rust, no system
+# libraries. Off by default so the wasm32 build stays clean;
+# the CLI enables it. Tests that need it are `#[cfg(feature =
+# "sign")]`, like the pdfium tests.
+sign = [
+    "dep:cms",
+    "dep:x509-cert",
+    "dep:rsa",
+    "dep:sha2",
+    "dep:der",
+    "dep:const-oid",
+    "dep:signature",
+    "dep:spki",
+    "dep:pkcs8",
+    "dep:pkcs1",
+]
 
 [dependencies.pdfium-render]
+workspace = true
+optional = true
+
+[dependencies.cms]
+workspace = true
+optional = true
+features = ["builder"]
+
+[dependencies.x509-cert]
+workspace = true
+optional = true
+
+[dependencies.rsa]
+workspace = true
+optional = true
+# The `sha2` feature is what provides rsa's
+# RsaSignatureAssociatedOid impl for Sha256 — without it,
+# SigningKey::<Sha256>::new and VerifyingKey::<Sha256>::new do
+# not compile.
+features = ["sha2"]
+
+[dependencies.sha2]
+workspace = true
+optional = true
+# The `oid` feature is what makes rsa's SigningKey/VerifyingKey
+# accept Sha256: it implements AssociatedOid for sha2's Oid types.
+# Without it, SigningKey::<Sha256>::new does not compile.
+features = ["oid"]
+
+[dependencies.der]
+workspace = true
+optional = true
+
+[dependencies.const-oid]
+workspace = true
+optional = true
+features = ["db"]
+
+[dependencies.signature]
+workspace = true
+optional = true
+
+[dependencies.spki]
+workspace = true
+optional = true
+
+[dependencies.pkcs8]
+workspace = true
+optional = true
+
+[dependencies.pkcs1]
 workspace = true
 optional = true
