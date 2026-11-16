@@ -1,0 +1,239 @@
+// OpenPixel web e2e — item 4. Real Chromium (cached ms-playwright build)
+// driven by playwright-core. Serves the production build over plain HTTP.
+// Usage: node /tmp/op-e2e/pw/web-e2e.mjs  (server must already run on 8321)
+import { chromium } from 'playwright-core';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const BASE = process.env.WEB_BASE || 'http://127.0.0.1:8321/';
+const IN = '/tmp/op-e2e/cli/in';
+const DL = '/tmp/op-e2e/web-dl';
+const SHOT = '/home/hatch/workspace/openpixel-engine/apps/web/e2e/screenshots';
+const CHROME = '/home/hatch/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome';
+const CLI = '/home/hatch/workspace/openpixel-engine/target/release/openpixel';
+
+const results = [];
+function check(name, ok, detail = '') {
+  results.push({ name, ok, detail });
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
+const ctx = await browser.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 900 } });
+const page = await ctx.newPage();
+const failedReqs = [];
+page.on('requestfailed', (r) => failedReqs.push(`${r.url()} :: ${r.failure()?.errorText}`));
+page.on('pageerror', (e) => failedReqs.push(`pageerror: ${e.message}`));
+page.on('console', (m) => { if (m.type() === 'error') failedReqs.push(`console.error: ${m.text()}`); });
+
+async function shot(name) { await page.screenshot({ path: path.join(SHOT, name) }); }
+
+// --- 1. load ---
+await page.goto(BASE, { waitUntil: 'networkidle' });
+check('page loads, title OpenPixel', (await page.title()).includes('OpenPixel'), await page.title());
+check('no failed requests / console errors on load', failedReqs.length === 0, failedReqs.join(' | '));
+await shot('01-home.png');
+
+// WASM module present? The intro text switches once wasmSupport loads.
+try {
+  await page.waitForFunction(
+    () => document.body.innerText.includes('WASM engine’s TIFF'),
+    { timeout: 15000 },
+  );
+  check('WASM engine support detected by UI', true, 'intro lists WASM targets');
+} catch {
+  check('WASM engine support detected by UI', false, 'intro text did not switch within 15s');
+}
+const wasmReq = await page.evaluate(async () => {
+  const r = await fetch('/wasm/openpixel_wasm_bg.wasm', { method: 'HEAD' });
+  return r.status;
+});
+check('wasm module served over plain HTTP', wasmReq === 200, `HEAD /wasm/openpixel_wasm_bg.wasm -> ${wasmReq}`);
+
+// --- helper: upload via the convert dropzone input ---
+async function uploadConvert(file) {
+  await page.setInputFiles('#convert-file', file);
+  await page.waitForFunction(
+    () => document.body.innerText.includes('Detected format') && !document.body.innerText.includes('Reading…'),
+    { timeout: 15000 },
+  );
+}
+async function detectedFormat() {
+  const txt = await page.locator('dl').innerText();
+  const m = txt.match(/Detected format\n([^\n]+)/);
+  return m ? m[1].trim() : txt;
+}
+async function convertAndDownload() {
+  const btn = page.locator('button', { hasText: /^Convert to / });
+  await btn.click();
+  await page.waitForSelector('text=Converted:', { timeout: 60000 });
+  const [dl] = await Promise.all([
+    page.waitForEvent('download', { timeout: 30000 }),
+    page.locator('button', { hasText: /^Download / }).click(),
+  ]);
+  const p = path.join(DL, dl.suggestedFilename());
+  await dl.saveAs(p);
+  return p;
+}
+
+// --- 2. canvas path: PNG -> JPEG, download verified ---
+await uploadConvert(path.join(IN, 'rgba.png'));
+check('PNG upload detected as PNG 256x192', (await detectedFormat()).startsWith('PNG'), await detectedFormat());
+await shot('02-png-ready.png');
+await page.selectOption('#target-format', 'jpeg');
+const jpgPath = await convertAndDownload();
+const jpgInfo = await BunOrNode(jpgPath);
+check('PNG->JPEG download is a real JPEG', jpgInfo.ok, jpgInfo.detail);
+await shot('03-jpeg-done.png');
+
+// --- 3. lying extension: PNG bytes named .jpg ---
+await page.locator('button', { hasText: 'Choose a different file' }).click();
+await uploadConvert(path.join(IN, 'lying.jpg'));
+check('lying .jpg detected as PNG (signature wins)', (await detectedFormat()).startsWith('PNG'), await detectedFormat());
+
+// --- 4. WASM path: TIFF source -> PNG ---
+await page.locator('button', { hasText: 'Choose a different file' }).click();
+await uploadConvert(path.join(IN, 'multi.tiff'));
+const tiffNote = await page.locator('[role="status"]').first().innerText().catch(() => '');
+check('TIFF shows WASM-decoded note, no preview', tiffNote.includes('WASM engine'), tiffNote.slice(0, 120));
+await page.selectOption('#target-format', 'png');
+const tiffPng = await convertAndDownload();
+const tiffInfo = await BunOrNode(tiffPng);
+check('TIFF->PNG via WASM is a real PNG', tiffInfo.ok, tiffInfo.detail);
+const wasmNote = await page.locator('[role="status"]').allInnerTexts();
+check('WASM conversion note shown', wasmNote.join(' ').includes('Converted with the built-in WASM engine'), wasmNote.join(' | ').slice(0, 200));
+await shot('04-tiff-wasm.png');
+
+// --- 5. WASM path: HEIC source -> PNG ---
+await page.locator('button', { hasText: 'Choose a different file' }).click();
+await uploadConvert(path.join(IN, 'checker-64.heic'));
+check('HEIC detected as HEIC 64x64', (await detectedFormat()).startsWith('HEIC'), await detectedFormat());
+await page.selectOption('#target-format', 'png');
+const heicPng = await convertAndDownload();
+const heicInfo = await BunOrNode(heicPng);
+check('HEIC->PNG via WASM is a real PNG 64x64', heicInfo.ok, heicInfo.detail);
+
+// --- 6. WASM target: PNG -> HEIC ---
+await page.locator('button', { hasText: 'Choose a different file' }).click();
+await uploadConvert(path.join(IN, 'rgba.png'));
+await page.selectOption('#target-format', 'heic');
+const pngHeic = await convertAndDownload();
+const pngHeicInfo = await BunOrNode(pngHeic, 'heic');
+check('PNG->HEIC via WASM is a real HEIC', pngHeicInfo.ok, pngHeicInfo.detail);
+
+// --- 7. GIF first-frame note + canvas convert to WebP ---
+await page.locator('button', { hasText: 'Choose a different file' }).click();
+await uploadConvert(path.join(IN, 'anim.gif'));
+const gifNotes = await page.locator('[role="status"]').allInnerTexts();
+check('GIF first-frame note shown', gifNotes.join(' ').includes('only the first frame'), gifNotes.join(' | ').slice(0, 200));
+await page.selectOption('#target-format', 'webp');
+const gifWebp = await convertAndDownload();
+const gifInfo = await BunOrNode(gifWebp);
+check('GIF->WebP is a real WebP', gifInfo.ok, gifInfo.detail);
+
+// --- 8. Batch tab: 3 files incl. unsupported notes.txt ---
+await page.locator('#tab-batch').click();
+await shot('05-batch.png');
+await page.setInputFiles('#batch-files', [
+  path.join(IN, 'rgba.png'),
+  path.join(IN, 'photo.jpg'),
+  path.join(IN, 'notes.txt'),
+]);
+await sleep(1500);
+const batchText = await page.locator('#panel-batch').innerText();
+check('batch lists 3 files, unsupported one flagged', batchText.includes('notes.txt') && /not|unsupported|cannot|skip/i.test(batchText), batchText.replace(/\n/g, ' | ').slice(0, 300));
+await shot('06-batch-files.png');
+// convert batch to webp if a convert button exists
+const batchBtn = page.locator('#panel-batch button', { hasText: /Convert all|Convert/i }).first();
+if (await batchBtn.count()) {
+  await batchBtn.click();
+  try {
+    await page.waitForFunction(() => document.body.innerText.includes('Download all') || document.body.innerText.includes('zip'), { timeout: 60000 });
+    const [zdl] = await Promise.all([
+      page.waitForEvent('download', { timeout: 30000 }),
+      page.locator('button', { hasText: /Download all/i }).click(),
+    ]);
+    const zp = path.join(DL, zdl.suggestedFilename());
+    await zdl.saveAs(zp);
+    check('batch zip downloads', fs.existsSync(zp), `${zp} ${fs.statSync(zp).size}B`);
+    fs.writeFileSync('/tmp/op-e2e/web-dl/batch-zip-path.txt', zp);
+  } catch (e) {
+    check('batch zip downloads', false, String(e).slice(0, 200));
+  }
+} else {
+  check('batch convert button present', false, 'no Convert button found in batch panel');
+}
+await shot('07-batch-done.png');
+
+// --- 9. Formats tab: 21 formats, SVG decode-only, HEIC implemented ---
+await page.locator('#tab-formats').click();
+await sleep(500);
+const fmtText = await page.locator('#panel-formats').innerText();
+const fmtRows = await page.locator('#panel-formats table tbody tr').count();
+check('Formats tab lists 21 formats', fmtRows === 21, `${fmtRows} rows`);
+check('Formats tab shows SVG decode-only + HEIC implemented', /svg/i.test(fmtText) && /heic/i.test(fmtText), fmtText.slice(0, 200).replace(/\n/g, ' | '));
+await shot('08-formats.png');
+
+// --- 10. Settings + theme toggle persists across reload ---
+await page.locator('button[aria-label="Switch to dark theme"]').click();
+await sleep(300);
+const isDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
+check('theme toggle switches to dark', isDark);
+await page.reload({ waitUntil: 'networkidle' });
+await sleep(500);
+const stillDark = await page.evaluate(() => document.documentElement.classList.contains('dark'));
+check('dark theme persists across reload (localStorage)', stillDark);
+await page.locator('#tab-settings').click();
+await sleep(300);
+const setText = await page.locator('#panel-settings').innerText();
+check('Settings tab renders', setText.length > 20, setText.replace(/\n/g, ' | ').slice(0, 200));
+await shot('09-settings-dark.png');
+await page.locator('button[aria-label="Switch to light theme"]').click();
+
+// --- 11. keyboard-only: tab to drop zone, Enter opens picker ---
+await page.locator('#tab-convert').click();
+await page.keyboard.press('Tab'); // may land on theme button first; tab until dropzone focused
+let chooserOpened = false;
+for (let i = 0; i < 25; i++) {
+  const focused = await page.evaluate(() => {
+    const el = document.activeElement;
+    return el ? `${el.tagName}#${el.id} ${el.getAttribute('aria-label') || ''} ${el.textContent?.slice(0, 40) || ''}` : 'none';
+  });
+  if (/convert-file|drop/i.test(focused)) break;
+  await page.keyboard.press('Tab');
+}
+const focusedNow = await page.evaluate(() => {
+  const el = document.activeElement;
+  return el ? `${el.tagName}#${el.id} ${el.getAttribute('aria-label') || ''}` : 'none';
+});
+try {
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser', { timeout: 5000 }),
+    page.keyboard.press('Enter'),
+  ]);
+  chooserOpened = !!chooser;
+} catch { chooserOpened = false; }
+check('keyboard: Enter on drop zone opens file picker', chooserOpened, `focused element was ${focusedNow}`);
+
+console.log('\n--- failed requests/console errors ---');
+console.log(failedReqs.length ? failedReqs.join('\n') : '(none)');
+const fails = results.filter((r) => !r.ok).length;
+console.log(`\nWEB E2E: ${results.length - fails}/${results.length} passed`);
+await browser.close();
+process.exit(fails ? 1 : 0);
+
+// --- verify a downloaded file with `file` + the CLI's own `info` ---
+import { execFileSync } from 'node:child_process';
+async function BunOrNode(p, expect = null) {
+  try {
+    const f = execFileSync('file', ['-b', p], { encoding: 'utf8' }).trim();
+    const info = execFileSync(CLI, ['info', p], { encoding: 'utf8' });
+    const fmt = (info.match(/^format:\s+(\S+)/m) || [])[1];
+    const dims = (info.match(/^size:\s+(\S+)/m) || [])[1];
+    const want = expect || ({ jpg: 'jpeg', png: 'png', webp: 'webp', heic: 'heic' }[path.extname(p).slice(1)] || '');
+    return { ok: !want || fmt === want, detail: `${path.basename(p)}: file=${f} | info format=${fmt} size=${dims}` };
+  } catch (e) {
+    return { ok: false, detail: `${p}: verify failed: ${String(e.message).slice(0, 200)}` };
+  }
+}

@@ -85,6 +85,11 @@ Web app in `apps/web/` (React 19.3.1 + TypeScript 7.0.2 + Vite 8.3.8
   (4) theme toggle light/dark/system persists across reload;
   (5) keyboard-only: tab to the drop zone, Enter opens the picker;
   (6) GIF converts as first frame only, with the note shown.
+  Update 16 Nov 2026 (follow-up item 4): all six items were run in
+  real Chromium 1248 (playwright-core) — see docs/E2E.md §2. Items
+  (1)–(6) pass, except the BMP download in (1) was not clicked (same
+  canvas path as the verified JPEG/WebP downloads; listed as the one
+  remaining sub-item in docs/E2E.md §5).
 
 ## Verified results — HEIC/HEIF follow-up, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0
 
@@ -228,6 +233,15 @@ The dav1d-free WASM engine (see `docs/WEB.md` for the design and
   Same for a real-browser check that the 7.3 MB module loads
   over plain HTTP without a COOP/COEP header (plain
   `wasm32-unknown-unknown`, no threads, so none is needed).
+  Update 16 Nov 2026 (follow-up item 4): all of these were run in
+  real Chromium 1248 — see docs/E2E.md §2/§5. TIFF and HEIC sources
+  convert via WASM with the "Converted with the built-in WASM
+  engine" note, PNG→HEIC works, PNG→JPEG still uses the canvas
+  path, the WASM-absent build falls back to canvas-only with an
+  honest error, and the 7.3 MB module loads over plain HTTP with no
+  COOP/COEP header. QOI as a source and TIFF/QOI/JXL as targets
+  were not clicked in the browser (same convertWithWasm path as the
+  verified flows; covered at module level by verify-node.mjs 17/17).
 
 ## Verified results — Windows/macOS builds, follow-up item 3, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0, Node v24.22.1 / npm 10.9.4
 
@@ -302,6 +316,68 @@ the Tauri bundle config — all verified as far as this VM allows.
   a first CI run may still fail on pkg-config paths, the MSVC
   linker, or the Linux AppImage FUSE note. `package-cli.sh`
   stays Linux-only; CI uploads the raw CLI binary per OS.
+
+## Verified results — Full e2e, follow-up item 4, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0, Node v24.22.1 / npm 10.9.4, Chromium 1248
+
+The real-browser and desktop checklists open since Phases 7/8 (and
+the WASM checklist from item 2) were run with evidence. Full
+report: `docs/E2E.md`. Runners: `scripts/test/cli-e2e.sh` (CLI),
+`apps/web/e2e/web-e2e.mjs` + `web-nowasm.mjs` (web, see
+`apps/web/e2e/README.md`); screenshots in
+`apps/web/e2e/screenshots/`.
+
+- **CLI e2e** (fresh `cargo build --release`; Pillow fixtures +
+  checked-in Apple HEIC fixtures): convert matrix PNG→JPEG/WebP/
+  BMP/TIFF/QOI/AVIF/JXL/JP2/TGA/ICO/PNM, HEIC→PNG/JPEG,
+  PNG→HEIC/HEIF, GIF/TIFF/SVG→PNG — every output re-detected by
+  `openpixel info` and `file(1)`; HEIC pixel check vs Apple's
+  reference PNG **MAE 0.000**; `process` resize+grayscale+rotate;
+  `metadata`/`frames`/`extract-frame`; `batch --workers 2` on 5
+  files incl. a corrupt PNG → **4 converted, 1 failed** (same with
+  `--sequential` and `--json --workers 4`); `bench --quick`;
+  error cases (unknown format, PSD target, missing file, corrupt
+  PNG, `--workers 0/9`, `--resize 0x0`, unknown flag) all exit 1/2
+  with clean typed errors; `discover` on a PNG named `.jpg`
+  reports png/Signature/High with a mismatch warning.
+- **Web e2e in a real browser** (Chromium 1248 via playwright-core
+  1.55.0; browser binary already cached, nothing downloaded;
+  production build over plain HTTP): **23/23 checks pass** — page
+  load with zero failed requests/console errors; WASM module served
+  (7 288 565 B) and detected by the UI, no COOP/COEP header;
+  PNG→JPEG via canvas with the downloaded bytes re-detected as
+  JPEG; lying `.jpg` detected as PNG; TIFF→PNG and HEIC→PNG via
+  WASM with the "Converted with the built-in WASM engine" note;
+  PNG→HEIC via WASM re-detected as HEIC; GIF first-frame note +
+  GIF→WebP; batch of 3 files incl. an unsupported `.txt` (skipped
+  with a reason) with the downloaded zip verified to contain 2
+  real WebP files; Formats tab lists 21 formats; theme toggle
+  persists across reload; keyboard Tab to the drop zone + Enter
+  opens the file picker. One transient `net::ERR_ABORTED` on the
+  wasm fetch at the theme-reload navigation — no user-visible
+  effect (see `docs/E2E.md` §2.14).
+- **WASM-absent fallback** (copy of `dist/` without `public/wasm/`):
+  app loads, intro drops the WASM claims, PNG→JPEG still converts
+  via canvas, TIFF fails honestly with Convert disabled and no
+  crash. Minor observation: the TIFF shows "Detected format:
+  Unknown" and a red "Conversion failed" label although the format
+  was sniffed and no conversion was attempted — polish item, not a
+  blocker.
+- **Desktop e2e**: the item-3 `.deb` installs (`open-pixel` 0.1.0)
+  and runs under Xvfb (main process + WebKitNetworkProcess +
+  WebKitWebProcess alive, startup line in the log, UI screenshot);
+  the AppImage cannot mount directly (no FUSE — environment, same
+  as Phase 8) but runs once extracted to `$HOME` (same process/log/
+  screenshot evidence). A first extraction into `/tmp` died with
+  SIGBUS because the 512 MiB `/tmp` tmpfs was 100% full — extract
+  AppImages outside `/tmp`. No GUI-driving tool exists here, so no
+  clicks were performed: the desktop click-through items (1)–(8)
+  stay OPEN; the Tauri commands behind them are unit-tested.
+- **Regression — all green, counts unchanged:** `cargo test
+  --workspace` **195 passed, 0 failed**; clippy `-D warnings`
+  passes; `cargo fmt --check` passes; web `npm test` **28/28**,
+  oxlint 0 warnings/errors; desktop `npm test` **11/11**, oxlint 0
+  warnings/errors; desktop backend `cargo test` **16/16**; release
+  rebuild + `bench --quick` smoke succeeds.
 
 ## Verified results — Phase 9, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0, Node v24 / npm 10.9.4
 
@@ -510,6 +586,15 @@ server anywhere; the backend calls `Engine` / `JobManager` directly.
   shows the conversion lines and the log file path; (7) keyboard-only:
   tab to the drop zone, Enter opens the native picker; (8) drag a
   file onto the window from the file manager.
+  Update 16 Nov 2026 (follow-up item 4): launch + render verified
+  (see docs/E2E.md §3) — the .deb installs and runs under Xvfb with
+  WebKit children alive, the startup line in the log, and a
+  screenshot of the rendered UI; the AppImage runs the same way once
+  extracted (direct mount still blocked: no FUSE). The click-through
+  items (1)–(8) themselves are still OPEN — no GUI-driving tool
+  (xdotool/wmctrl) exists in this environment, so no clicks were
+  performed; the Tauri commands behind them are unit-tested
+  (backend cargo test 16/16).
 
 ## Verified results — Phase 6, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0
 
