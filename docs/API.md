@@ -359,11 +359,94 @@ openpixel formats
 openpixel capabilities <format>
 openpixel batch <dir> --format <fmt> [--quality N] [--out-dir <dir>] [--workers 1..=8] [--sequential]
 openpixel bench [--iterations N] [--quick]
+openpixel pdf info <input>
+openpixel pdf merge <a.pdf> <b.pdf>... -o <out.pdf>
+openpixel pdf split <input> --ranges 1-3,5-7 [--out-dir <dir>]
+openpixel pdf rotate <input> <output> [--pages 1,3] --degrees 90|180|270
+openpixel pdf extract <input> <output> --pages 1,3,5
+openpixel pdf remove <input> <output> --pages 2
+openpixel pdf reorder <input> <output> --order 3,1,2
+openpixel pdf duplicate <input> <output> --pages 1
+openpixel pdf insert <input> <other.pdf> <output> --at 2
+openpixel pdf replace <input> <replacement.pdf> <output> --page 2
+openpixel pdf reverse <input> <output>
+openpixel pdf booklet <input> <output>
+openpixel pdf nup <input> <output> [--cols 2] [--rows 2]
+openpixel pdf render <input> [--out-dir <dir>] [--pages 1,3] [--format png] [--scale 2.0] [--quality 85]
+openpixel pdf from-images <img1> <img2>... -o <out.pdf> [--page-size A4|Letter|A5]
 openpixel --json <any command>     # JSON output
 openpixel --quiet / --verbose      # log level
 ```
 
 Exit codes: 0 success, 1 any error (with `error: …` on stderr unless `--quiet`).
+
+## Studio Phase 2 — PDF engine API (`openpixel-pdf`)
+
+`PdfEngine` (config: `PdfConfig { max_pages: 10_000,
+max_file_size_bytes: 100 MiB }`). All page numbers are 1-based;
+ranges are inclusive. Full semantics and limits: `docs/PDF.md`.
+
+```rust
+// Inspect
+engine.validate(bytes) -> Result<()>                       // %PDF- signature + parseable
+engine.inspect(bytes) -> Result<PdfInfo>                   // page_count, version, title/author/creator/producer, encrypted, page_sizes (pt)
+// Page operations — each returns a new PDF as bytes
+engine.merge(documents: &[Vec<u8>]) -> Result<Vec<u8>>
+engine.split(bytes, ranges: &[(u32, u32)]) -> Result<Vec<Vec<u8>>>
+engine.rotate(bytes, pages: Option<&[u32]>, degrees: u16) -> Result<Vec<u8>>   // 90/180/270
+engine.extract(bytes, pages: &[u32]) -> Result<Vec<u8>>
+engine.remove(bytes, pages: &[u32]) -> Result<Vec<u8>>
+engine.reorder(bytes, order: &[u32]) -> Result<Vec<u8>>    // every page exactly once
+engine.duplicate(bytes, pages: &[u32]) -> Result<Vec<u8>>
+engine.insert(bytes, at: u32, documents: &[Vec<u8>]) -> Result<Vec<u8>>  // before page `at`
+engine.replace(bytes, page: u32, replacement: &[u8]) -> Result<Vec<u8>>
+engine.reverse(bytes) -> Result<Vec<u8>>
+engine.booklet(bytes) -> Result<Vec<u8>>                   // pads to a multiple of 4
+engine.nup(bytes, cols: u32, rows: u32) -> Result<Vec<u8>>
+// Render (optional `pdfium` feature — without it, a clear NotImplemented error)
+engine.render_to_images(bytes, pages: Option<&[u32]>, scale: f32) -> Result<Vec<RenderedPage>>
+//   scale 0.25..=6.0 (1.0 = 72 DPI); RenderedPage { page: u32, image: DecodedImage (RGBA8) }
+// Image -> PDF
+engine.from_images(images: &[Vec<u8>], page_size: Option<(f64, f64)>) -> Result<Vec<u8>>
+//   named_page_size("A4" | "Letter" | "A5") -> Option<(f64, f64)>
+// Document detection (signature-first, never the extension)
+discover_document(bytes, extension, mime) -> DocumentDiscovery  // DocumentFormat::Pdf | Office | ...
+```
+
+`PdfError`: `InvalidPdf(String)` (not a PDF, bad page/range,
+bad degrees/scale, empty input), `Encrypted`, `PageOutOfRange`,
+`InvalidRange`, `Lopdf(String)`, `Io`, `NotImplemented(String)`
+(missing libpdfium, unimplemented op). Encrypted/malformed PDFs
+fail cleanly — never a crash.
+
+### WASM exports (`openpixel-wasm`, `pdfium` off — pure Rust lopdf)
+
+```js
+pdf_info(bytes) -> PdfInfo                          // { page_count, version, title, author, creator, producer, encrypted, page_sizes }
+pdf_process(bytes, ops_json) -> Uint8Array[]        // ops: {"kind":"split","ranges":[[1,3],[5,7]]}
+                                                    //   | {"kind":"rotate","pages":[1,3],"degrees":90} (pages optional = all, degrees default 90)
+                                                    //   | {"kind":"extract"|"remove"|"duplicate","pages":[...]}
+                                                    //   | {"kind":"reorder","order":[3,1,2]}
+                                                    //   | {"kind":"reverse"} | {"kind":"booklet"}
+                                                    //   | {"kind":"nup","cols":2,"rows":2}
+pdf_merge(documents: Uint8Array[]) -> Uint8Array
+pdf_from_images(images: Uint8Array[], page_size?: "A4"|"Letter"|"A5") -> Uint8Array
+// No render export: PDFium cannot run in the browser — the web UI
+// renders PDF pages with pdf.js instead.
+```
+
+### `Engine::encode_decoded` (image engine, Phase 2)
+
+```rust
+engine.encode_decoded(image: &DecodedImage, target: ImageFormat, options: &ConvertOptions)
+    -> Result<(ConvertResult, Vec<u8>)>
+```
+
+Encodes an already-decoded image (e.g. a PDF page rendered by
+PDFium) through the same shared encode tail as `convert_bytes`
+(ICO 256×256 auto-resize, quality defaults, output validation).
+No source metadata is carried; `ConvertResult::source_format`
+is `Unknown` (a rendered page has no image format).
 
 ## Stability note
 

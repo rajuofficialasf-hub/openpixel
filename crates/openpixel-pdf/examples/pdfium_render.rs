@@ -128,7 +128,7 @@ fn run() -> Result<(), String> {
             .get(i)
             .map_err(|e| format!("could not get page {i}: {e}"))?;
         let bitmap = page
-            .render_with_config(&PdfRenderConfig::new().set_target_width(200.into()))
+            .render_with_config(&PdfRenderConfig::new().set_target_width(200))
             .map_err(|e| format!("could not render page {i}: {e}"))?;
         let image = bitmap
             .as_image()

@@ -17,6 +17,11 @@ crate-type = ["cdylib", "rlib"]
 # unavailable by the registry in this build, never claimed to work.
 openpixel-core = { path = "../openpixel-core", default-features = false }
 openpixel-formats = { path = "../openpixel-formats" }
+# Studio Phase 2: lopdf page ops + image→PDF run in WASM for real
+# (pure Rust, no pdfium feature — PDFium needs a native libpdfium
+# binary, which cannot load in the browser; the web UI renders PDF
+# pages with pdf.js instead).
+openpixel-pdf = { path = "../openpixel-pdf" }
 wasm-bindgen.workspace = true
 js-sys = "=0.3.107"
 serde.workspace = true

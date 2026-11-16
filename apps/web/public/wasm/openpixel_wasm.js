@@ -149,6 +149,98 @@ export function info(bytes) {
 }
 
 /**
+ * Build a PDF from images (a JS array of `Uint8Array` — PNG, JPEG,
+ * WebP, anything the engine decodes), one page per image, in order.
+ * `page_size` is a named size ("A4", "Letter", "A5") or undefined
+ * for one page per image at the image's own size in points.
+ * @param {any} images
+ * @param {string | null} [page_size]
+ * @returns {Uint8Array}
+ */
+export function pdf_from_images(images, page_size) {
+    var ptr0 = isLikeNone(page_size) ? 0 : passStringToWasm0(page_size, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    var len0 = WASM_VECTOR_LEN;
+    const ret = wasm.pdf_from_images(images, ptr0, len0);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v2 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v2;
+}
+
+/**
+ * PDF info: page count, version, metadata, encryption, page sizes.
+ * Returns the `PdfInfo` as a JS object.
+ * @param {Uint8Array | number[]} bytes
+ * @returns {any}
+ */
+export function pdf_info(bytes) {
+    const ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.pdf_info(ptr0, len0);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Merge several PDFs (a JS array of `Uint8Array`) into one, in order.
+ * @param {any} documents
+ * @returns {Uint8Array}
+ */
+export function pdf_merge(documents) {
+    const ret = wasm.pdf_merge(documents);
+    if (ret[3]) {
+        throw takeFromExternrefTable0(ret[2]);
+    }
+    var v1 = getArrayU8FromWasm0(ret[0], ret[1]).slice();
+    wasm.__wbindgen_free(ret[0], ret[1] * 1, 1);
+    return v1;
+}
+
+/**
+ * One PDF page operation from the JS side. `ops_json` is a JSON
+ * object, e.g. `{"kind":"rotate","pages":[1,3],"degrees":90}`,
+ * `{"kind":"extract","pages":[1,3]}`,
+ * `{"kind":"split","ranges":[[1,3],[5,7]]}`,
+ * `{"kind":"reorder","order":[3,1,2]}`,
+ * `{"kind":"nup","cols":2,"rows":2}`, `{"kind":"reverse"}`,
+ * `{"kind":"booklet"}`. Kinds: split, rotate, extract, remove,
+ * reorder, duplicate, reverse, booklet, nup. `pages` is optional
+ * for rotate (default: all pages) and `degrees` defaults to 90.
+ * Ops arrive as a JSON string — not a `JsValue` — so the parsing is
+ * plain Rust and unit-testable without a JS runtime. Merge, insert
+ * and replace take several documents, so they have their own
+ * exports below.
+ *
+ * Returns a JS array of `Uint8Array` — one element per output
+ * document (one for every op, one per range for split).
+ * @param {Uint8Array | number[]} bytes
+ * @param {string} ops_json
+ * @returns {any}
+ */
+export function pdf_process(bytes, ops_json) {
+    let ptr0, len0, ptr1, len1;
+    try {
+        ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = passStringToWasm0(ops_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len1 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+        if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+        throw e;
+    }
+    const ret = wasm.pdf_process(ptr0, len0, ptr1, len1);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * Process `bytes` with a resize pipeline, then encode to `target`
  * — the Resize tab's entry point. `ops_json` is a JSON array of
  * resize operations, e.g. `[{"kind":"resize_fit","width":800,"height":600}]`
@@ -294,7 +386,32 @@ function __wbg_get_imports() {
         __wbg___wbindgen_throw_4c88d8bf264fd984: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
+        __wbg_getRandomValues_8b6f1f663e6f188d: function() { return handleError(function (arg0, arg1) {
+            globalThis.crypto.getRandomValues(getArrayU8FromWasm0(arg0, arg1));
+        }, arguments); },
+        __wbg_get_d7176cfb76d71114: function(arg0, arg1) {
+            const ret = arg0[arg1 >>> 0];
+            return ret;
+        },
+        __wbg_instanceof_Uint8Array_d7aeb0dcb3108fea: function(arg0) {
+            let result;
+            try {
+                result = arg0 instanceof Uint8Array;
+            } catch (_) {
+                result = false;
+            }
+            const ret = result;
+            return ret;
+        },
+        __wbg_isArray_bcf1376d0d732d08: function(arg0) {
+            const ret = Array.isArray(arg0);
+            return ret;
+        },
         __wbg_length_186163212ffe79c3: function(arg0) {
+            const ret = arg0.length;
+            return ret;
+        },
+        __wbg_length_b03a0fabb109b1e9: function(arg0) {
             const ret = arg0.length;
             return ret;
         },
@@ -308,6 +425,13 @@ function __wbg_get_imports() {
         },
         __wbg_new_with_length_01b143a7e5dd5a3e: function(arg0) {
             const ret = new Uint8Array(arg0 >>> 0);
+            return ret;
+        },
+        __wbg_prototypesetcall_13162965d1fe7aa3: function(arg0, arg1, arg2) {
+            Uint8Array.prototype.set.call(getArrayU8FromWasm0(arg0, arg1), arg2);
+        },
+        __wbg_push_c9f4893fc209f768: function(arg0, arg1) {
+            const ret = arg0.push(arg1);
             return ret;
         },
         __wbg_set_2793479888329cb6: function() { return handleError(function (arg0, arg1, arg2) {

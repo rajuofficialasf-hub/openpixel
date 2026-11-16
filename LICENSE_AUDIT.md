@@ -31,6 +31,7 @@ choice to Raju instead of working around it.
 
 | Component | Version | Licence | Source | Linking | Redistribution |
 |---|---|---|---|---|---|
+| pdfjs-dist | `=6.5.438` | Apache-2.0 | npm / github.com/mozilla/pdf.js | Static — bundled into the web app | Browser PDF rendering (preview + PDF→image in the PDF tab); include the Apache-2.0 licence text in distributions |
 | lopdf | `=0.47.0` | MIT | crates.io / github.com/J-F-Liu/lopdf | Static (Rust crate, compiled into `openpixel-pdf`) | Include the MIT licence text in distributions; no source disclosure required |
 | pdfium-render | `=0.9.5` | MIT OR Apache-2.0 | crates.io / github.com/ajrcarey/pdfium-render | Static (Rust binding crate; the binding itself is MIT OR Apache-2.0) | Include the chosen licence text; no source disclosure required |
 | PDFium (prebuilt binary, via pdfium-render) | chromium build **8152** (MAJOR=159, MINOR=0, BUILD=8152, PATCH=0) | BSD-3-Clause | github.com/bblanchon/pdfium-binaries — release `chromium/8152`, asset `pdfium-linux-x64.tgz` | **Dynamic** — `libpdfium.so` is loaded at runtime by `pdfium-render` (`Pdfium::bind_to_library`); it is NOT compiled into our binary and NOT committed to the repo | Include the BSD-3-Clause licence text (`licenses/pdfium.txt` in the archive) and the copyright notice in distributions that ship the binary; no source disclosure required |
@@ -59,7 +60,9 @@ choice to Raju instead of working around it.
 - `pdfium-render`'s own Rust dependencies (bitflags, bytemuck,
   bytes, chrono, itertools, log, maybe-owned, once_cell,
   utf16string, libloading, image 0.23/0.24/0.25) are all
-  permissive (MIT/Apache-2.0); they are covered by `cargo deny`
+  permissive (MIT/Apache-2.0, plus ISC for `libloading` 0.9.1 —
+  the dynamic loader pdfium-render uses; ISC is MIT-equivalent
+  permissive, see `deny.toml`); they are covered by `cargo deny`
   and the SBOM, not listed individually here.
 - Status: **prototype verified** — the example rendered a real
   3-page PDF to three genuine PNGs (200×259 px, text visible)

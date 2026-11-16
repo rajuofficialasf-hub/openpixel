@@ -184,7 +184,58 @@ settings (per-file download, plus a .zip of all results).
   `process_bytes` / `process_to_size_bytes` in openpixel-core and
   the WASM bindings in openpixel-wasm (incl. `wasm-pack test
   --node`); e2e in `apps/web/e2e/resize-e2e.mjs` (see docs/E2E.md
-  §2.19).
+  §2.19). The same run re-checked the baselines: web e2e 36/37
+  (the one failure is the known keyboard file-chooser flake,
+  §2.19a — not a regression) and resize e2e 16/16. New PDF tab
+  (`apps/web/e2e/pdf-e2e.mjs`, 14/14 — see docs/E2E.md §2.20).
+
+## PDF tools — PDF tab (Studio Phase 2, 16 Nov 2026)
+
+A sixth tab next to Resize: work with PDFs entirely in the browser.
+Upload one PDF for info, preview and page operations, or build a
+PDF from images — no upload, no server.
+
+- **Info:** page count, PDF version, metadata (title / author /
+  creator / producer), encryption flag, and the effective page
+  size in points per page — from the WASM engine's `pdf_info`
+  (lopdf `inspect`). Without the WASM module the page count falls
+  back to pdf.js, so the tab still shows it.
+- **Page operations (all real WASM calls):** merge with a second
+  PDF (`pdf_merge`), split by ranges (`pdf_process` split — one
+  output document per range, each with its own download), rotate
+  (90/180/270, selected pages or all), extract, remove, reorder
+  (must list every page exactly once), duplicate, reverse,
+  booklet imposition, N-up (1–4 columns × 1–4 rows). Every
+  operation's result is re-checked with `pdf_info` and the status
+  line reports the real page count ("Merged PDF: 6 pages"). Page
+  lists accept "1,3" and "1-3" forms; invalid input is rejected
+  with a message before any engine call.
+- **Images to PDF:** `pdf_from_images` — one page per image, in
+  order, at the image's own size in points or on an A4 / Letter /
+  A5 page.
+- **Preview and PDF→image:** rendered with **pdf.js**
+  (`pdfjs-dist` 6.5.438, Apache-2.0 — see `LICENSE_AUDIT.md`),
+  not PDFium: PDFium needs a native libpdfium binary, which
+  cannot load in the browser, and there is no WASM render export.
+  The preview renders the selected page to a `<canvas>` at a
+  1×/1.5×/2× scale (1× = 72 dpi) with the bundled
+  `pdf.worker.min.mjs` worker; "Download page N as PNG/JPEG"
+  renders the same page to a canvas and downloads it at the
+  chosen scale. A render that fails is a visible error, never a
+  silently blank canvas.
+- **Honest limits, stated in the tab:** insert and replace pages
+  have no WASM export — they need the native CLI or desktop app
+  (`openpixel pdf insert` / `openpixel pdf replace`); PDFium
+  rendering is CLI/desktop-only (`openpixel pdf render`), and the
+  pdf.js render may look slightly different from it on very
+  complex pages. Encrypted PDFs cannot be opened in the browser
+  (the engine refuses them); use the CLI. Without the WASM
+  module, page operations are disabled with a warning, while
+  preview and PDF→image still work.
+- **Tests:** `apps/web/src/lib/pdf.test.ts` (13 unit tests:
+  page-list / range / reorder parsing, page-size formatting,
+  output names, WASM-wrapper null fallback); e2e in
+  `apps/web/e2e/pdf-e2e.mjs` (see docs/E2E.md §2.20).
 
 ## WASM status — shipped (follow-up item 2, 16 Nov 2026)
 
@@ -217,7 +268,12 @@ Phase 7:
    over the engine's byte-based API (`Engine::decode_bytes` /
    `get_image_info_bytes` / `convert_bytes` — added in this
    change; the file-based engine API is unchanged and the native
-   build still runs all codecs including AVIF). The module is
+   build still runs all codecs including AVIF). Studio Phase 2
+   adds the PDF exports `pdf_info` / `pdf_process` / `pdf_merge`
+   / `pdf_from_images` over `openpixel-pdf` (lopdf) — same
+   stateless byte-in / byte-out shape; there is deliberately no
+   render export (PDFium cannot run in WASM — the web UI renders
+   with pdf.js, see the PDF tab section above). The module is
    stateless (one fresh `Engine` per call), byte-in / byte-out,
    no filesystem, no network, no upload. Errors are plain
    strings on the JS side.
@@ -338,9 +394,14 @@ added under the project's Custom domains tab.
 **What the hosted app can and cannot do** (see also
 `apps/web/src/lib/capabilities.ts`): conversion covers PNG, JPEG,
 WebP (canvas) plus BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM,
-TGA and GIF (WASM engine). AVIF conversion, metadata preservation,
-image processing (resize/crop/filters/watermark) and frame/page
-extraction are CLI/desktop-only and are not in the web app.
+TGA and GIF (WASM engine). The PDF tab runs in the browser too:
+page operations (merge, split, rotate, extract, remove, reorder,
+duplicate, reverse, booklet, N-up, images→PDF) via the WASM
+engine, and preview / PDF→PNG/JPEG via pdf.js. AVIF conversion,
+metadata preservation, image processing (resize/crop/filters/
+watermark) and frame/page extraction are CLI/desktop-only and are
+not in the web app; PDF insert/replace and PDFium rendering are
+CLI/desktop-only as well.
 **ICO:** the format caps at 256×256, so a larger image is auto-resized
 to fit (aspect preserved) and the UI shows a note — "Resized to
 256×192 for ICO — ICO supports max 256×256" — next to the result;

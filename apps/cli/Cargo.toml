@@ -12,6 +12,10 @@ path = "src/main.rs"
 [dependencies]
 openpixel-core = { path = "../../crates/openpixel-core" }
 openpixel-jobs = { path = "../../crates/openpixel-jobs" }
+# Studio Phase 2: PDF page ops + render (pdfium feature = dynamic
+# libpdfium, loaded only when `pdf render` runs; every other pdf
+# command works without it).
+openpixel-pdf = { path = "../../crates/openpixel-pdf", features = ["pdfium"] }
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true

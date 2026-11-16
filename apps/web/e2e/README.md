@@ -29,7 +29,16 @@ real PNG/JPEG/TIFF/HEIC/GIF into that directory with the same names.
 node apps/web/e2e/web-e2e.mjs        # 37 checks, Chromium vs :8321
 node apps/web/e2e/web-nowasm.mjs     # 9 checks, WASM-absent fallback vs :8322
 node apps/web/e2e/resize-e2e.mjs     # 16 checks, Resize tab vs :8321
+node apps/web/e2e/pdf-e2e.mjs        # 14 checks, PDF tab vs :8323
 ```
+
+Serve `apps/web/dist` on port 8323 for the PDF run the same way
+as 8321 above (`python3 -m http.server 8323 --bind 127.0.0.1` in
+`apps/web/dist`). Its fixtures are two real PDFs in
+`/tmp/op-e2e/pdf-in/` (`doc4.pdf`, 4 pages; `doc2.pdf`, 2 pages),
+generated with the debug CLI (`openpixel pdf from-images` on the
+`/tmp/op-e2e/cli/in/` PNG/JPEG fixtures) — regenerate them with
+those commands if `/tmp` was wiped.
 
 For the fallback run, serve a copy of `dist/` with `public/wasm/`
 removed on port 8322 first:
@@ -86,6 +95,18 @@ never-upscale clamps a 256×192 source asked for 800×600; batch of
 result line reports the honest change ("3% larger" when a
 re-encode grows the file — see docs/E2E.md §2.19). Screenshots
 `17-resize-tab.png` … `20-resize-batch.png`.
+
+`pdf-e2e.mjs` — the PDF tab, Studio Phase 2 (16 Nov 2026; see
+docs/E2E.md §2.20): tab renders; a real 4-page PDF uploads and
+its info shows the true page count, version and page sizes;
+pdf.js preview actually paints page 1 (canvas 512×384 at the
+default 2× scale — a broken worker would leave it blank);
+PDF→PNG downloads a genuine PNG at the requested dimensions
+(`file` + `openpixel info`); merge (4+2 pages) downloads a real
+6-page PDF; split downloads one real PDF per range; rotate and
+extract download real PDFs with the right page counts;
+images→PDF builds a real 2-page PDF; dark-mode screenshot.
+Screenshots `21-pdf-tab.png` … `23-pdf-dark.png`.
 
 ## Known notes (see docs/E2E.md)
 

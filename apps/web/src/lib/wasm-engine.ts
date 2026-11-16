@@ -98,6 +98,16 @@ export interface WasmPackage {
     background: string | undefined,
   ) => WasmTargetSizeResult
   version: () => string
+  // PDF (Studio Phase 2) — see src/lib/pdf.ts. `pdf_process`
+  // returns a JS Array of Uint8Array (one per output document);
+  // `pdf_merge` / `pdf_from_images` take JS arrays of Uint8Array.
+  // There is NO pdf render export: PDFium needs a native
+  // libpdfium binary and cannot run in the browser — the web UI
+  // renders PDF pages with pdf.js instead.
+  pdf_info: (bytes: Uint8Array) => PdfInfo
+  pdf_process: (bytes: Uint8Array, opsJson: string) => Uint8Array[]
+  pdf_merge: (documents: unknown) => Uint8Array
+  pdf_from_images: (images: unknown, pageSize: string | undefined) => Uint8Array
 }
 
 /** What the WASM `process` export returns: resized bytes + result metadata. */
@@ -114,6 +124,23 @@ export interface WasmTargetSizeResult extends WasmProcessResult {
   /** Quality the search settled on; `null` for PNG (compression level is the knob). */
   quality: number | null
   target_met: boolean
+}
+
+/**
+ * What the WASM `pdf_info` export returns — the `PdfInfo` from
+ * `openpixel-pdf` (`inspect`): page count, PDF version, document
+ * metadata, encryption flag, and the effective page size in
+ * points (width, height) per page, in page order.
+ */
+export interface PdfInfo {
+  page_count: number
+  version: string
+  title: string | null
+  author: string | null
+  creator: string | null
+  producer: string | null
+  encrypted: boolean
+  page_sizes: [number, number][]
 }
 
 const WASM_URL = '/wasm/openpixel_wasm.js'

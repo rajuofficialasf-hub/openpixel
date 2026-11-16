@@ -214,6 +214,153 @@ pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+// ---------------------------------------------------------------------------
+// PDF (Studio Phase 2) — info, page operations, merge, image→PDF.
+// Rendering (PDF→image) is NOT in this module: PDFium needs a native
+// libpdfium binary, which cannot load in the browser. The web UI
+// renders PDF pages with pdf.js instead (see apps/web/src/lib/pdf.ts).
+// Every op here is pure Rust (lopdf), so it runs in WASM for real.
+// ---------------------------------------------------------------------------
+
+fn pdf_engine() -> openpixel_pdf::PdfEngine {
+    openpixel_pdf::PdfEngine::default()
+}
+
+/// PDF info: page count, version, metadata, encryption, page sizes.
+/// Returns the `PdfInfo` as a JS object.
+#[wasm_bindgen]
+pub fn pdf_info(bytes: &[u8]) -> Result<JsValue, JsValue> {
+    let info = pdf_engine().inspect(bytes).map_err(js_err)?;
+    serde_wasm_bindgen::to_value(&info).map_err(js_err)
+}
+
+/// One PDF page operation from the JS side. `ops_json` is a JSON
+/// object, e.g. `{"kind":"rotate","pages":[1,3],"degrees":90}`,
+/// `{"kind":"extract","pages":[1,3]}`,
+/// `{"kind":"split","ranges":[[1,3],[5,7]]}`,
+/// `{"kind":"reorder","order":[3,1,2]}`,
+/// `{"kind":"nup","cols":2,"rows":2}`, `{"kind":"reverse"}`,
+/// `{"kind":"booklet"}`. Kinds: split, rotate, extract, remove,
+/// reorder, duplicate, reverse, booklet, nup. `pages` is optional
+/// for rotate (default: all pages) and `degrees` defaults to 90.
+/// Ops arrive as a JSON string — not a `JsValue` — so the parsing is
+/// plain Rust and unit-testable without a JS runtime. Merge, insert
+/// and replace take several documents, so they have their own
+/// exports below.
+///
+/// Returns a JS array of `Uint8Array` — one element per output
+/// document (one for every op, one per range for split).
+#[wasm_bindgen]
+pub fn pdf_process(bytes: &[u8], ops_json: &str) -> Result<JsValue, JsValue> {
+    let outputs = pdf_process_inner(bytes, ops_json).map_err(js_err)?;
+    let arr = js_sys::Array::new();
+    for out in outputs {
+        let uint = js_sys::Uint8Array::new_with_length(out.len() as u32);
+        uint.copy_from(out.as_slice());
+        arr.push(&uint);
+    }
+    Ok(arr.into())
+}
+
+/// Merge several PDFs (a JS array of `Uint8Array`) into one, in order.
+#[wasm_bindgen]
+pub fn pdf_merge(documents: JsValue) -> Result<Vec<u8>, JsValue> {
+    let docs = js_array_of_bytes(&documents).map_err(js_err)?;
+    pdf_engine().merge(&docs).map_err(js_err)
+}
+
+/// Build a PDF from images (a JS array of `Uint8Array` — PNG, JPEG,
+/// WebP, anything the engine decodes), one page per image, in order.
+/// `page_size` is a named size ("A4", "Letter", "A5") or undefined
+/// for one page per image at the image's own size in points.
+#[wasm_bindgen]
+pub fn pdf_from_images(images: JsValue, page_size: Option<String>) -> Result<Vec<u8>, JsValue> {
+    let imgs = js_array_of_bytes(&images).map_err(js_err)?;
+    let size = match page_size.as_deref() {
+        None => None,
+        Some(name) => Some(openpixel_pdf::named_page_size(name).ok_or_else(|| {
+            js_err(format!(
+                "unknown page size '{name}' — use A4, Letter, or A5"
+            ))
+        })?),
+    };
+    pdf_engine().from_images(&imgs, size).map_err(js_err)
+}
+
+/// A JS array of `Uint8Array` → `Vec<Vec<u8>>`. Anything else is a
+/// caller error, never a silent empty list.
+fn js_array_of_bytes(value: &JsValue) -> Result<Vec<Vec<u8>>, openpixel_core::OpenPixelError> {
+    use wasm_bindgen::JsCast;
+    let err = || {
+        openpixel_core::OpenPixelError::InvalidArgument(
+            "expected an array of files (Uint8Array)".to_string(),
+        )
+    };
+    let arr = value.dyn_ref::<js_sys::Array>().ok_or_else(err)?;
+    let mut out = Vec::with_capacity(arr.length() as usize);
+    for i in 0..arr.length() {
+        let el = arr.get(i);
+        let uint = el.dyn_ref::<js_sys::Uint8Array>().ok_or_else(err)?;
+        out.push(uint.to_vec());
+    }
+    Ok(out)
+}
+
+/// One PDF page operation from the JS side, as a JSON object
+/// (see [`pdf_process`] for the shape).
+#[derive(Deserialize)]
+struct PdfOpJson {
+    kind: String,
+    #[serde(default)]
+    pages: Option<Vec<u32>>,
+    #[serde(default)]
+    degrees: Option<u16>,
+    #[serde(default)]
+    order: Option<Vec<u32>>,
+    #[serde(default)]
+    cols: Option<u32>,
+    #[serde(default)]
+    rows: Option<u32>,
+    #[serde(default)]
+    ranges: Option<Vec<(u32, u32)>>,
+}
+
+/// The byte-level PDF op, shared by the `#[wasm_bindgen]` wrapper
+/// above and the native unit tests below.
+fn pdf_process_inner(
+    bytes: &[u8],
+    ops_json: &str,
+) -> Result<Vec<Vec<u8>>, openpixel_pdf::PdfError> {
+    let op: PdfOpJson = serde_json::from_str(ops_json)
+        .map_err(|e| openpixel_pdf::PdfError::InvalidPdf(format!("invalid PDF op: {e}")))?;
+    let engine = pdf_engine();
+    let missing = |field: &str| {
+        openpixel_pdf::PdfError::InvalidPdf(format!("\"{}\" needs a \"{field}\" array", op.kind))
+    };
+    let out = match op.kind.as_str() {
+        "split" => {
+            let ranges = op.ranges.ok_or_else(|| missing("ranges"))?;
+            engine.split(bytes, &ranges)?
+        }
+        "rotate" => vec![engine.rotate(bytes, op.pages.as_deref(), op.degrees.unwrap_or(90))?],
+        "extract" => vec![engine.extract(bytes, &op.pages.ok_or_else(|| missing("pages"))?)?],
+        "remove" => vec![engine.remove(bytes, &op.pages.ok_or_else(|| missing("pages"))?)?],
+        "reorder" => vec![engine.reorder(bytes, &op.order.ok_or_else(|| missing("order"))?)?],
+        "duplicate" => {
+            vec![engine.duplicate(bytes, &op.pages.ok_or_else(|| missing("pages"))?)?]
+        }
+        "reverse" => vec![engine.reverse(bytes)?],
+        "booklet" => vec![engine.booklet(bytes)?],
+        "nup" => vec![engine.nup(bytes, op.cols.unwrap_or(2), op.rows.unwrap_or(2))?],
+        other => {
+            return Err(openpixel_pdf::PdfError::InvalidPdf(format!(
+                "unknown PDF op '{other}' — use split, rotate, extract, remove, reorder, duplicate, reverse, booklet or nup"
+            )))
+        }
+    };
+    Ok(out)
+}
+
 /// The byte-level conversion, shared by the `#[wasm_bindgen]`
 /// wrapper above and the native unit tests below.
 fn convert_inner(
@@ -579,6 +726,67 @@ mod tests {
         assert_eq!(result.format, ImageFormat::Png);
         assert!(result.has_mismatch());
     }
+
+    /// A multi-page PDF built from the fixture PNG (one page per
+    /// image), so the PDF exports have a real document to work on.
+    fn make_test_pdf(pages: usize) -> Vec<u8> {
+        let images = vec![FIXTURE_PNG.to_vec(); pages];
+        pdf_engine().from_images(&images, None).unwrap()
+    }
+
+    fn pdf_page_count(bytes: &[u8]) -> u32 {
+        pdf_engine().inspect(bytes).unwrap().page_count
+    }
+
+    #[test]
+    fn pdf_info_reports_pages_and_sizes() {
+        let doc = make_test_pdf(3);
+        let info = pdf_engine().inspect(&doc).unwrap();
+        assert_eq!(info.page_count, 3);
+        assert_eq!(info.version, "1.5");
+        assert!(!info.encrypted);
+        assert_eq!(info.page_sizes, vec![(64.0, 64.0); 3]);
+        assert!(pdf_engine().inspect(b"not a pdf").is_err());
+    }
+
+    #[test]
+    fn pdf_process_extract_reverse_rotate_and_split() {
+        let doc = make_test_pdf(3);
+        let out = pdf_process_inner(&doc, r#"{"kind":"extract","pages":[3,1]}"#).unwrap();
+        assert_eq!(out.len(), 1);
+        assert_eq!(pdf_page_count(&out[0]), 2);
+        let out = pdf_process_inner(&doc, r#"{"kind":"reverse"}"#).unwrap();
+        assert_eq!(pdf_page_count(&out[0]), 3);
+        let out =
+            pdf_process_inner(&doc, r#"{"kind":"rotate","pages":[1],"degrees":180}"#).unwrap();
+        assert_eq!(pdf_page_count(&out[0]), 3);
+        let out = pdf_process_inner(&doc, r#"{"kind":"split","ranges":[[1,2],[3,3]]}"#).unwrap();
+        assert_eq!(out.len(), 2);
+        assert_eq!(pdf_page_count(&out[0]), 2);
+        assert_eq!(pdf_page_count(&out[1]), 1);
+        // Unknown kinds, missing fields and bad pages are errors.
+        assert!(pdf_process_inner(&doc, r#"{"kind":"explode"}"#).is_err());
+        assert!(pdf_process_inner(&doc, r#"{"kind":"extract"}"#).is_err());
+        assert!(pdf_process_inner(&doc, r#"{"kind":"extract","pages":[9]}"#).is_err());
+        assert!(pdf_process_inner(&doc, "not json").is_err());
+    }
+
+    #[test]
+    fn pdf_merge_and_from_images_roundtrip() {
+        let one = make_test_pdf(1);
+        let two = make_test_pdf(2);
+        let merged = pdf_engine().merge(&[one, two]).unwrap();
+        assert_eq!(pdf_page_count(&merged), 3);
+        let built = pdf_engine()
+            .from_images(
+                &[FIXTURE_PNG.to_vec(), FIXTURE_PNG.to_vec()],
+                Some((595.0, 842.0)),
+            )
+            .unwrap();
+        let info = pdf_engine().inspect(&built).unwrap();
+        assert_eq!(info.page_count, 2);
+        assert_eq!(info.page_sizes, vec![(595.0, 842.0); 2]);
+    }
 }
 
 /// Tests that run **inside the real WASM runtime** under
@@ -667,5 +875,59 @@ mod wasm_tests {
         // WebP target size is an honest error in the real module too.
         let ops = serde_json::json!([]).to_string();
         assert!(process_to_size(FIXTURE_PNG, &ops, "webp", 5_000, None).is_err());
+    }
+
+    #[wasm_bindgen_test]
+    fn wasm_pdf_info_process_and_merge_roundtrip() {
+        // Build a 2-page PDF in the real module (from-images), then
+        // info + extract + merge it through the exported functions.
+        let png = js_sys::Uint8Array::new_with_length(FIXTURE_PNG.len() as u32);
+        png.copy_from(FIXTURE_PNG);
+        let images = js_sys::Array::new();
+        images.push(&png);
+        images.push(&png);
+        let pdf = pdf_from_images(images.into(), None).unwrap();
+        assert!(!pdf.is_empty());
+
+        let info_value = pdf_info(&pdf).unwrap();
+        let info_json = serde_json::to_string(
+            &serde_wasm_bindgen::from_value::<serde_json::Value>(info_value).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            info_json.contains("\"page_count\":2"),
+            "info JSON: {info_json}"
+        );
+
+        let out = pdf_process(&pdf, r#"{"kind":"extract","pages":[2]}"#).unwrap();
+        let arr = js_sys::Array::from(&out);
+        assert_eq!(arr.length(), 1);
+        let one_page: js_sys::Uint8Array = arr.get(0).into();
+        let one_page = one_page.to_vec();
+        let info_value = pdf_info(&one_page).unwrap();
+        let info_json = serde_json::to_string(
+            &serde_wasm_bindgen::from_value::<serde_json::Value>(info_value).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            info_json.contains("\"page_count\":1"),
+            "info JSON: {info_json}"
+        );
+
+        let docs = js_sys::Array::new();
+        let a = js_sys::Uint8Array::new_with_length(pdf.len() as u32);
+        a.copy_from(&pdf);
+        docs.push(&a);
+        docs.push(&a);
+        let merged = pdf_merge(docs.into()).unwrap();
+        let info_value = pdf_info(&merged).unwrap();
+        let info_json = serde_json::to_string(
+            &serde_wasm_bindgen::from_value::<serde_json::Value>(info_value).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            info_json.contains("\"page_count\":4"),
+            "info JSON: {info_json}"
+        );
     }
 }

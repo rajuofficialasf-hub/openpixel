@@ -15,6 +15,17 @@
 # the operative licence. No crate in the tree is licensed under a
 # copyleft licence alone.
 #
+# "ISC" was added in Studio Phase 2: it enters via `libloading`
+# 0.9.1, the dynamic loader pdfium-render uses to load
+# libpdfium at runtime — required by the CLI's `pdf render`
+# command, which enables the `pdfium` feature. ISC is a
+# permissive licence (OSI-approved, FSF-free, functionally
+# equivalent to MIT/BSD-2-Clause: use/copy/modify/distribute with
+# the copyright notice kept); it is NOT copyleft, so the
+# copyleft bar in this file is unchanged. Verified from the
+# crate source (LICENSE: "Permission to use, copy, modify, and/or
+# distribute this software for any purpose...").
+#
 # If a new dependency needs a licence that is not listed here,
 # stop and bring the choice to Raju instead of editing this file
 # — and never add a copyleft licence to the list.
@@ -30,6 +41,7 @@ allow = [
     "BSD-2-Clause",
     "BSD-3-Clause",
     "CC0-1.0",
+    "ISC",
     "MIT",
     "MPL-2.0",
     "NCSA",

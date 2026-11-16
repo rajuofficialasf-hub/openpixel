@@ -71,6 +71,45 @@ export function discover(bytes: Uint8Array | number[], extension?: string | null
 export function info(bytes: Uint8Array | number[]): any;
 
 /**
+ * Build a PDF from images (a JS array of `Uint8Array` — PNG, JPEG,
+ * WebP, anything the engine decodes), one page per image, in order.
+ * `page_size` is a named size ("A4", "Letter", "A5") or undefined
+ * for one page per image at the image's own size in points.
+ */
+export function pdf_from_images(images: any, page_size?: string | null): Uint8Array;
+
+/**
+ * PDF info: page count, version, metadata, encryption, page sizes.
+ * Returns the `PdfInfo` as a JS object.
+ */
+export function pdf_info(bytes: Uint8Array | number[]): any;
+
+/**
+ * Merge several PDFs (a JS array of `Uint8Array`) into one, in order.
+ */
+export function pdf_merge(documents: any): Uint8Array;
+
+/**
+ * One PDF page operation from the JS side. `ops_json` is a JSON
+ * object, e.g. `{"kind":"rotate","pages":[1,3],"degrees":90}`,
+ * `{"kind":"extract","pages":[1,3]}`,
+ * `{"kind":"split","ranges":[[1,3],[5,7]]}`,
+ * `{"kind":"reorder","order":[3,1,2]}`,
+ * `{"kind":"nup","cols":2,"rows":2}`, `{"kind":"reverse"}`,
+ * `{"kind":"booklet"}`. Kinds: split, rotate, extract, remove,
+ * reorder, duplicate, reverse, booklet, nup. `pages` is optional
+ * for rotate (default: all pages) and `degrees` defaults to 90.
+ * Ops arrive as a JSON string — not a `JsValue` — so the parsing is
+ * plain Rust and unit-testable without a JS runtime. Merge, insert
+ * and replace take several documents, so they have their own
+ * exports below.
+ *
+ * Returns a JS array of `Uint8Array` — one element per output
+ * document (one for every op, one per range for split).
+ */
+export function pdf_process(bytes: Uint8Array | number[], ops_json: string): any;
+
+/**
  * Process `bytes` with a resize pipeline, then encode to `target`
  * — the Resize tab's entry point. `ops_json` is a JSON array of
  * resize operations, e.g. `[{"kind":"resize_fit","width":800,"height":600}]`
@@ -131,6 +170,10 @@ export interface InitOutput {
     readonly detect: (a: number, b: number) => [number, number];
     readonly discover: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
     readonly info: (a: number, b: number) => [number, number, number];
+    readonly pdf_from_images: (a: any, b: number, c: number) => [number, number, number, number];
+    readonly pdf_info: (a: number, b: number) => [number, number, number];
+    readonly pdf_merge: (a: any) => [number, number, number, number];
+    readonly pdf_process: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly process: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number, number];
     readonly process_to_size: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number) => [number, number, number];
     readonly supported_formats: () => any;

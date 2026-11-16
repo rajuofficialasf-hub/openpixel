@@ -119,6 +119,26 @@ tab (pdf.js render; lopdf-WASM page ops where possible).
 complex pages; how many real-world PDFs lopdf refuses
 (encrypted, malformed) and how those failures are reported;
 PDF/A is out of scope here.
+**Status: DONE 16 Nov 2026** (commit on `main`; see `docs/PDF.md`
+for the full record). CLI e2e §10 green (every op re-verified
+with `pdfinfo`, renders re-verified with `file` + `openpixel
+info`); web PDF e2e 14/14 green (§2.20); `cargo test
+--workspace` 260 passed; web `npm test` 62/62; clippy + fmt
+clean; `cargo deny check licenses` green (ISC added for
+libloading — see `deny.toml`).
+**Answers after Phase 2:** PDFium renders generated text pages
+and image pages at exact requested dimensions with visible text;
+complex real-world pages are still untested. Encrypted PDFs fail
+cleanly (`Encrypted`, no password support); malformed PDFs fail
+cleanly with the lopdf message. Real-world files with object
+streams/annotations were NOT exercised — only lopdf-generated
+and image-based PDFs — so "how many real-world PDFs lopdf
+refuses" stays partly open for Phase 3 fixtures. The Phase 1
+copier bug (split/extract outputs containing excluded pages'
+content as orphans, via `/Parent`) was found by a Phase 2 test
+and fixed with a regression test. PDFium threading is a
+single-worker design (one binding per process, upstream
+constraint — see `docs/PDF.md`). PDF/A remains out of scope.
 
 ## Phase 3 — Conversion and Compression
 

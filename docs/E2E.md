@@ -12,7 +12,10 @@ suites. ICO auto-resize run the same day (§2.18, §1.13), web e2e
 reported is fixed and covered. Resize & compress run the same day
 (§1.14, §2.19, §4 update), web e2e 36/37 (one environmental
 keyboard flake — see §2.19), resize e2e 16/16, no-WASM fallback
-9/9. This closes the real-browser and desktop
+9/9. PDF tab run the same day (§2.20): web `npm test` 62/62, lint
+0 warnings, `npm run build` passes, pdf-e2e 14/14, web e2e 36/37
+(the known keyboard flake only), resize e2e 16/16, `cargo check
+-p openpixel-wasm --target wasm32-unknown-unknown` green. This closes the real-browser and desktop
 click-through checklists that were open since Phases 7/8 and the
 WASM checklist from follow-up item 2 — with evidence, not
 assertions. Every scenario below lists what was actually run
@@ -20,7 +23,8 @@ and the observed result; anything not run is marked NOT RUN, never
 passed.
 
 Reproduce: `scripts/test/cli-e2e.sh` (CLI), `apps/web/e2e/web-e2e.mjs`
-+ `apps/web/e2e/web-nowasm.mjs` (web, see `apps/web/e2e/README.md`).
++ `apps/web/e2e/web-nowasm.mjs` + `apps/web/e2e/resize-e2e.mjs`
++ `apps/web/e2e/pdf-e2e.mjs` (web, see `apps/web/e2e/README.md`).
 Screenshots: `apps/web/e2e/screenshots/`.
 
 ## 1. CLI e2e — PASS (all scenarios)
@@ -49,6 +53,7 @@ Full command log: `/tmp/op-e2e/cli/log.txt` + `log2.txt`.
 | 1.12 | `--json convert` | Parses; reports source/target formats, dimensions, byte counts, warnings, metadata lists |
 | 1.13 | ICO auto-resize (ICO fix run, 16 Nov 2026) | `convert photo.jpg out.ico` (1024×768) succeeds at 256×192 with `warning: resized 1024x768 to 256x192 for ICO — ICO supports max 256x256`; output re-detects as ICO (`file`: "MS Windows icon resource … 256 x 192") and `openpixel info` reads it back. 256×192 and smaller inputs convert unchanged with no warning. Same run: RGB-source ICOs now decode back (the codec normalises ICO input to RGBA8 — image-rs's decoder rejects RGB PNGs inside ICO). |
 | 1.14 | `process --target-size` (resize run, 16 Nov 2026; §4b in `scripts/test/cli-e2e.sh`) | `process photo.jpg out-50k.jpg --resize-fit 800x600 --target-size 50KB` → 50 679 B ≤ 51 200 at quality 73, "target size met", re-detects as JPEG 800×600. Unreachable `--target-size 100B` → smallest result (23 595 B, quality 3) + "target size NOT met" warning, exit 0. `--target-size` + `--quality` → exit 1 (conflict). WebP `--target-size` → exit 1, honest error (image-rs 0.25 encodes WebP losslessly only, so quality cannot change its size — see `docs/CODECS.md`). |
+| 1.15 | `pdf` subcommand (Studio Phase 2, 16 Nov 2026; §10 in `scripts/test/cli-e2e.sh`) | Fixtures are real PDFs built with `pdf from-images` (rgba.png + photo.jpg + checker-64.heic → 3-page `doc3.pdf`; 2-page `doc2.pdf`). `info` → 3 pages, version 1.5, page sizes in pt, `--json` parses with `page_count` 3. `merge` 3+2 → 5 pages; `split --ranges 1-3,5` → 3+1 pages; `rotate --pages 1 --degrees 90` → `/Rotate 90` in the bytes, 3 pages; `extract`/`remove` → 2 pages; `reorder 3,2,1` → 3; `duplicate` → 4; `insert --at 2` → 5; `replace --page 2` → 4; `reverse` → 3; `booklet` → 4 (padded to a multiple of 4); `nup 2x2` → 1 sheet — every output re-verified with `pdfinfo`. `render --scale 1.0` → genuine PNGs at exactly the page sizes (256×192, 1024×768, 64×64; `file` + `openpixel info`); `--format jpg` → genuine JFIF; `--pages 2 --scale 2.0` → exactly 1 file, 2048×1536. Error cases exit 1, clean message, no crash: rotate 45, extract page 9, `info` on a PNG, render to SVG (decode-only), merge with a non-PDF. |
 
 ## 2. Web e2e in a real browser — PASS (37/37 checks + fallback; resize run 36/37 + resize suite 16/16 — see §2.19)
 
@@ -100,6 +105,74 @@ fails every attempt); it still failed in this run, so the count
 stays 36/37 honestly. Real users are unaffected in the normal way:
 the picker path is the standard `input.click()` from a keyboard
 handler, which opens the OS file dialog in a real browser.
+
+### 2.20 PDF tab (Studio Phase 2, 16 Nov 2026; `apps/web/e2e/pdf-e2e.mjs`)
+
+**14/14 passed, zero console/page errors**, production build
+served on port 8323. Fixtures are real PDFs built by the debug
+CLI (`openpixel pdf from-images`): `doc4.pdf` (4 pages —
+p1 256×192 pt, p2 1024×768 pt, p3 256×192 pt, p4 1024×768 pt)
+and `doc2.pdf` (2 pages). Every downloaded file was verified
+with `file(1)` and the CLI (`openpixel pdf info` for PDFs,
+`openpixel info` for images).
+
+| # | Scenario | Observed result |
+|---|---|---|
+| 2.20.1 | PDF tab renders | Tab `#tab-pdf` / panel `#panel-pdf`, heading "PDF tools" |
+| 2.20.2 | Info from the WASM engine | Upload `doc4.pdf` → "Pages: 4", "PDF 1.5", "Encrypted: No", page sizes "p1: 256 × 192 pt; p2: 1024 × 768 pt; …" — all from `pdf_info` (lopdf) |
+| 2.20.3 | pdf.js preview really paints | Page 1 at the default 2× scale: canvas is 512×384 and the dims line reads "512 × 384 px" — a broken worker would leave the canvas blank and this check fails |
+| 2.20.4 | PDF→PNG at the chosen scale | "Download page 1 as PNG" → genuine PNG 512×384 (5 063 B, `file` + `openpixel info`), status "Rendered page 1 as PNG: 512 × 384 px" |
+| 2.20.5 | Merge | doc4 + doc2 → "Merged PDF: 6 pages"; downloaded `doc4-merged.pdf` re-verified as a real 6-page PDF |
+| 2.20.6 | Split | Ranges "1-2,3-4" → "Split PDF: split into 2 documents (2 pages, 2 pages)"; both downloads re-verified as real 2-page PDFs |
+| 2.20.7 | Rotate | Rotate page 1 by 90° → "Rotated PDF: 4 pages"; download re-verified as a real 4-page PDF |
+| 2.20.8 | Extract | Extract "1,3" → "Extracted PDF: 2 pages"; download re-verified as a real 2-page PDF |
+| 2.20.9 | Images→PDF | 2 images (PNG + JPEG) → "Images to PDF: 2 pages"; downloaded `images.pdf` re-verified as a real 2-page PDF |
+| 2.20.10 | Dark mode | Theme toggle on the PDF tab, `<html class="dark">`, screenshot `23-pdf-dark.png` |
+
+**Two real defects found by eyeballing the screenshots and
+fixed in the same run:** (a) the Document card showed empty
+Title / Author / Creator / Producer rows for a PDF with no
+metadata — serde-wasm-bindgen serialises a Rust `None` as
+`undefined`, not `null`, so the UI's null check missed it;
+`getPdfInfo` now normalises the optional fields to `null`
+(plus a defensive check in the component) — the re-run
+screenshots show no empty rows. (b) The Preview card's field
+labels ("Page", "Render scale", "Download format") sat beside
+their selects instead of above them (`component="label"` is
+inline); they now use `display: block`, matching the other
+tabs. Both fixes re-verified by a full pdf-e2e re-run (14/14)
+and fresh screenshots `21-pdf-tab.png` … `23-pdf-dark.png`,
+eyeballed in both modes.
+
+**pdf.js 6 API note (caught by `tsc`, not at runtime):**
+pdf.js 6.5.438 changed two APIs from the v4/v5 examples —
+`page.render()` takes the canvas element (`{ canvas, viewport }`,
+not `canvasContext`) and `destroy()` lives on the loading task
+returned by `getDocument()`, not on the document proxy.
+`src/lib/pdf.ts` uses the v6 shapes; the worker is wired with
+the standard Vite `new URL('pdfjs-dist/build/pdf.worker.min.mjs',
+import.meta.url)` pattern and is emitted as a build asset
+(`dist/assets/pdf.worker.min-*.mjs`, 1.27 MB).
+
+**pdf.js rendering, observed:** on the image-based test PDFs
+the preview and the PNG export render fast (the whole 14-check
+suite, including two pdf.js document loads and one render,
+finishes in ~18 s) and pixel-faithful — the rendered PNG is the
+source image at exactly the requested dimensions. Text-heavy
+or vector-complex PDFs were not exercised in this run, so no
+claim is made about their render fidelity or speed; the tab
+states that pdf.js rendering may differ slightly from the
+PDFium CLI render.
+
+**Not covered by this run:** remove / reorder / duplicate /
+reverse / booklet / N-up buttons (wired to the same
+`pdf_process` export and the same result path as the covered
+rotate/extract/split ops, but not clicked in the browser);
+JPEG render output (PNG verified; JPEG uses the same canvas
+`toBlob` path with a different MIME type); encrypted-PDF and
+non-PDF rejection in the browser; the no-WASM fallback path
+for the PDF tab (ops disabled with a warning, preview still
+works — code path only, not browser-verified). These stay OPEN.
 
 ### 2.16 WASM-absent fallback — PASS (9/9, SVG fix run 16 Nov 2026)
 

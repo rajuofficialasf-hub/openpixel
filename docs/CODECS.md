@@ -426,8 +426,23 @@ the rows below are updated to say so. What is still only detected:
   `convert x.svg y.png` rasterises at the SVG's intrinsic size
   (scaled down only past 16 384 px / 100 MP).
 
-## PDF
+## PDF (Studio Phase 2, 16 Nov 2026)
 
-PDF is **not** an image codec. If added later it will be a separate
-document-rendering adapter with page selection and rasterisation —
-never listed as a normal format in the registry.
+PDF is **not** an image codec and is never listed as a normal
+format in the registry — it is a document engine
+(`crates/openpixel-pdf`), a separate adapter with page selection
+and rasterisation. Full detail: `docs/PDF.md`.
+
+| Capability | How | Licence |
+|---|---|---|
+| Page ops (merge/split/rotate/extract/remove/reorder/duplicate/insert/replace/reverse/booklet/N-up), info, image→PDF | lopdf `=0.47.0` (pure Rust) | MIT |
+| Render PDF→image (PNG/JPG/WebP) | pdfium-render `=0.9.5` + prebuilt libpdfium, chromium build 8152 (dynamic, never committed; fetch with `scripts/pdfium/fetch-pdfium.sh`) | pdfium-render MIT OR Apache-2.0; PDFium BSD-3-Clause; libloading (the dynamic loader) ISC |
+| Browser page ops + image→PDF | lopdf in WASM (`pdf_info`, `pdf_process`, `pdf_merge`, `pdf_from_images`) | MIT |
+| Browser preview + PDF→image | pdf.js (pdfjs-dist `=6.5.438`) | Apache-2.0 |
+
+Honest limits: page labels/outlines/Info are not carried over by
+page ops; encrypted PDFs fail cleanly (no password support);
+N-up ignores a source page's `/Rotate`; image→PDF flattens alpha
+onto white; PDF/A is out of scope. PDFium render is
+CLI/desktop-only — the browser renders with pdf.js instead
+(different rasteriser, possibly slightly different pixels).

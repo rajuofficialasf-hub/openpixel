@@ -99,5 +99,68 @@ run "$BIN" capabilities psd
 run "$BIN" capabilities heic
 echo "=== 9. formats list ==="
 run "$BIN" formats
+echo "=== 10. pdf (Studio Phase 2) ==="
+# Fixtures: real PDFs built from the image fixtures (no checked-in PDFs).
+run "$BIN" pdf from-images "$IN/rgba.png" "$IN/photo.jpg" "$IN/checker-64.heic" -o "$IN/doc3.pdf"
+run "$BIN" pdf from-images "$IN/photo.jpg" "$IN/rgba.png" -o "$IN/doc2.pdf"
+run "$BIN" pdf info "$IN/doc3.pdf"
+"$BIN" pdf info "$IN/doc3.pdf" | grep -Eq "pages:\s+3" || { echo "FAIL: doc3.pdf should have 3 pages"; exit 1; }
+pdfinfo "$IN/doc3.pdf" | grep -Eq "Pages:\s+3" || { echo "FAIL: pdfinfo doc3.pdf"; exit 1; }
+"$BIN" --json pdf info "$IN/doc3.pdf" | grep -Eq '"page_count": 3' || { echo "FAIL: --json pdf info"; exit 1; }
+# merge 3+2 = 5
+run "$BIN" pdf merge "$IN/doc3.pdf" "$IN/doc2.pdf" -o "$OUT/pdf-merged.pdf"
+pdfinfo "$OUT/pdf-merged.pdf" | grep -Eq "Pages:\s+5" || { echo "FAIL: merged should have 5 pages"; exit 1; }
+# split 1-3,5 -> 3 + 1 pages
+run "$BIN" pdf split "$OUT/pdf-merged.pdf" --ranges 1-3,5 --out-dir "$OUT/pdf-split"
+pdfinfo "$OUT/pdf-split/pdf-merged-part1.pdf" | grep -Eq "Pages:\s+3" || { echo "FAIL: split part1"; exit 1; }
+pdfinfo "$OUT/pdf-split/pdf-merged-part2.pdf" | grep -Eq "Pages:\s+1" || { echo "FAIL: split part2"; exit 1; }
+# page ops (each re-verified with pdfinfo)
+run "$BIN" pdf rotate "$IN/doc3.pdf" "$OUT/pdf-rot.pdf" --pages 1 --degrees 90
+grep -aq "/Rotate 90" "$OUT/pdf-rot.pdf" || { echo "FAIL: rotated page should carry /Rotate 90"; exit 1; }
+pdfinfo "$OUT/pdf-rot.pdf" | grep -Eq "Pages:\s+3" || { echo "FAIL: rot page count"; exit 1; }
+run "$BIN" pdf extract "$IN/doc3.pdf" "$OUT/pdf-ext.pdf" --pages 2,3
+pdfinfo "$OUT/pdf-ext.pdf" | grep -Eq "Pages:\s+2" || { echo "FAIL: extract"; exit 1; }
+run "$BIN" pdf remove "$IN/doc3.pdf" "$OUT/pdf-rem.pdf" --pages 2
+pdfinfo "$OUT/pdf-rem.pdf" | grep -Eq "Pages:\s+2" || { echo "FAIL: remove"; exit 1; }
+run "$BIN" pdf reorder "$IN/doc3.pdf" "$OUT/pdf-reo.pdf" --order 3,2,1
+pdfinfo "$OUT/pdf-reo.pdf" | grep -Eq "Pages:\s+3" || { echo "FAIL: reorder"; exit 1; }
+run "$BIN" pdf duplicate "$IN/doc3.pdf" "$OUT/pdf-dup.pdf" --pages 1
+pdfinfo "$OUT/pdf-dup.pdf" | grep -Eq "Pages:\s+4" || { echo "FAIL: duplicate"; exit 1; }
+run "$BIN" pdf insert "$IN/doc3.pdf" "$IN/doc2.pdf" "$OUT/pdf-ins.pdf" --at 2
+pdfinfo "$OUT/pdf-ins.pdf" | grep -Eq "Pages:\s+5" || { echo "FAIL: insert"; exit 1; }
+run "$BIN" pdf replace "$IN/doc3.pdf" "$IN/doc2.pdf" "$OUT/pdf-rep.pdf" --page 2
+pdfinfo "$OUT/pdf-rep.pdf" | grep -Eq "Pages:\s+4" || { echo "FAIL: replace"; exit 1; }
+run "$BIN" pdf reverse "$IN/doc3.pdf" "$OUT/pdf-rev.pdf"
+pdfinfo "$OUT/pdf-rev.pdf" | grep -Eq "Pages:\s+3" || { echo "FAIL: reverse"; exit 1; }
+run "$BIN" pdf booklet "$IN/doc3.pdf" "$OUT/pdf-book.pdf"
+pdfinfo "$OUT/pdf-book.pdf" | grep -Eq "Pages:\s+4" || { echo "FAIL: booklet pads to 4"; exit 1; }
+run "$BIN" pdf nup "$IN/doc3.pdf" "$OUT/pdf-nup.pdf" --cols 2 --rows 2
+pdfinfo "$OUT/pdf-nup.pdf" | grep -Eq "Pages:\s+1" || { echo "FAIL: nup 2x2 of 3 pages is 1 sheet"; exit 1; }
+# render: PDF -> genuine PNG/JPG at the requested dimensions (scale 1.0 = 72 DPI).
+# doc3 pages are 256x192, 1024x768, 64x64 pt (from-images uses each image's own size).
+run "$BIN" pdf render "$IN/doc3.pdf" --scale 1.0 --out-dir "$OUT/pdf-pages"
+for spec in "doc3-p1.png:256x192" "doc3-p2.png:1024x768" "doc3-p3.png:64x64"; do
+  f="${spec%%:*}"; dims="${spec##*:}"
+  file "$OUT/pdf-pages/$f" | grep -q "PNG image data, ${dims%%x*} x ${dims##*x}" || { echo "FAIL: $f is not a genuine ${dims} PNG"; file "$OUT/pdf-pages/$f"; exit 1; }
+  "$BIN" info "$OUT/pdf-pages/$f" | grep -Eq "size:\s+${dims%%x*}x${dims##*x}" || { echo "FAIL: $f info dimensions"; exit 1; }
+done
+run "$BIN" pdf render "$IN/doc3.pdf" --scale 1.0 --format jpg --quality 80 --out-dir "$OUT/pdf-pages-jpg"
+file "$OUT/pdf-pages-jpg/doc3-p1.jpg" | grep -q "JPEG image data" || { echo "FAIL: rendered JPG is not genuine JPEG"; exit 1; }
+"$BIN" info "$OUT/pdf-pages-jpg/doc3-p1.jpg" | grep -Eq "size:\s+256x192" || { echo "FAIL: rendered JPG dimensions"; exit 1; }
+# render a single page only, at scale 2.0 (144 DPI): photo.jpg page is 1024x768 pt -> 2048x1536 px.
+run "$BIN" pdf render "$IN/doc3.pdf" --pages 2 --scale 2.0 --out-dir "$OUT/pdf-pages-one"
+[ "$(ls "$OUT/pdf-pages-one" | wc -l)" -eq 1 ] || { echo "FAIL: single-page render should write exactly 1 file"; exit 1; }
+"$BIN" info "$OUT/pdf-pages-one/doc3-p2.png" | grep -Eq "size:\s+2048x1536" || { echo "FAIL: scale 2.0 render should be 2048x1536"; exit 1; }
+echo "=== 10b. pdf error cases (expect exit 1, clean error, no crash) ==="
+"$BIN" pdf rotate "$IN/doc3.pdf" "$OUT/x.pdf" --degrees 45 > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: rotate 45 should exit 1"; exit 1; }
+"$BIN" pdf extract "$IN/doc3.pdf" "$OUT/x.pdf" --pages 9 > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: extract page 9 should exit 1"; exit 1; }
+"$BIN" pdf info "$IN/rgba.png" > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: pdf info on a PNG should exit 1"; exit 1; }
+"$BIN" pdf render "$IN/doc3.pdf" --format svg --out-dir "$OUT/x" > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: render to SVG (decode-only) should exit 1"; exit 1; }
+"$BIN" pdf merge "$IN/doc3.pdf" "$IN/rgba.png" -o "$OUT/x.pdf" > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: merge with a non-PDF should exit 1"; exit 1; }
 echo "=== DONE ==="
 ls -la "$OUT" | head -50

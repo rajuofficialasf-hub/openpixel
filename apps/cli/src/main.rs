@@ -254,6 +254,155 @@ enum Commands {
         #[arg(long, value_name = "SPEC")]
         op: Vec<String>,
     },
+    /// PDF operations (Studio Phase 2): info, page ops, render to
+    /// images, and building a PDF from images
+    Pdf {
+        #[command(subcommand)]
+        command: PdfCommands,
+    },
+}
+
+/// The `openpixel pdf ...` subcommands (Studio Phase 2). Every
+/// command that writes a PDF takes its output as a positional
+/// `output` path, except `merge`/`from-images` (several inputs, so
+/// the output is `--output`) and `split`/`render` (several outputs,
+/// so the destination is `--out-dir`).
+#[derive(Subcommand)]
+enum PdfCommands {
+    /// Show page count, page sizes, metadata, encryption status and PDF version
+    Info { input: PathBuf },
+    /// Merge several PDFs into one, in order
+    Merge {
+        /// Input PDFs, in order
+        #[arg(required = true)]
+        inputs: Vec<PathBuf>,
+        /// Output PDF
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+    /// Split a PDF into one file per range: --ranges 1-3,5-7
+    Split {
+        input: PathBuf,
+        /// Page ranges, e.g. 1-3,5-7 (1-based, inclusive; a single
+        /// number means one page)
+        #[arg(long)]
+        ranges: String,
+        /// Where to write the parts (default: <input-stem>-split next
+        /// to the input)
+        #[arg(long)]
+        out_dir: Option<PathBuf>,
+    },
+    /// Rotate pages 90/180/270 degrees (adds to any existing rotation)
+    Rotate {
+        input: PathBuf,
+        output: PathBuf,
+        /// Pages, e.g. 1,3,5 or 1-3,5 (default: all pages)
+        #[arg(long)]
+        pages: Option<String>,
+        /// Degrees: 90, 180 or 270
+        #[arg(long)]
+        degrees: u16,
+    },
+    /// Keep exactly these pages, in the given order (repeats allowed)
+    Extract {
+        input: PathBuf,
+        output: PathBuf,
+        /// Pages, e.g. 1,3,5 or 1-3,5
+        #[arg(long)]
+        pages: String,
+    },
+    /// Remove these pages
+    Remove {
+        input: PathBuf,
+        output: PathBuf,
+        /// Pages, e.g. 2,4 or 2-3
+        #[arg(long)]
+        pages: String,
+    },
+    /// Reorder pages: --order 3,1,2 (must list every page exactly once)
+    Reorder {
+        input: PathBuf,
+        output: PathBuf,
+        /// New order, e.g. 3,1,2
+        #[arg(long)]
+        order: String,
+    },
+    /// Duplicate pages right after themselves
+    Duplicate {
+        input: PathBuf,
+        output: PathBuf,
+        /// Pages to duplicate, e.g. 1,2
+        #[arg(long)]
+        pages: String,
+    },
+    /// Insert another PDF's pages before page N (1-based; N =
+    /// pages+1 appends at the end)
+    Insert {
+        input: PathBuf,
+        other: PathBuf,
+        output: PathBuf,
+        /// Page to insert before, 1-based
+        #[arg(long)]
+        at: u32,
+    },
+    /// Replace one page with all pages of another PDF
+    Replace {
+        input: PathBuf,
+        replacement: PathBuf,
+        output: PathBuf,
+        /// Page to replace, 1-based
+        #[arg(long)]
+        page: u32,
+    },
+    /// Reverse the page order
+    Reverse { input: PathBuf, output: PathBuf },
+    /// Reorder pages for saddle-stitch booklet printing (pads the
+    /// document to a multiple of 4 pages)
+    Booklet { input: PathBuf, output: PathBuf },
+    /// Lay pages out N-up on sheets
+    Nup {
+        input: PathBuf,
+        output: PathBuf,
+        /// Columns per sheet (default 2)
+        #[arg(long, default_value = "2")]
+        cols: u32,
+        /// Rows per sheet (default 2)
+        #[arg(long, default_value = "2")]
+        rows: u32,
+    },
+    /// Render pages to images (needs libpdfium — see docs/PDF.md)
+    Render {
+        input: PathBuf,
+        /// Where to write the images (default: <input-stem>-pages
+        /// next to the input)
+        #[arg(long)]
+        out_dir: Option<PathBuf>,
+        /// Pages, e.g. 1,3,5 or 1-3,5 (default: all pages)
+        #[arg(long)]
+        pages: Option<String>,
+        /// Image format: png, jpg, webp (default png)
+        #[arg(long, default_value = "png")]
+        format: String,
+        /// Render scale: 1.0 = 72 DPI, 2.0 = 144 DPI (0.25..=6.0)
+        #[arg(long, default_value = "2.0")]
+        scale: f32,
+        /// JPEG/WebP quality 1-100 (default 85)
+        #[arg(long)]
+        quality: Option<u8>,
+    },
+    /// Build a PDF from images, one page per image, in order
+    FromImages {
+        /// Images (PNG, JPEG, WebP, anything the engine decodes)
+        #[arg(required = true)]
+        inputs: Vec<PathBuf>,
+        /// Output PDF
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Page size: A4, Letter, A5 (default: each image's own size
+        /// in points, 1 px = 1 pt)
+        #[arg(long)]
+        page_size: Option<String>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -788,6 +937,537 @@ fn run(cli: &Cli, engine: &Arc<Engine>) -> Result<(), openpixel_core::OpenPixelE
             }
             Ok(())
         }
+        Commands::Pdf { command } => run_pdf(cli, engine, command),
+    }
+}
+
+/// What a one-output PDF command reports, in text and `--json`.
+#[derive(Debug, serde::Serialize)]
+struct PdfOpSummary {
+    command: &'static str,
+    output: PathBuf,
+    pages: u32,
+    bytes: u64,
+}
+
+/// One output of a multi-output PDF command.
+#[derive(Debug, serde::Serialize)]
+struct PdfOpOutput {
+    path: PathBuf,
+    pages: u32,
+    bytes: u64,
+}
+
+/// What `pdf split` reports.
+#[derive(Debug, serde::Serialize)]
+struct PdfSplitSummary {
+    command: &'static str,
+    outputs: Vec<PdfOpOutput>,
+}
+
+/// One rendered page.
+#[derive(Debug, serde::Serialize)]
+struct PdfRenderOutput {
+    path: PathBuf,
+    page: u32,
+    width: u32,
+    height: u32,
+    bytes: u64,
+}
+
+/// What `pdf render` reports.
+#[derive(Debug, serde::Serialize)]
+struct PdfRenderSummary {
+    command: &'static str,
+    format: String,
+    scale: f32,
+    outputs: Vec<PdfRenderOutput>,
+}
+
+/// Map a PDF error onto the CLI's error type. `NotImplemented`
+/// (missing libpdfium, unimplemented op) keeps its variant so the
+/// message is not dressed up as a bad argument; everything else is
+/// a caller-visible failure of the input or the operation.
+fn pdf_err(e: openpixel_pdf::PdfError) -> openpixel_core::OpenPixelError {
+    match e {
+        openpixel_pdf::PdfError::NotImplemented(msg) => {
+            openpixel_core::OpenPixelError::NotImplemented(msg)
+        }
+        other => openpixel_core::OpenPixelError::InvalidArgument(other.to_string()),
+    }
+}
+
+/// Read a PDF (or image, for `from-images`) with the same
+/// not-found / I/O distinction the image commands use.
+fn read_pdf_bytes(path: &Path) -> Result<Vec<u8>, openpixel_core::OpenPixelError> {
+    fs::read(path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            openpixel_core::OpenPixelError::NotFound(path.to_path_buf())
+        } else {
+            openpixel_core::OpenPixelError::Io {
+                path: path.to_path_buf(),
+                source: e,
+            }
+        }
+    })
+}
+
+/// Write PDF bytes, creating parent directories and applying the
+/// same output-path rule as the image commands (no `..`, no NUL).
+fn write_pdf_bytes(path: &Path, bytes: &[u8]) -> Result<(), openpixel_core::OpenPixelError> {
+    use openpixel_core::security::validate_output_path;
+    validate_output_path(path)?;
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|e| openpixel_core::OpenPixelError::Io {
+                path: parent.to_path_buf(),
+                source: e,
+            })?;
+        }
+    }
+    fs::write(path, bytes).map_err(|e| openpixel_core::OpenPixelError::Io {
+        path: path.to_path_buf(),
+        source: e,
+    })
+}
+
+/// Parse "1,3,5" / "1-3,5" into 1-based page numbers, in order.
+/// Ranges are inclusive; a page number must be >= 1.
+fn parse_page_list(s: &str) -> Result<Vec<u32>, openpixel_core::OpenPixelError> {
+    let err = || {
+        openpixel_core::OpenPixelError::InvalidArgument(format!(
+            "invalid page list '{s}' — use e.g. 1,3,5 or 1-3,5"
+        ))
+    };
+    let mut pages = Vec::new();
+    for part in s.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            return Err(err());
+        }
+        if let Some((a, b)) = part.split_once('-') {
+            let a: u32 = a.trim().parse().map_err(|_| err())?;
+            let b: u32 = b.trim().parse().map_err(|_| err())?;
+            if a == 0 || b < a {
+                return Err(err());
+            }
+            pages.extend(a..=b);
+        } else {
+            let p: u32 = part.parse().map_err(|_| err())?;
+            if p == 0 {
+                return Err(err());
+            }
+            pages.push(p);
+        }
+    }
+    if pages.is_empty() {
+        return Err(err());
+    }
+    Ok(pages)
+}
+
+/// Parse "1-3,5-7" into inclusive ranges; a lone number means a
+/// one-page range.
+fn parse_ranges(s: &str) -> Result<Vec<(u32, u32)>, openpixel_core::OpenPixelError> {
+    let err = || {
+        openpixel_core::OpenPixelError::InvalidArgument(format!(
+            "invalid page ranges '{s}' — use e.g. 1-3,5-7"
+        ))
+    };
+    let mut ranges = Vec::new();
+    for part in s.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            return Err(err());
+        }
+        if let Some((a, b)) = part.split_once('-') {
+            let a: u32 = a.trim().parse().map_err(|_| err())?;
+            let b: u32 = b.trim().parse().map_err(|_| err())?;
+            if a == 0 || b < a {
+                return Err(err());
+            }
+            ranges.push((a, b));
+        } else {
+            let p: u32 = part.parse().map_err(|_| err())?;
+            if p == 0 {
+                return Err(err());
+            }
+            ranges.push((p, p));
+        }
+    }
+    if ranges.is_empty() {
+        return Err(err());
+    }
+    Ok(ranges)
+}
+
+/// Default `--out-dir` for a multi-output PDF command: a directory
+/// named `<input-stem>-<suffix>` next to the input file.
+fn default_pdf_out_dir(input: &Path, suffix: &str) -> PathBuf {
+    let stem = input
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "out".into());
+    let parent = input.parent().unwrap_or_else(|| Path::new("."));
+    parent.join(format!("{stem}-{suffix}"))
+}
+
+fn run_pdf(
+    cli: &Cli,
+    engine: &Arc<Engine>,
+    command: &PdfCommands,
+) -> Result<(), openpixel_core::OpenPixelError> {
+    let pdf = openpixel_pdf::PdfEngine::default();
+    match command {
+        PdfCommands::Info { input } => {
+            let bytes = read_pdf_bytes(input)?;
+            let info = pdf.inspect(&bytes).map_err(pdf_err)?;
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&info).unwrap());
+            } else {
+                println!("file:      {}", input.display());
+                println!("pages:     {}", info.page_count);
+                println!("version:   {}", info.version);
+                println!("encrypted: {}", yes(info.encrypted));
+                if let Some(t) = &info.title {
+                    println!("title:     {t}");
+                }
+                if let Some(a) = &info.author {
+                    println!("author:    {a}");
+                }
+                if let Some(c) = &info.creator {
+                    println!("creator:   {c}");
+                }
+                if let Some(p) = &info.producer {
+                    println!("producer:  {p}");
+                }
+                let sizes: Vec<String> = info
+                    .page_sizes
+                    .iter()
+                    .enumerate()
+                    .map(|(i, (w, h))| format!("p{}: {w:.0}x{h:.0} pt", i + 1))
+                    .collect();
+                println!("page sizes: {}", sizes.join(", "));
+            }
+            Ok(())
+        }
+        PdfCommands::Merge { inputs, output } => {
+            let mut docs = Vec::with_capacity(inputs.len());
+            for input in inputs {
+                docs.push(read_pdf_bytes(input)?);
+            }
+            let out = pdf.merge(&docs).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            print_pdf_op(cli, &pdf, "merge", output, &out);
+            Ok(())
+        }
+        PdfCommands::Split {
+            input,
+            ranges,
+            out_dir,
+        } => {
+            let bytes = read_pdf_bytes(input)?;
+            let ranges = parse_ranges(ranges)?;
+            let parts = pdf.split(&bytes, &ranges).map_err(pdf_err)?;
+            let out_dir = out_dir
+                .clone()
+                .unwrap_or_else(|| default_pdf_out_dir(input, "split"));
+            fs::create_dir_all(&out_dir).map_err(|e| openpixel_core::OpenPixelError::Io {
+                path: out_dir.clone(),
+                source: e,
+            })?;
+            let stem = input
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "out".into());
+            let mut outputs = Vec::with_capacity(parts.len());
+            for (i, part) in parts.iter().enumerate() {
+                let path = out_dir.join(format!("{stem}-part{}.pdf", i + 1));
+                write_pdf_bytes(&path, part)?;
+                outputs.push(PdfOpOutput {
+                    pages: pdf.page_count(part).map_err(pdf_err)?,
+                    bytes: part.len() as u64,
+                    path,
+                });
+            }
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&PdfSplitSummary {
+                        command: "split",
+                        outputs
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                for o in &outputs {
+                    println!(
+                        "wrote {} ({} pages, {} bytes)",
+                        o.path.display(),
+                        o.pages,
+                        o.bytes
+                    );
+                }
+            }
+            Ok(())
+        }
+        PdfCommands::Rotate {
+            input,
+            output,
+            pages,
+            degrees,
+        } => {
+            let bytes = read_pdf_bytes(input)?;
+            let list = pages.as_deref().map(parse_page_list).transpose()?;
+            let out = pdf
+                .rotate(&bytes, list.as_deref(), *degrees)
+                .map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            print_pdf_op(cli, &pdf, "rotate", output, &out);
+            Ok(())
+        }
+        PdfCommands::Extract {
+            input,
+            output,
+            pages,
+        } => {
+            let bytes = read_pdf_bytes(input)?;
+            let list = parse_page_list(pages)?;
+            let out = pdf.extract(&bytes, &list).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            print_pdf_op(cli, &pdf, "extract", output, &out);
+            Ok(())
+        }
+        PdfCommands::Remove {
+            input,
+            output,
+            pages,
+        } => {
+            let bytes = read_pdf_bytes(input)?;
+            let list = parse_page_list(pages)?;
+            let out = pdf.remove(&bytes, &list).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            print_pdf_op(cli, &pdf, "remove", output, &out);
+            Ok(())
+        }
+        PdfCommands::Reorder {
+            input,
+            output,
+            order,
+        } => {
+            let bytes = read_pdf_bytes(input)?;
+            let list = parse_page_list(order)?;
+            let out = pdf.reorder(&bytes, &list).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            print_pdf_op(cli, &pdf, "reorder", output, &out);
+            Ok(())
+        }
+        PdfCommands::Duplicate {
+            input,
+            output,
+            pages,
+        } => {
+            let bytes = read_pdf_bytes(input)?;
+            let list = parse_page_list(pages)?;
+            let out = pdf.duplicate(&bytes, &list).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            print_pdf_op(cli, &pdf, "duplicate", output, &out);
+            Ok(())
+        }
+        PdfCommands::Insert {
+            input,
+            other,
+            output,
+            at,
+        } => {
+            let bytes = read_pdf_bytes(input)?;
+            let other_bytes = read_pdf_bytes(other)?;
+            let out = pdf.insert(&bytes, *at, &[other_bytes]).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            print_pdf_op(cli, &pdf, "insert", output, &out);
+            Ok(())
+        }
+        PdfCommands::Replace {
+            input,
+            replacement,
+            output,
+            page,
+        } => {
+            let bytes = read_pdf_bytes(input)?;
+            let replacement_bytes = read_pdf_bytes(replacement)?;
+            let out = pdf
+                .replace(&bytes, *page, &replacement_bytes)
+                .map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            print_pdf_op(cli, &pdf, "replace", output, &out);
+            Ok(())
+        }
+        PdfCommands::Reverse { input, output } => {
+            let bytes = read_pdf_bytes(input)?;
+            let out = pdf.reverse(&bytes).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            print_pdf_op(cli, &pdf, "reverse", output, &out);
+            Ok(())
+        }
+        PdfCommands::Booklet { input, output } => {
+            let bytes = read_pdf_bytes(input)?;
+            let out = pdf.booklet(&bytes).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            print_pdf_op(cli, &pdf, "booklet", output, &out);
+            Ok(())
+        }
+        PdfCommands::Nup {
+            input,
+            output,
+            cols,
+            rows,
+        } => {
+            let bytes = read_pdf_bytes(input)?;
+            let out = pdf.nup(&bytes, *cols, *rows).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            print_pdf_op(cli, &pdf, "nup", output, &out);
+            Ok(())
+        }
+        PdfCommands::Render {
+            input,
+            out_dir,
+            pages,
+            format,
+            scale,
+            quality,
+        } => {
+            let target = ImageFormat::from_name(format).ok_or_else(|| {
+                openpixel_core::OpenPixelError::InvalidArgument(format!(
+                    "unknown format '{format}' — render targets are image formats (png, jpg, webp)"
+                ))
+            })?;
+            let bytes = read_pdf_bytes(input)?;
+            let list = pages.as_deref().map(parse_page_list).transpose()?;
+            let rendered = pdf
+                .render_to_images(&bytes, list.as_deref(), *scale)
+                .map_err(pdf_err)?;
+            let out_dir = out_dir
+                .clone()
+                .unwrap_or_else(|| default_pdf_out_dir(input, "pages"));
+            fs::create_dir_all(&out_dir).map_err(|e| openpixel_core::OpenPixelError::Io {
+                path: out_dir.clone(),
+                source: e,
+            })?;
+            let stem = input
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "out".into());
+            let ext = target.extensions()[0];
+            let options = ConvertOptions {
+                quality: *quality,
+                ..Default::default()
+            };
+            let mut outputs = Vec::with_capacity(rendered.len());
+            for page in &rendered {
+                let (_result, encoded) = engine
+                    .encode_decoded(&page.image, target, &options)
+                    .map_err(|e| {
+                        openpixel_core::OpenPixelError::InvalidArgument(format!(
+                            "could not encode rendered page {} as {format}: {e}",
+                            page.page
+                        ))
+                    })?;
+                let path = out_dir.join(format!("{stem}-p{}.{ext}", page.page));
+                fs::write(&path, &encoded).map_err(|e| openpixel_core::OpenPixelError::Io {
+                    path: path.clone(),
+                    source: e,
+                })?;
+                if !cli.quiet {
+                    for w in &_result.warnings {
+                        println!("warning: {w}");
+                    }
+                }
+                outputs.push(PdfRenderOutput {
+                    path,
+                    page: page.page,
+                    width: page.image.width,
+                    height: page.image.height,
+                    bytes: encoded.len() as u64,
+                });
+            }
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&PdfRenderSummary {
+                        command: "render",
+                        format: format.clone(),
+                        scale: *scale,
+                        outputs
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                for o in &outputs {
+                    println!(
+                        "wrote {} (page {}, {}x{} px, {} bytes)",
+                        o.path.display(),
+                        o.page,
+                        o.width,
+                        o.height,
+                        o.bytes
+                    );
+                }
+            }
+            Ok(())
+        }
+        PdfCommands::FromImages {
+            inputs,
+            output,
+            page_size,
+        } => {
+            let mut images = Vec::with_capacity(inputs.len());
+            for input in inputs {
+                images.push(read_pdf_bytes(input)?);
+            }
+            let size = match page_size.as_deref() {
+                None => None,
+                Some(name) => Some(openpixel_pdf::named_page_size(name).ok_or_else(|| {
+                    openpixel_core::OpenPixelError::InvalidArgument(format!(
+                        "unknown page size '{name}' — use A4, Letter, or A5"
+                    ))
+                })?),
+            };
+            let out = pdf.from_images(&images, size).map_err(pdf_err)?;
+            write_pdf_bytes(output, &out)?;
+            print_pdf_op(cli, &pdf, "from-images", output, &out);
+            Ok(())
+        }
+    }
+}
+
+/// Print one PDF command's result: text line, or the JSON summary.
+fn print_pdf_op(
+    cli: &Cli,
+    pdf: &openpixel_pdf::PdfEngine,
+    command: &'static str,
+    output: &Path,
+    out_bytes: &[u8],
+) {
+    if cli.json {
+        let pages = pdf.page_count(out_bytes).unwrap_or(0);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&PdfOpSummary {
+                command,
+                output: output.to_path_buf(),
+                pages,
+                bytes: out_bytes.len() as u64,
+            })
+            .unwrap()
+        );
+    } else if !cli.quiet {
+        let pages = pdf.page_count(out_bytes).unwrap_or(0);
+        println!(
+            "wrote {} ({} pages, {} bytes)",
+            output.display(),
+            pages,
+            out_bytes.len()
+        );
     }
 }
 

@@ -1641,6 +1641,7 @@ dependencies = [
  "image",
  "openpixel-core",
  "openpixel-jobs",
+ "openpixel-pdf",
  "serde",
  "serde_json",
  "tempfile",
@@ -1733,6 +1734,7 @@ dependencies = [
 name = "openpixel-pdf"
 version = "0.1.0"
 dependencies = [
+ "flate2",
  "getrandom 0.4.3",
  "image",
  "lopdf",
@@ -1769,6 +1771,7 @@ dependencies = [
  "js-sys",
  "openpixel-core",
  "openpixel-formats",
+ "openpixel-pdf",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",

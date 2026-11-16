@@ -54,16 +54,45 @@ pub struct PdfInfo {
     pub creator: Option<String>,
     pub producer: Option<String>,
     pub encrypted: bool,
+    /// Effective page size in points (width, height) per page, in
+    /// page order: CropBox when present, else MediaBox.
+    pub page_sizes: Vec<(f64, f64)>,
 }
 
-/// The operation `process()` runs on one document (Phase 1: split
-/// only — merge takes several inputs, so it is a native method,
-/// not a trait operation).
+/// The operation `process()` runs on one document (Phase 2:
+/// split/rotate/extract/remove/reorder/duplicate/reverse/
+/// booklet/N-up). Merge, insert, replace, render and image→PDF
+/// take several inputs or a different output type, so they are
+/// native methods, not trait operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PdfOperation {
     /// Extract these 1-based inclusive page ranges, one output
     /// document per range.
     Split { ranges: Vec<(u32, u32)> },
+    /// Rotate pages by 90, 180 or 270 degrees clockwise (added to
+    /// any existing /Rotate). `pages: None` rotates every page.
+    Rotate {
+        pages: Option<Vec<u32>>,
+        degrees: u16,
+    },
+    /// Keep exactly these pages (1-based, in the given order;
+    /// repeats are allowed) in one output document.
+    Extract { pages: Vec<u32> },
+    /// Drop these pages, keep the rest in order.
+    Remove { pages: Vec<u32> },
+    /// Reorder all pages: a permutation of 1..=page_count.
+    Reorder { order: Vec<u32> },
+    /// Duplicate these pages, each copy placed right after its
+    /// original.
+    Duplicate { pages: Vec<u32> },
+    /// Reverse the page order.
+    Reverse,
+    /// Reorder pages into booklet (duplex-print) imposition,
+    /// padding with blank pages to a multiple of four.
+    Booklet,
+    /// N-up layout: `cols` × `rows` source pages per output
+    /// sheet (each 1..=16).
+    Nup { cols: u32, rows: u32 },
 }
 
 /// Options for `PdfEngine::process`.
@@ -162,6 +191,14 @@ impl PdfEngine {
             creator: get_str(b"Creator"),
             producer: get_str(b"Producer"),
             encrypted: doc.is_encrypted(),
+            page_sizes: doc
+                .get_pages()
+                .values()
+                .map(|&id| {
+                    let (_, _, w, h) = page_box_rect(&doc, id);
+                    (w, h)
+                })
+                .collect(),
         })
     }
 
@@ -273,6 +310,32 @@ impl ProcessingEngine for PdfEngine {
         }
         match &options.operation {
             PdfOperation::Split { ranges } => self.split(bytes, ranges).map_err(Into::into),
+            PdfOperation::Rotate { pages, degrees } => self
+                .rotate(bytes, pages.as_deref(), *degrees)
+                .map(|out| vec![out])
+                .map_err(Into::into),
+            PdfOperation::Extract { pages } => self
+                .extract(bytes, pages)
+                .map(|out| vec![out])
+                .map_err(Into::into),
+            PdfOperation::Remove { pages } => self
+                .remove(bytes, pages)
+                .map(|out| vec![out])
+                .map_err(Into::into),
+            PdfOperation::Reorder { order } => self
+                .reorder(bytes, order)
+                .map(|out| vec![out])
+                .map_err(Into::into),
+            PdfOperation::Duplicate { pages } => self
+                .duplicate(bytes, pages)
+                .map(|out| vec![out])
+                .map_err(Into::into),
+            PdfOperation::Reverse => self.reverse(bytes).map(|out| vec![out]).map_err(Into::into),
+            PdfOperation::Booklet => self.booklet(bytes).map(|out| vec![out]).map_err(Into::into),
+            PdfOperation::Nup { cols, rows } => self
+                .nup(bytes, *cols, *rows)
+                .map(|out| vec![out])
+                .map_err(Into::into),
         }
     }
 
@@ -309,9 +372,20 @@ impl ProcessingEngine for PdfEngine {
                     note: "not implemented — Phase 3".to_string(),
                 },
                 HealthDetail {
+                    name: "page operations".to_string(),
+                    ok: true,
+                    note: "rotate/extract/remove/reorder/duplicate/reverse/booklet/N-up — PdfEngine methods".to_string(),
+                },
+                HealthDetail {
                     name: "render to image (PDFium)".to_string(),
+                    #[cfg(feature = "pdfium")]
+                    ok: true,
+                    #[cfg(not(feature = "pdfium"))]
                     ok: false,
-                    note: "prototype only — Phase 2, see examples/pdfium_render.rs".to_string(),
+                    #[cfg(feature = "pdfium")]
+                    note: "PdfiumRenderer — libpdfium resolved at runtime, see docs/PDF.md".to_string(),
+                    #[cfg(not(feature = "pdfium"))]
+                    note: "not enabled in this build — rebuild with --features pdfium and a libpdfium binary".to_string(),
                 },
             ],
         }
@@ -321,7 +395,7 @@ impl ProcessingEngine for PdfEngine {
 /// A fresh output document: catalog + empty Pages node. Returns
 /// the document; the caller fills the Pages node and calls
 /// `finish_document` to set the page count.
-fn fresh_document(version: &str) -> Document {
+pub(crate) fn fresh_document(version: &str) -> Document {
     let mut doc = Document::with_version(version);
     let pages_id = doc.add_object(Dictionary::from_iter(vec![
         ("Type", Object::Name(b"Pages".to_vec())),
@@ -337,7 +411,7 @@ fn fresh_document(version: &str) -> Document {
 }
 
 /// The Pages node id of a document built by `fresh_document`.
-fn out_pages_id(doc: &mut Document) -> ObjectId {
+pub(crate) fn out_pages_id(doc: &mut Document) -> ObjectId {
     let catalog_id = doc
         .trailer
         .get(b"Root")
@@ -351,7 +425,7 @@ fn out_pages_id(doc: &mut Document) -> ObjectId {
 
 /// Set the Pages `/Count` from the `/Kids` array after all pages
 /// were copied in.
-fn finish_document(doc: &mut Document, pages_id: ObjectId) {
+pub(crate) fn finish_document(doc: &mut Document, pages_id: ObjectId) {
     let count = doc
         .get_dictionary(pages_id)
         .and_then(|p| p.get(b"Kids"))
@@ -365,7 +439,15 @@ fn finish_document(doc: &mut Document, pages_id: ObjectId) {
 
 /// Copy one page (and everything it references) from `src` into
 /// `out`, appending it to the output Pages node.
-fn copy_page_into(
+///
+/// The page dictionary is copied entry by entry, SKIPPING
+/// `/Parent`: copying the parent Pages node would deep-copy its
+/// `/Kids` array — every page of the source document — into the
+/// output as unreachable orphans (lopdf writes all objects in
+/// the map, so a split-out page's text would leak into the
+/// output file). The copied page is parented to the output Pages
+/// node directly instead.
+pub(crate) fn copy_page_into(
     src: &Document,
     page_id: ObjectId,
     out: &mut Document,
@@ -376,18 +458,24 @@ fn copy_page_into(
         out,
         map: HashMap::new(),
     };
-    let new_page_id = copier.copy_reference(page_id)?;
-    // Re-parent: the copied page still points at the *source*
-    // Pages node (copied along with it) — point it at the output
-    // Pages node instead, and drop the stray copied node if it is
-    // now unreferenced (harmless either way; the writer only
-    // writes reachable objects — lopdf writes all objects in the
-    // map, so remove the orphan to keep the file clean).
-    let mut orphan_parent = None;
-    if let Ok(page) = copier.out.get_dictionary_mut(new_page_id) {
-        if let Ok(Object::Reference(parent)) = page.get(b"Parent") {
-            orphan_parent = Some(*parent);
+    let new_page_id = copier.out.try_new_object_id()?;
+    // Insert before recursing: a cyclic graph must not loop forever.
+    copier.map.insert(page_id, new_page_id);
+    let page_dict = src
+        .get_dictionary(page_id)
+        .map_err(|e| PdfError::Lopdf(e.to_string()))?
+        .clone();
+    let mut new_dict = Dictionary::new();
+    for (key, value) in page_dict.iter() {
+        if key == b"Parent" {
+            continue;
         }
+        new_dict.set(key.clone(), copier.copy_object(value)?);
+    }
+    copier
+        .out
+        .set_object(new_page_id, Object::Dictionary(new_dict));
+    if let Ok(page) = copier.out.get_dictionary_mut(new_page_id) {
         page.set("Parent", Object::Reference(out_pages_id));
     }
     // Materialise inherited attributes the page itself lacks.
@@ -407,18 +495,6 @@ fn copy_page_into(
             }
         }
     }
-    if let Some(parent) = orphan_parent {
-        // Only remove it when nothing else references it (the
-        // page was its only referrer after re-parenting).
-        let referenced = copier
-            .out
-            .objects
-            .values()
-            .any(|o| object_references(o, parent));
-        if !referenced {
-            let _ = copier.out.remove_object(&parent);
-        }
-    }
     // Append to the output Kids array.
     let kids = out
         .get_dictionary_mut(out_pages_id)
@@ -431,7 +507,11 @@ fn copy_page_into(
 /// Walk the source page tree (`/Parent` chain) for an attribute
 /// the page itself does not carry. Returns the raw object (a
 /// reference is returned as-is; the caller copies it).
-fn inherited_attribute(src: &Document, mut page_id: ObjectId, key: &[u8]) -> Option<Object> {
+pub(crate) fn inherited_attribute(
+    src: &Document,
+    mut page_id: ObjectId,
+    key: &[u8],
+) -> Option<Object> {
     let mut depth = 0;
     loop {
         let dict = src.get_dictionary(page_id).ok()?;
@@ -449,7 +529,7 @@ fn inherited_attribute(src: &Document, mut page_id: ObjectId, key: &[u8]) -> Opt
 
 /// Deep-copy one object graph from the source document into the
 /// target, remapping every reference through `map`.
-struct PageCopier<'a> {
+pub(crate) struct PageCopier<'a> {
     src: &'a Document,
     out: &'a mut Document,
     map: HashMap<ObjectId, ObjectId>,
@@ -507,25 +587,106 @@ impl<'a> PageCopier<'a> {
     }
 }
 
-/// True when object `o` contains a reference to `id` anywhere in
-/// its (shallow) structure — used to decide whether a copied
-/// parent node is still referenced.
-fn object_references(o: &Object, id: ObjectId) -> bool {
-    match o {
-        Object::Reference(other) => *other == id,
-        Object::Array(items) => items.iter().any(|i| object_references(i, id)),
-        Object::Dictionary(dict) => dict.iter().any(|(_, v)| object_references(v, id)),
-        Object::Stream(stream) => stream.dict.iter().any(|(_, v)| object_references(v, id)),
-        _ => false,
-    }
-}
-
 /// Serialise a document to bytes.
-fn save_to_bytes(doc: &mut Document) -> Result<Vec<u8>> {
+pub(crate) fn save_to_bytes(doc: &mut Document) -> Result<Vec<u8>> {
     let mut out = Vec::new();
     let mut cursor = Cursor::new(&mut out);
     doc.save_to(&mut cursor)?;
     Ok(out)
+}
+
+/// Deep-copy one object (and everything it references) from `src`
+/// into `out`, returning the copied object. A fresh copier per
+/// call: shared objects are copied once per call, not deduped
+/// across calls — correct, just occasionally redundant.
+pub(crate) fn copy_object_into(src: &Document, out: &mut Document, obj: &Object) -> Result<Object> {
+    let mut copier = PageCopier {
+        src,
+        out,
+        map: HashMap::new(),
+    };
+    copier.copy_object(obj)
+}
+
+/// Pages of a document in page-number order.
+pub(crate) fn ordered_pages(doc: &Document) -> Vec<(u32, ObjectId)> {
+    let mut pages: Vec<(u32, ObjectId)> = doc.get_pages().into_iter().collect();
+    pages.sort_by_key(|(n, _)| *n);
+    pages
+}
+
+/// Every page in `pages` must exist (1-based). Duplicates are
+/// allowed — the caller decides whether they make sense.
+pub(crate) fn check_pages(pages: &[u32], count: u32) -> Result<()> {
+    for &p in pages {
+        if p == 0 || p > count {
+            return Err(PdfError::PageOutOfRange(p, count));
+        }
+    }
+    Ok(())
+}
+
+/// Build a fresh document from an ordered list of (source, page
+/// id) pairs, in that order. Pages may repeat (duplication) and
+/// may come from several source documents (merge/insert/replace).
+/// Page labels, outlines/bookmarks and /Info are not carried over
+/// (Phase 1 copier limit).
+pub(crate) fn build_document(items: &[(&Document, ObjectId)], version: &str) -> Result<Vec<u8>> {
+    let mut out = fresh_document(version);
+    let pages_id = out_pages_id(&mut out);
+    for &(src, page_id) in items {
+        copy_page_into(src, page_id, &mut out, pages_id)?;
+    }
+    finish_document(&mut out, pages_id);
+    save_to_bytes(&mut out)
+}
+
+/// Effective page box in points as (x1, y1, width, height):
+/// CropBox when present (own or inherited), else MediaBox.
+/// Falls back to US Letter (612×792) when neither is usable.
+pub(crate) fn page_box_rect(doc: &Document, page_id: ObjectId) -> (f64, f64, f64, f64) {
+    for key in [b"CropBox".as_slice(), b"MediaBox"] {
+        let raw = doc
+            .get_dictionary(page_id)
+            .and_then(|d| d.get(key))
+            .ok()
+            .cloned()
+            .or_else(|| inherited_attribute(doc, page_id, key));
+        if let Some(Object::Array(items)) = raw {
+            if items.len() == 4 {
+                let nums: Vec<f64> = items
+                    .iter()
+                    .map(|o| match o {
+                        Object::Integer(i) => *i as f64,
+                        Object::Real(r) => *r as f64,
+                        _ => f64::NAN,
+                    })
+                    .collect();
+                if nums.iter().all(|v| v.is_finite()) {
+                    let (x1, y1, x2, y2) = (nums[0], nums[1], nums[2], nums[3]);
+                    if x2 > x1 && y2 > y1 {
+                        return (x1, y1, x2 - x1, y2 - y1);
+                    }
+                }
+            }
+        }
+    }
+    (0.0, 0.0, 612.0, 792.0)
+}
+
+/// Effective page size in points (width, height).
+pub(crate) fn page_box(doc: &Document, page_id: ObjectId) -> (f64, f64) {
+    let (_, _, w, h) = page_box_rect(doc, page_id);
+    (w, h)
+}
+
+/// A PDF number: integer when whole, real otherwise.
+pub(crate) fn num(v: f64) -> Object {
+    if v.fract() == 0.0 && v.abs() < 9.0e15 {
+        Object::Integer(v as i64)
+    } else {
+        Object::Real(v as f32)
+    }
 }
 
 /// Decode a PDF string object: UTF-16BE with BOM, otherwise
@@ -546,11 +707,11 @@ fn decode_pdf_string(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use lopdf::dictionary;
 
-    fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    pub fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
         haystack.windows(needle.len()).any(|w| w == needle)
     }
 
@@ -653,6 +814,26 @@ mod tests {
         assert_eq!(engine.page_count(&parts[1]).unwrap(), 3);
         assert!(contains_bytes(&parts[0], b"S page 1"));
         assert!(contains_bytes(&parts[1], b"S page 5"));
+    }
+
+    /// Regression (Phase 2): the Phase 1 copier deep-copied the
+    /// source Pages node, whose /Kids array references every
+    /// page — so a split-out document contained the excluded
+    /// pages' content streams as unreachable orphans (lopdf
+    /// writes all objects in the map). The copier now skips
+    /// /Parent; a split must not contain the excluded text.
+    #[test]
+    fn split_does_not_leak_excluded_pages_text() {
+        let engine = PdfEngine::default();
+        let doc = make_pdf(5, "S");
+        let parts = engine.split(&doc, &[(1, 2)]).unwrap();
+        assert_eq!(parts.len(), 1);
+        assert_eq!(engine.page_count(&parts[0]).unwrap(), 2);
+        assert!(contains_bytes(&parts[0], b"S page 1"));
+        assert!(contains_bytes(&parts[0], b"S page 2"));
+        assert!(!contains_bytes(&parts[0], b"S page 3"));
+        assert!(!contains_bytes(&parts[0], b"S page 4"));
+        assert!(!contains_bytes(&parts[0], b"S page 5"));
     }
 
     #[test]

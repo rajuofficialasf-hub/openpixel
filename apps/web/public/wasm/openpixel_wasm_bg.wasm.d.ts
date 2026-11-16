@@ -6,6 +6,10 @@ export const convert: (a: number, b: number, c: number, d: number, e: number, f:
 export const detect: (a: number, b: number) => [number, number];
 export const discover: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
 export const info: (a: number, b: number) => [number, number, number];
+export const pdf_from_images: (a: any, b: number, c: number) => [number, number, number, number];
+export const pdf_info: (a: number, b: number) => [number, number, number];
+export const pdf_merge: (a: any) => [number, number, number, number];
+export const pdf_process: (a: number, b: number, c: number, d: number) => [number, number, number];
 export const process: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number, number];
 export const process_to_size: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number) => [number, number, number];
 export const supported_formats: () => any;

@@ -8,7 +8,12 @@ use thiserror::Error;
 /// original text is preserved verbatim).
 #[derive(Debug, Error)]
 pub enum PdfError {
-    #[error("not a PDF file: {0}")]
+    /// The input is not a usable PDF, or an argument about a PDF
+    /// is invalid (bad page, bad degrees, bad scale, empty input).
+    /// The message says which — the variant does not prefix it
+    /// with "not a PDF file", because that would be wrong for the
+    /// argument errors (e.g. a bad rotate angle on a real PDF).
+    #[error("{0}")]
     InvalidPdf(String),
 
     #[error("PDF is encrypted and no password was supplied")]

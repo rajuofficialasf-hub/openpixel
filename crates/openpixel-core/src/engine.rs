@@ -426,6 +426,34 @@ impl Engine {
         })
     }
 
+    /// Encode an already-decoded image — e.g. a PDF page rendered
+    /// by PDFium, or a frame extracted by a caller — to `target`.
+    /// This is the same shared encode tail `convert_bytes` uses
+    /// (ICO 256x256 auto-resize, quality defaults, output
+    /// validation), but there is no source file to read metadata
+    /// from, so nothing is preserved and `input_bytes` is 0.
+    /// `ConvertResult::source_format` is `Unknown`: the source is
+    /// not an image file (a rendered PDF page has no image format).
+    pub fn encode_decoded(
+        &self,
+        image: &DecodedImage,
+        target: ImageFormat,
+        options: &ConvertOptions,
+    ) -> Result<(ConvertResult, Vec<u8>)> {
+        let metadata = Metadata::default();
+        self.encode_to_bytes(EncodeRequest {
+            image,
+            source_format: ImageFormat::Unknown,
+            input_bytes: 0,
+            target,
+            options,
+            metadata: &metadata,
+            warnings: Vec::new(),
+            orientation_applied: None,
+            converted_to_srgb: false,
+        })
+    }
+
     /// [`Engine::process`] for in-memory bytes — the entry point
     /// the WASM bindings use for resize. Same pipeline as `process`
     /// (decode -> metadata policy / orientation / sRGB preparation
@@ -2216,5 +2244,26 @@ mod tests {
         let r = engine.discover_format(png, Some("jpg"), None);
         assert_eq!(r.format, ImageFormat::Png);
         assert!(r.has_mismatch());
+    }
+
+    #[test]
+    fn encode_decoded_writes_a_genuine_png_and_resizes_for_ico() {
+        let engine = Engine::default();
+        let decoded = DecodedImage::from_dynamic(&test_image_rgb());
+        let options = ConvertOptions::default();
+        let (result, png) = engine
+            .encode_decoded(&decoded, ImageFormat::Png, &options)
+            .unwrap();
+        assert_eq!(detect_format(&png), ImageFormat::Png);
+        assert_eq!((result.width, result.height), (8, 6));
+        // A 300x300 decoded image to ICO must come back 256x256
+        // with the resize warning (same rule as convert).
+        let big = DecodedImage::from_dynamic(&DynamicImage::ImageRgb8(RgbImage::new(300, 300)));
+        let (result, ico) = engine
+            .encode_decoded(&big, ImageFormat::Ico, &options)
+            .unwrap();
+        assert_eq!(detect_format(&ico), ImageFormat::Ico);
+        assert_eq!((result.width, result.height), (256, 256));
+        assert!(result.warnings.iter().any(|w| w.contains("256x256")));
     }
 }

@@ -18,6 +18,7 @@
 //!   and ignored, so callers do not need `cfg` gates of their own.
 
 use crate::error::TimeoutError;
+#[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc;
 use std::time::Duration;
 

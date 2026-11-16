@@ -225,7 +225,14 @@ Merge, split, rotate, extract/remove/reorder pages, PDF info,
 PDF→PNG/JPG (PDFium render), image→PDF (lopdf + pipeline).
 CLI `pdf` subcommand + web PDF tab (pdf.js render, lopdf-WASM
 page ops where possible). Exit: CLI e2e PDF section green,
-web PDF e2e green, live-site check.
+web PDF e2e green, live-site check. **DONE 16 Nov 2026** — all
+exit criteria green except the live-site check, which the parent
+agent runs after the push (see `docs/PDF.md` + `docs/E2E.md`
+§1.15/§2.20). Also done in Phase 2 beyond the plan: duplicate,
+insert, replace, reverse, booklet, N-up page ops; WASM
+`pdf_info`/`pdf_process`/`pdf_merge`/`pdf_from_images` exports;
+`Engine::encode_decoded`; `scripts/pdfium/fetch-pdfium.sh`
+(pinned chromium/8152).
 
 **Phase 3 — Conversion and Compression.** PDF compression (3
 modes, honest size reporting — never claim smaller when larger);
