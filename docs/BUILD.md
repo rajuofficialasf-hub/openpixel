@@ -164,15 +164,23 @@ binary), `openpixel-desktop-<OS>-<arch>` (the installers),
     patchelf libgtk-3-dev libsoup-3.0-dev` (desktop job) — the
     exact list from `docs/DESKTOP.md`. No sysroot workaround on a
     clean runner.
-  - Windows: `choco install nasm ninja -y` plus `python -m pip
-    install meson` (dav1d build tools; MSVC and the WebView2
-    runtime are preinstalled on the runner). meson must come from
-    pip, not choco: choco's meson MSI only updates the registry
-    PATH, which later steps do not see — run 43850509466 failed
-    on "meson failed: program not found" despite a successful
-    choco install of meson 1.12.1. No vcpkg, no pkg-config, no
-    DLL handling — the old dynamic-link route failed three CI
-    runs in a row (missing pkg-config, empty
+  - Windows: `choco install nasm ninja pkgconfiglite -y` plus
+    `python -m pip install meson` (dav1d build tools; MSVC and
+    the WebView2 runtime are preinstalled on the runner), then
+    `meson --version` / `nasm -v` / `ninja --version` /
+    `pkg-config --version` to prove every tool is on PATH
+    before cargo runs. meson must come from pip, not choco:
+    choco's meson MSI only updates the registry PATH, which
+    later steps do not see — run 43850509466 failed on "meson
+    failed: program not found" despite a successful choco
+    install of meson 1.12.1. pkg-config must come from
+    pkgconfiglite: after meson builds dav1d, dav1d-sys reads
+    the generated dav1d.pc with pkg-config (build.rs:82) — run
+    43853419158 built all 134 targets and then failed on "The
+    pkg-config command could not be found" (only Strawberry
+    Perl's broken pkg-config.bat is on the runner by default).
+    No vcpkg, no DLL handling — the old dynamic-link route
+    failed three CI runs in a row (missing pkg-config, empty
     `VCPKG_INSTALLATION_ROOT`, DLL not on PATH) and produced
     installers without `dav1d.dll`.
   - macOS: `brew install meson ninja nasm pkg-config`. Xcode
