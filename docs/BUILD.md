@@ -145,6 +145,7 @@ binary), `openpixel-desktop-<OS>-<arch>` (the installers),
   `dtolnay/rust-toolchain@v1` (toolchain `1.100.0`, with
   `clippy, rustfmt`), `Swatinem/rust-cache@v2`,
   `actions/setup-node@v4` (Node 24),
+  `ilammy/msvc-dev-cmd@v1` (Windows only, MSVC env),
   `actions/upload-artifact@v4`.
 - Caching: cargo via `Swatinem/rust-cache@v2`; npm via
   `setup-node`'s `cache: npm` with `cache-dependency-path` per
@@ -164,23 +165,31 @@ binary), `openpixel-desktop-<OS>-<arch>` (the installers),
     patchelf libgtk-3-dev libsoup-3.0-dev` (desktop job) — the
     exact list from `docs/DESKTOP.md`. No sysroot workaround on a
     clean runner.
-  - Windows: `choco install nasm ninja pkgconfiglite -y` plus
-    `python -m pip install meson` (dav1d build tools; MSVC and
-    the WebView2 runtime are preinstalled on the runner), then
-    `meson --version` / `nasm -v` / `ninja --version` /
-    `pkg-config --version` to prove every tool is on PATH
-    before cargo runs. meson must come from pip, not choco:
-    choco's meson MSI only updates the registry PATH, which
-    later steps do not see — run 43850509466 failed on "meson
-    failed: program not found" despite a successful choco
-    install of meson 1.12.1. pkg-config must come from
+  - Windows: `ilammy/msvc-dev-cmd@v1` first (puts the MSVC
+    `cl.exe`/`link.exe` on PATH), then `choco install nasm ninja
+    pkgconfiglite -y` plus `python -m pip install meson`
+    (dav1d build tools; the WebView2 runtime is preinstalled
+    on the runner), then `meson --version` / `nasm -v` /
+    `ninja --version` / `pkg-config --version` / `where.exe cl`
+    to prove every tool is on PATH before cargo runs, and
+    `CC=cl` written to `$GITHUB_ENV`. meson must come from
+    pip, not choco: choco's meson MSI only updates the registry
+    PATH, which later steps do not see — run 43850509466 failed
+    on "meson failed: program not found" despite a successful
+    choco install of meson 1.12.1. pkg-config must come from
     pkgconfiglite: after meson builds dav1d, dav1d-sys reads
     the generated dav1d.pc with pkg-config (build.rs:82) — run
     43853419158 built all 134 targets and then failed on "The
     pkg-config command could not be found" (only Strawberry
     Perl's broken pkg-config.bat is on the runner by default).
-    No vcpkg, no DLL handling — the old dynamic-link route
-    failed three CI runs in a row (missing pkg-config, empty
+    dav1d MUST be compiled with MSVC, not MinGW gcc: meson
+    otherwise picks Strawberry Perl's gcc (on PATH by default)
+    and the resulting libdav1d.a references MinGW runtime
+    symbols (`___chkstk_ms`, `__mingw_vfprintf`) that MSVC
+    link.exe cannot resolve — run 43857094075 failed at link
+    time with LNK2001/LNK2019 on every Windows target. No
+    vcpkg, no DLL handling — the old dynamic-link route failed
+    three CI runs in a row (missing pkg-config, empty
     `VCPKG_INSTALLATION_ROOT`, DLL not on PATH) and produced
     installers without `dav1d.dll`.
   - macOS: `brew install meson ninja nasm pkg-config`. Xcode
