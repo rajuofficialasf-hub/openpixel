@@ -1,12 +1,18 @@
 /**
- * Background3D — a subtle, professional Three.js backdrop.
+ * Background3D — a calm, quiet Three.js backdrop.
  *
  * Plain `three` (no react-three-fiber): slow-floating geometric
  * particles and wireframe shapes in the brand blue/teal palette,
- * at low opacity, rendered on a fixed transparent canvas behind
+ * at LOW opacity, rendered on a fixed transparent canvas behind
  * the app. It is decoration only — `pointer-events: none` so it
  * never intercepts clicks, and it is lazy-loaded from `App.tsx`
  * so it never blocks first paint.
+ *
+ * Design rule (docs/DESIGN_NOTES.md): the backdrop must never
+ * compete with the workspace. Particles are sparse and dim,
+ * shapes are small, few, and slow, and the whole scene sits
+ * further back (camera z 9.5). If it is ever noticeable before
+ * the content, it is too loud — turn it down, not up.
  *
  * Motion behaviour:
  * - `prefers-reduced-motion`: one static frame is rendered, no
@@ -16,14 +22,14 @@
  * - Unmount disposes everything: animation frame, resize and
  *   visibility listeners, geometries, materials and the renderer.
  *
- * Performance: ~350 points + 6 wireframe meshes, device pixel
+ * Performance: ~160 points + 4 wireframe meshes, device pixel
  * ratio capped at 1.5, alpha canvas so the theme background shows
  * through.
  */
 import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 
-const PARTICLE_COUNT = 350
+const PARTICLE_COUNT = 160
 const BRAND_BLUE = '#2563eb'
 const BRAND_TEAL = '#0d9488'
 
@@ -53,7 +59,7 @@ export default function Background3D() {
       0.1,
       100,
     )
-    camera.position.z = 8
+    camera.position.z = 9.5
 
     // --- particles: a sparse field of brand-coloured points ---
     const positions = new Float32Array(PARTICLE_COUNT * 3)
@@ -74,9 +80,9 @@ export default function Background3D() {
     pointsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
     pointsGeometry.setAttribute('color', new THREE.BufferAttribute(colours, 3))
     const pointsMaterial = new THREE.PointsMaterial({
-      size: 0.07,
+      size: 0.06,
       transparent: true,
-      opacity: 0.55,
+      opacity: 0.28,
       vertexColors: true,
       sizeAttenuation: true,
       depthWrite: false,
@@ -94,15 +100,15 @@ export default function Background3D() {
     }
     const floaters: Floater[] = []
     const shapeGeometry = new THREE.IcosahedronGeometry(1, 0)
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 4; i++) {
       const material = new THREE.MeshBasicMaterial({
         color: i % 2 === 0 ? BRAND_BLUE : BRAND_TEAL,
         wireframe: true,
         transparent: true,
-        opacity: 0.16 + (i % 3) * 0.05,
+        opacity: 0.07 + (i % 3) * 0.02,
       })
       const mesh = new THREE.Mesh(shapeGeometry, material)
-      const scale = 0.5 + Math.random() * 0.8
+      const scale = 0.35 + Math.random() * 0.35
       mesh.scale.setScalar(scale)
       mesh.position.set((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 7, -1 - Math.random() * 2)
       scene.add(mesh)
@@ -110,8 +116,8 @@ export default function Background3D() {
         mesh,
         baseY: mesh.position.y,
         phase: Math.random() * Math.PI * 2,
-        rotSpeed: 0.08 + Math.random() * 0.12,
-        floatSpeed: 0.25 + Math.random() * 0.3,
+        rotSpeed: 0.03 + Math.random() * 0.04,
+        floatSpeed: 0.12 + Math.random() * 0.13,
       })
     }
 
@@ -134,7 +140,7 @@ export default function Background3D() {
       for (const f of floaters) {
         f.mesh.rotation.x = t * f.rotSpeed
         f.mesh.rotation.y = t * f.rotSpeed * 0.7
-        f.mesh.position.y = f.baseY + Math.sin(t * f.floatSpeed + f.phase) * 0.35
+        f.mesh.position.y = f.baseY + Math.sin(t * f.floatSpeed + f.phase) * 0.2
       }
       renderer.render(scene, camera)
     }

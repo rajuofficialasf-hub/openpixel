@@ -15,6 +15,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
+import { alpha } from '@mui/material/styles'
 import DownloadIcon from '@mui/icons-material/Download'
 import {
   BROWSER_DECODABLE,
@@ -27,7 +28,6 @@ import {
 import { convertImage, probeImage, ProbeError, type ProbedImage } from '../lib/convert'
 import type { DetectedFormat } from '../lib/detect'
 import type { Settings } from '../lib/settings'
-import { WASM_STATUS } from '../lib/wasm'
 import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
 import { DropZone } from './DropZone'
 
@@ -215,19 +215,20 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
 
   return (
     <Box component="section" aria-labelledby="convert-heading">
-      <Stack spacing={2}>
-        <Typography variant="h5" component="h2" id="convert-heading">
-          Convert one image
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Files never leave your device — conversion runs locally in your browser. In-browser
-          conversion handles <strong>PNG, JPEG and WebP</strong> output via the canvas from PNG,
-          JPEG, WebP, GIF (first frame), BMP, SVG and AVIF (browser-dependent) sources
-          {wasmSupport
-            ? ', plus the built-in WASM engine’s BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF targets (and sources) — AVIF still needs the native CLI'
-            : ', plus the WASM engine’s extra formats when its module is built (see Settings, About)'}
-          . Everything else needs the native CLI. {WASM_STATUS.detail}
-        </Typography>
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="h5" component="h2" id="convert-heading">
+            Convert one image
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
+            Files never leave your device — conversion runs locally in your browser. PNG,
+            JPEG and WebP output via the canvas
+            {wasmSupport
+              ? ', plus the built-in WASM engine’s BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF targets (and sources) — AVIF still needs the native CLI'
+              : ', plus the WASM engine’s extra formats when its module is built (see Settings, About)'}
+            . Everything else needs the native CLI.
+          </Typography>
+        </Box>
 
         {!file && (
           <DropZone
@@ -245,6 +246,9 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
             <Stack spacing={2}>
               <Card>
                 <CardContent>
+                  <Typography variant="overline" color="text.secondary">
+                    Source
+                  </Typography>
                   {previewUrl &&
                     (probed === null ||
                     probed.format === 'unknown' ||
@@ -279,7 +283,7 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
                       display: 'grid',
                       gridTemplateColumns: 'auto 1fr',
                       columnGap: 2,
-                      rowGap: 0.5,
+                      rowGap: 1,
                       mt: 2,
                       mx: 0,
                       mb: 0,
@@ -344,7 +348,10 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
 
             <Card>
               <CardContent>
-                <Stack spacing={2.5}>
+                <Typography variant="overline" color="text.secondary">
+                  Output
+                </Typography>
+                <Stack spacing={2.5} sx={{ mt: 1 }}>
                   <Box>
                     <Typography variant="subtitle2" component="label" htmlFor="target-format">
                       Output format
@@ -476,10 +483,9 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
             sx={{
               borderRadius: 3,
               border: 1,
-              borderColor: 'warning.main',
-              bgcolor: (t) => (t.palette.mode === 'dark' ? '#451a03' : '#fffbeb'),
-              color: (t) => (t.palette.mode === 'dark' ? '#fde68a' : '#92400e'),
-              p: 2,
+              borderColor: (t) => alpha(t.palette.warning.main, 0.4),
+              bgcolor: (t) => alpha(t.palette.warning.main, 0.08),
+              p: 2.5,
             }}
           >
             <Box component="ul" sx={{ m: 0, pl: 2.5, typography: 'body2' }}>
@@ -498,9 +504,9 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
             sx={{
               borderRadius: 3,
               border: 1,
-              borderColor: 'success.main',
-              bgcolor: (t) => (t.palette.mode === 'dark' ? '#052e16' : '#f0fdf4'),
-              p: 2,
+              borderColor: (t) => alpha(t.palette.success.main, 0.4),
+              bgcolor: (t) => alpha(t.palette.success.main, 0.08),
+              p: 2.5,
             }}
           >
             <Typography variant="body1" fontWeight={600} color="success.main">

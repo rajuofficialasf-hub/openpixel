@@ -251,15 +251,18 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
 
   return (
     <Box component="section" aria-labelledby="batch-heading">
-      <Stack spacing={2}>
-        <Typography variant="h5" component="h2" id="batch-heading">
-          Batch conversion
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Add several images and convert them together — still entirely on your device. Files are
-          processed up to {settings.batchWorkers} at a time (see Settings). A file that fails never
-          stops the rest of the batch. Files this browser cannot decode are skipped with a reason.
-        </Typography>
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="h5" component="h2" id="batch-heading">
+            Batch conversion
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
+            Add several images and convert them together — still entirely on your device.
+            Files are processed up to {settings.batchWorkers} at a time (see Settings). A file
+            that fails never stops the rest of the batch. Files this browser cannot decode are
+            skipped with a reason.
+          </Typography>
+        </Box>
 
         <DropZone
           inputId="batch-files"

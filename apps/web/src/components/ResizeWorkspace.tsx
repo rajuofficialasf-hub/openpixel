@@ -15,6 +15,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
+import { alpha } from '@mui/material/styles'
 import DownloadIcon from '@mui/icons-material/Download'
 import {
   BROWSER_DECODABLE,
@@ -410,16 +411,18 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
 
   return (
     <Box component="section" aria-labelledby="resize-heading">
-      <Stack spacing={2}>
-        <Typography variant="h5" component="h2" id="resize-heading">
-          Resize &amp; compress
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Change dimensions and shrink file size without losing quality: the resize runs through
-          the real engine (Lanczos3) in your browser, always from the original file — never a
-          re-compressed copy. In-browser resize always strips EXIF/ICC/XMP; use the native CLI
-          with --metadata preserve to keep it. Files never leave your device.
-        </Typography>
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="h5" component="h2" id="resize-heading">
+            Resize &amp; compress
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
+            Change dimensions and shrink file size without losing quality — the resize runs
+            through the real engine (Lanczos3), always from the original file. In-browser
+            resize strips EXIF/ICC/XMP; use the native CLI to keep it. Files never leave
+            your device.
+          </Typography>
+        </Box>
 
         {items.length === 0 && (
           <DropZone
@@ -435,7 +438,10 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
         {items.length > 0 && (
           <Card>
             <CardContent>
-              <Stack spacing={2.5}>
+              <Typography variant="overline" color="text.secondary">
+                Settings
+              </Typography>
+              <Stack spacing={2.5} sx={{ mt: 1 }}>
                 <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' } }}>
                   <Box>
                     <Typography variant="subtitle2" component="label" htmlFor="resize-mode">
@@ -693,10 +699,9 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
             sx={{
               borderRadius: 3,
               border: 1,
-              borderColor: 'warning.main',
-              bgcolor: (t) => (t.palette.mode === 'dark' ? '#451a03' : '#fffbeb'),
-              color: (t) => (t.palette.mode === 'dark' ? '#fde68a' : '#92400e'),
-              p: 2,
+              borderColor: (t) => alpha(t.palette.warning.main, 0.4),
+              bgcolor: (t) => alpha(t.palette.warning.main, 0.08),
+              p: 2.5,
             }}
           >
             <Box component="ul" sx={{ m: 0, pl: 2.5, typography: 'body2' }}>
@@ -712,7 +717,10 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
         {single && (
           <Card>
             <CardContent>
-              <Stack spacing={2}>
+              <Typography variant="overline" color="text.secondary">
+                Before / after
+              </Typography>
+              <Stack spacing={2} sx={{ mt: 1 }}>
                 <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' } }}>
                   <Box>
                     <Typography variant="subtitle2">Original</Typography>

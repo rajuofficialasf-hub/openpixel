@@ -37,13 +37,29 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
   return (
     <Box component="section" aria-labelledby="settings-heading">
       <Stack spacing={3}>
-        <Typography variant="h5" component="h2" id="settings-heading">
-          Settings
-        </Typography>
+        <Box>
+          <Typography variant="h5" component="h2" id="settings-heading">
+            Settings
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
+            Saved on this device only — no account, no server.
+          </Typography>
+        </Box>
 
-        <Card sx={{ maxWidth: 640 }}>
+        <Box
+          sx={{
+            display: 'grid',
+            gap: 3,
+            gridTemplateColumns: { md: 'minmax(0, 7fr) minmax(0, 5fr)' },
+            alignItems: 'start',
+          }}
+        >
+        <Card>
           <CardContent>
-            <Stack spacing={2.5}>
+            <Typography variant="overline" color="text.secondary">
+              Preferences
+            </Typography>
+            <Stack spacing={2.5} sx={{ mt: 1 }}>
               <Box>
                 <Typography variant="subtitle2" component="label" htmlFor="theme">
                   Theme
@@ -179,9 +195,12 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
           </CardContent>
         </Card>
 
-        <Card sx={{ maxWidth: 640 }}>
+        <Card>
           <CardContent>
-            <Typography variant="subtitle1" fontWeight={600}>
+            <Typography variant="overline" color="text.secondary">
+              About
+            </Typography>
+            <Typography variant="subtitle1" fontWeight={600} sx={{ mt: 1 }}>
               About this app
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -204,6 +223,7 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
             </Typography>
           </CardContent>
         </Card>
+        </Box>
       </Stack>
     </Box>
   )

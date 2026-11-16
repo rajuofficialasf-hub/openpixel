@@ -9,7 +9,6 @@ import { ConvertWorkspace } from './components/ConvertWorkspace'
 import { ResizeWorkspace } from './components/ResizeWorkspace'
 import { SettingsPanel } from './components/SettingsPanel'
 import { loadSettings, resolveTheme, saveSettings, type Settings } from './lib/settings'
-import { WASM_STATUS } from './lib/wasm'
 import { getTheme } from './theme/theme'
 
 // Lazy: the 3D backdrop is decoration — it must never block first
@@ -89,10 +88,13 @@ function App() {
               }}
             >
               <Box>
-                <Typography variant="h4" component="h1">
+                <Typography variant="h5" component="h1">
                   OpenPixel
+                  <Box component="span" sx={{ color: 'secondary.main' }}>
+                    .
+                  </Box>
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                   Local image conversion — files never leave your device.
                 </Typography>
               </Box>
@@ -110,6 +112,7 @@ function App() {
               value={tab}
               onChange={(_, value: TabId) => setTab(value)}
               aria-label="OpenPixel sections"
+              sx={{ mt: 1 }}
             >
               {TABS.map((t) => (
                 <Tab key={t.id} value={t.id} label={t.label} id={`tab-${t.id}`} aria-controls={`panel-${t.id}`} />
@@ -118,7 +121,7 @@ function App() {
           </Container>
         </Box>
 
-        <Container component="main" maxWidth="lg" sx={{ py: 3, flex: 1, width: '100%' }}>
+        <Container component="main" maxWidth="lg" sx={{ py: 4, flex: 1, width: '100%' }}>
           <Box role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
             {tab === 'convert' && (
               <ConvertWorkspace settings={settings} onSettingsChange={setSettings} />
@@ -145,26 +148,7 @@ function App() {
           }}
         >
           <Typography variant="caption" color="text.secondary" component="p">
-            OpenPixel Engine — Phase 7 web app. No server, no upload, no account. {WASM_STATUS.detail}
-          </Typography>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            component="p"
-            sx={{
-              mt: 0.5,
-              '& code': {
-                fontFamily: 'monospace',
-                fontSize: '0.85em',
-                bgcolor: 'action.hover',
-                px: 0.5,
-                borderRadius: 0.5,
-              },
-            }}
-          >
-            In-browser conversion: PNG / JPEG / WebP output via the browser canvas, plus BMP,
-            TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF via the built-in WASM engine
-            (when built). For AVIF, use the native CLI (<code>openpixel convert</code>).
+            OpenPixel Engine — local processing. No server, no upload, no account.
           </Typography>
         </Box>
       </Box>

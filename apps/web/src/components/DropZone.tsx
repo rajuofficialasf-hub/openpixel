@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { Box, Typography } from '@mui/material'
+import { alpha } from '@mui/material/styles'
 import { visuallyHidden } from '@mui/utils'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 
@@ -54,12 +55,11 @@ export function DropZone({ onFiles, accept, multiple = true, label, hint, inputI
       onDrop={handleDrop}
       sx={{
         cursor: 'pointer',
-        borderRadius: 3,
-        border: 2,
-        borderStyle: 'dashed',
+        borderRadius: 4,
+        border: '1.5px dashed',
         borderColor: dragging ? 'primary.main' : 'divider',
-        bgcolor: dragging ? 'action.selected' : 'action.hover',
-        p: 4,
+        bgcolor: dragging ? (t) => alpha(t.palette.primary.main, 0.06) : 'background.paper',
+        p: 5,
         textAlign: 'center',
         transition: (theme) =>
           theme.transitions.create(['border-color', 'background-color'], {
@@ -68,14 +68,27 @@ export function DropZone({ onFiles, accept, multiple = true, label, hint, inputI
         '&:hover': { borderColor: 'text.secondary' },
       }}
     >
-      <CloudUploadIcon color="primary" sx={{ fontSize: 40 }} />
-      <Typography variant="h6" component="p" sx={{ mt: 1 }}>
+      <Box
+        sx={{
+          mx: 'auto',
+          width: 64,
+          height: 64,
+          borderRadius: '50%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: (t) => alpha(t.palette.primary.main, 0.08),
+        }}
+      >
+        <CloudUploadIcon color="primary" sx={{ fontSize: 32 }} />
+      </Box>
+      <Typography variant="h6" component="p" sx={{ mt: 2 }}>
         {label}
       </Typography>
-      <Typography id={`${inputId}-hint`} variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+      <Typography id={`${inputId}-hint`} variant="body2" color="text.secondary" sx={{ mt: 1 }}>
         {hint}
       </Typography>
-      <Typography variant="body2" color="primary" fontWeight={600} sx={{ mt: 1.5 }}>
+      <Typography variant="body2" color="primary" fontWeight={600} sx={{ mt: 2 }}>
         Choose files or drag them here
       </Typography>
       <Box

@@ -61,22 +61,24 @@ export function CapabilitiesTable() {
 
   return (
     <Box component="section" aria-labelledby="formats-heading">
-      <Stack spacing={2}>
-        <Typography variant="h5" component="h2" id="formats-heading">
-          Format capabilities
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Generated from the Rust engine’s registry — run{' '}
-          <Box component="code" sx={codeSx}>
-            npm run generate:capabilities
-          </Box>{' '}
-          to regenerate it after any engine change. The “In browser” column is what this web app
-          can do; everything else needs the native CLI ({' '}
-          <Box component="code" sx={codeSx}>
-            openpixel convert
-          </Box>
-          ) or the desktop app.
-        </Typography>
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="h5" component="h2" id="formats-heading">
+            Format capabilities
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
+            Generated from the Rust engine’s registry — run{' '}
+            <Box component="code" sx={codeSx}>
+              npm run generate:capabilities
+            </Box>{' '}
+            to regenerate it after any engine change. The “In browser” column is what this web app
+            can do; everything else needs the native CLI ({' '}
+            <Box component="code" sx={codeSx}>
+              openpixel convert
+            </Box>
+            ) or the desktop app.
+          </Typography>
+        </Box>
 
         <ToggleButtonGroup
           exclusive
