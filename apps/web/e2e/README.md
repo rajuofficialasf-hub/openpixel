@@ -28,6 +28,7 @@ real PNG/JPEG/TIFF/HEIC/GIF into that directory with the same names.
 ```bash
 node apps/web/e2e/web-e2e.mjs        # 37 checks, Chromium vs :8321
 node apps/web/e2e/web-nowasm.mjs     # 9 checks, WASM-absent fallback vs :8322
+node apps/web/e2e/resize-e2e.mjs     # 16 checks, Resize tab vs :8321
 ```
 
 For the fallback run, serve a copy of `dist/` with `public/wasm/`
@@ -74,6 +75,17 @@ format: TIFF"), no misleading "Conversion failed" label, and
 Convert disabled — no crash. The missing `openpixel_wasm.js` logs
 one expected 404 in the console. Screenshots `10-nowasm-home.png`,
 `11-nowasm-tiff.png`, `12-nowasm-svg.png`.
+
+`resize-e2e.mjs` — the Resize tab (16 Nov 2026): tab renders with
+exactly the 16 browser targets (no AVIF); aspect lock 512→384 on a
+1024×768 photo; ResizeFit 800×600 downloads a real JPEG 800×600
+with the WASM/Lanczos3 note; target-size 50 KB JPEG fits (≤ 51 200
+B) with "target size met" and the quality slider disabled;
+never-upscale clamps a 256×192 source asked for 800×600; batch of
+2 files with the zip verified to contain 2 resized JPEGs. The
+result line reports the honest change ("3% larger" when a
+re-encode grows the file — see docs/E2E.md §2.19). Screenshots
+`17-resize-tab.png` … `20-resize-batch.png`.
 
 ## Known notes (see docs/E2E.md)
 

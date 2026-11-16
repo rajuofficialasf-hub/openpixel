@@ -33,7 +33,7 @@ const server = http.createServer((req, res) => {
   res.end();
 });
 
-server.on('connect', (req, socket, head) => {
+server.on('connect', (req, socket, _head) => {
   try {
     const up = net.connect(UPSTREAM_PORT, UPSTREAM_HOST, () => {
       up.write(

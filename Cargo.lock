@@ -1447,6 +1447,7 @@ dependencies = [
 name = "openpixel-wasm"
 version = "0.1.0"
 dependencies = [
+ "js-sys",
  "openpixel-core",
  "openpixel-formats",
  "serde",

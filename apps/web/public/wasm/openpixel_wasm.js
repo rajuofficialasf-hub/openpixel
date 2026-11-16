@@ -1,6 +1,29 @@
 /* @ts-self-types="./openpixel_wasm.d.ts" */
 
 /**
+ * Chroma subsampling format
+ * @enum {0 | 1 | 2 | 3}
+ */
+export const ChromaSampling = Object.freeze({
+    /**
+     * Both vertically and horizontally subsampled.
+     */
+    Cs420: 0, "0": "Cs420",
+    /**
+     * Horizontally subsampled.
+     */
+    Cs422: 1, "1": "Cs422",
+    /**
+     * Not subsampled.
+     */
+    Cs444: 2, "2": "Cs444",
+    /**
+     * Monochrome.
+     */
+    Cs400: 3, "3": "Cs400",
+});
+
+/**
  * Capabilities of the registry *in this build* — the same list the
  * native CLI reports, except AVIF is listed as unavailable (its
  * decoder needs native libdav1d). The web UI reads this instead of
@@ -126,6 +149,108 @@ export function info(bytes) {
 }
 
 /**
+ * Process `bytes` with a resize pipeline, then encode to `target`
+ * — the Resize tab's entry point. `ops_json` is a JSON array of
+ * resize operations, e.g. `[{"kind":"resize_fit","width":800,"height":600}]`
+ * (kinds: `resize_fit`, `resize_fill`, `pad`, `resize`; `pad` takes
+ * an optional `color` as `#RRGGBB`). Ops arrive as a JSON string —
+ * not a `JsValue` — so the parsing is plain Rust and unit-testable
+ * without a JS runtime. `quality` is 1–100 (JPEG,
+ * HEIC, HEIF; pass `undefined` for the engine default 80);
+ * `background` is the `#RRGGBB` colour alpha is flattened to for
+ * targets without alpha (white when omitted); `png_compression`
+ * is 0 = fast, 1 = default, 2 = best for PNG targets (ignored
+ * for other formats; `undefined` is the engine default 1).
+ *
+ * Returns a JS object `{ bytes, width, height, warnings }` — the
+ * resized bytes plus the result dimensions and any engine warnings
+ * (e.g. the ICO auto-resize note). Errors when the ops are invalid,
+ * the source is undecodable in this build, or the target is not
+ * encodable here.
+ * @param {Uint8Array | number[]} bytes
+ * @param {string} ops_json
+ * @param {string} target
+ * @param {number | null} [quality]
+ * @param {string | null} [background]
+ * @param {number | null} [png_compression]
+ * @returns {any}
+ */
+export function process(bytes, ops_json, target, quality, background, png_compression) {
+    const val5 = +(isLikeNone(quality) ? 0xFFFFFF : quality);
+    const val6 = +(isLikeNone(png_compression) ? 0xFFFFFF : png_compression);
+    let ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3;
+    try {
+        ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = passStringToWasm0(ops_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len1 = WASM_VECTOR_LEN;
+        ptr2 = passStringToWasm0(target, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len2 = WASM_VECTOR_LEN;
+        ptr3 = isLikeNone(background) ? 0 : passStringToWasm0(background, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len3 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr3) { wasm.__wbindgen_free(ptr3, len3 * 1, 1); }
+        if (ptr2) { wasm.__wbindgen_free(ptr2, len2 * 1, 1); }
+        if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+        if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+        throw e;
+    }
+    const ret = wasm.process(ptr0, len0, ptr1, len1, ptr2, len2, val5, ptr3, len3, val6);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
+ * Like [`process`], but the encode quality is searched so the
+ * output fits inside `target_bytes` — "compress to X KB". Returns
+ * `{ bytes, width, height, quality, target_met, warnings }`:
+ * `quality` is the quality the search settled on (`null` for PNG,
+ * where compression level is the knob), and `target_met` says
+ * whether the target was actually reached. When it was not, the
+ * bytes are still the smallest result found and the warnings say
+ * the target was missed — never a silent overshoot.
+ *
+ * Only JPEG, HEIC and HEIF can be searched in this build (AVIF is
+ * unavailable in WASM — its decoder needs native libdav1d — and
+ * WebP is encoded losslessly only by image-rs, so quality does not
+ * change its size). PNG tries best compression. Any other target
+ * is an honest error.
+ * @param {Uint8Array | number[]} bytes
+ * @param {string} ops_json
+ * @param {string} target
+ * @param {bigint} target_bytes
+ * @param {string | null} [background]
+ * @returns {any}
+ */
+export function process_to_size(bytes, ops_json, target, target_bytes, background) {
+    const val5 = BigInt.asIntN(64, target_bytes);
+    let ptr0, len0, ptr1, len1, ptr2, len2, ptr3, len3;
+    try {
+        ptr0 = passArray8ToWasm0(bytes, wasm.__wbindgen_malloc);
+        len0 = WASM_VECTOR_LEN;
+        ptr1 = passStringToWasm0(ops_json, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len1 = WASM_VECTOR_LEN;
+        ptr2 = passStringToWasm0(target, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len2 = WASM_VECTOR_LEN;
+        ptr3 = isLikeNone(background) ? 0 : passStringToWasm0(background, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        len3 = WASM_VECTOR_LEN;
+    } catch (e) {
+        if (ptr3) { wasm.__wbindgen_free(ptr3, len3 * 1, 1); }
+        if (ptr2) { wasm.__wbindgen_free(ptr2, len2 * 1, 1); }
+        if (ptr1) { wasm.__wbindgen_free(ptr1, len1 * 1, 1); }
+        if (ptr0) { wasm.__wbindgen_free(ptr0, len0 * 1, 1); }
+        throw e;
+    }
+    const ret = wasm.process_to_size(ptr0, len0, ptr1, len1, ptr2, len2, val5, ptr3, len3);
+    if (ret[2]) {
+        throw takeFromExternrefTable0(ret[1]);
+    }
+    return takeFromExternrefTable0(ret[0]);
+}
+
+/**
  * Formats this build can decode / encode, as format ids. The web UI
  * uses this to offer only targets the WASM engine can actually
  * produce, and to fall back to the canvas path for the rest.
@@ -169,6 +294,10 @@ function __wbg_get_imports() {
         __wbg___wbindgen_throw_4c88d8bf264fd984: function(arg0, arg1) {
             throw new Error(getStringFromWasm0(arg0, arg1));
         },
+        __wbg_length_186163212ffe79c3: function(arg0) {
+            const ret = arg0.length;
+            return ret;
+        },
         __wbg_new_37eb45aaf5eeb820: function() {
             const ret = new Array();
             return ret;
@@ -177,11 +306,22 @@ function __wbg_get_imports() {
             const ret = new Object();
             return ret;
         },
+        __wbg_new_with_length_01b143a7e5dd5a3e: function(arg0) {
+            const ret = new Uint8Array(arg0 >>> 0);
+            return ret;
+        },
+        __wbg_set_2793479888329cb6: function() { return handleError(function (arg0, arg1, arg2) {
+            const ret = Reflect.set(arg0, arg1, arg2);
+            return ret;
+        }, arguments); },
         __wbg_set_d2d33b52458e984a: function(arg0, arg1, arg2) {
             arg0[arg1 >>> 0] = arg2;
         },
         __wbg_set_e4b9a833d288759a: function(arg0, arg1, arg2) {
             arg0[arg1] = arg2;
+        },
+        __wbg_set_feb3714f475485ba: function(arg0, arg1, arg2) {
+            arg0.set(getArrayU8FromWasm0(arg1, arg2));
         },
         __wbindgen_generic_0000000000000001: function(arg0) {
             // Cast intrinsic for `F64 -> Externref`.
@@ -213,6 +353,12 @@ function __wbg_get_imports() {
     };
 }
 
+function addToExternrefTable0(obj) {
+    const idx = wasm.__externref_table_alloc();
+    wasm.__wbindgen_externrefs.set(idx, obj);
+    return idx;
+}
+
 function getArrayU8FromWasm0(ptr, len) {
     ptr = ptr >>> 0;
     return getUint8ArrayMemory0().subarray(ptr / 1, ptr / 1 + len);
@@ -237,6 +383,15 @@ function getUint8ArrayMemory0() {
         cachedUint8ArrayMemory0 = new Uint8Array(wasm.memory.buffer);
     }
     return cachedUint8ArrayMemory0;
+}
+
+function handleError(f, args) {
+    try {
+        return f.apply(this, args);
+    } catch (e) {
+        const idx = addToExternrefTable0(e);
+        wasm.__wbindgen_exn_store(idx);
+    }
 }
 
 function isLikeNone(x) {

@@ -115,9 +115,7 @@ impl Encoder for ImageRsCodec {
         // first; ICO supports alpha, so nothing is lost (opaque
         // pixels get alpha 255).
         let owned_rgba;
-        let image = if self.format == ImageFormat::Ico
-            && image.pixel_format != PixelFormat::Rgba8
-        {
+        let image = if self.format == ImageFormat::Ico && image.pixel_format != PixelFormat::Rgba8 {
             owned_rgba = DecodedImage {
                 width: image.width,
                 height: image.height,

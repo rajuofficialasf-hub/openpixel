@@ -406,6 +406,11 @@ the rows below are updated to say so. What is still only detected:
 - WebP / BMP / GIF / TIFF / TGA / ICO / PNM / QOI: no quality knob in
   Phase 1 — the CLI accepts `--quality` only where it applies and
   ignores it elsewhere (documented, not silently misapplied to PNG).
+  WebP specifically: image-rs 0.25 encodes WebP losslessly only, so
+  quality cannot change its size — this is why the target-size
+  search (`--target-size`, Resize tab) refuses WebP instead of
+  pretending to search it. Target size works for JPEG, AVIF, HEIC
+  and HEIF (quality search) and PNG (best compression) only.
 
 ## Format-specific options (Phase 3 additions)
 

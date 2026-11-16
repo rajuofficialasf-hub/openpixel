@@ -1,5 +1,5 @@
 use crate::error::{OpenPixelError, Result};
-use crate::image::{ConvertOptions, ConvertResult, ImageInfo, ProcessOptions};
+use crate::image::{ConvertOptions, ConvertResult, ImageInfo, ProcessOptions, TargetSizeOutcome};
 use crate::security::{check_dimensions, check_file_size, validate_output_path, EngineConfig};
 use openpixel_codecs::{CodecRegistry, DecodedImage};
 use openpixel_formats::{detect_format, discover, DiscoveryResult, FormatCapability, ImageFormat};
@@ -404,6 +404,227 @@ impl Engine {
         })
     }
 
+    /// [`Engine::process`] for in-memory bytes — the entry point
+    /// the WASM bindings use for resize. Same pipeline as `process`
+    /// (decode -> metadata policy / orientation / sRGB preparation
+    /// -> pipeline -> encode -> output validation), but the encoded
+    /// bytes are returned to the caller instead of written to a
+    /// file, and `ConvertResult::output_path` is empty because
+    /// there is no file.
+    pub fn process_bytes(
+        &self,
+        bytes: &[u8],
+        target: ImageFormat,
+        options: &ProcessOptions,
+    ) -> Result<(ConvertResult, Vec<u8>)> {
+        let (source_format, img) = self.decode_bytes(bytes, options.convert.selected_frame)?;
+        let metadata = extract_metadata(bytes, source_format);
+        let anim = animation_info(bytes, source_format);
+        let (img, orientation_applied, warnings, srgb_converted) = self.prepare_image(
+            &img,
+            &metadata,
+            &anim,
+            source_format,
+            &options.convert,
+            false,
+        )?;
+        let processed = options.pipeline.apply(&img)?;
+        check_dimensions(processed.width, processed.height, &self.config)?;
+        self.encode_to_bytes(EncodeRequest {
+            image: &processed,
+            source_format,
+            input_bytes: bytes.len() as u64,
+            target,
+            options: &options.convert,
+            metadata: &metadata,
+            warnings,
+            orientation_applied,
+            converted_to_srgb: srgb_converted,
+        })
+    }
+
+    /// Process in-memory bytes, choosing the encode quality so the
+    /// output fits inside `target_bytes` — the "compress to X KB"
+    /// mode the web Resize tab and `openpixel process
+    /// --target-size` share.
+    ///
+    /// The source is decoded and the pipeline applied **once**;
+    /// every quality attempt encodes from that same decoded image,
+    /// never from a compressed output, so the search itself costs
+    /// no quality. The search is a binary search over quality
+    /// 1..=100 (at most 7 encodes) and returns the highest quality
+    /// whose output fits. When nothing fits, the smallest result
+    /// is returned with `target_met: false` and a warning saying
+    /// so — never a silent overshoot, never a fake "met".
+    ///
+    /// Only formats with a real quality knob can be searched:
+    /// JPEG, AVIF, HEIC and HEIF. PNG is lossless, so its only
+    /// lever is compression level — best compression is tried and
+    /// the result reported honestly when it still does not fit.
+    /// WebP is deliberately excluded: image-rs 0.25 encodes WebP
+    /// losslessly only, so quality does not change its size and a
+    /// search would be theatre. Every other format has no quality
+    /// setting at all and returns an honest error instead of a
+    /// pretended fit (see CODECS.md, "no quality knob").
+    pub fn process_to_size_bytes(
+        &self,
+        bytes: &[u8],
+        target: ImageFormat,
+        options: &ProcessOptions,
+        target_bytes: u64,
+    ) -> Result<(TargetSizeOutcome, Vec<u8>)> {
+        if target_bytes == 0 {
+            return Err(OpenPixelError::InvalidArgument(
+                "target size must be at least 1 byte".to_string(),
+            ));
+        }
+        let lossy = matches!(
+            target,
+            ImageFormat::Jpeg | ImageFormat::Avif | ImageFormat::Heic | ImageFormat::Heif
+        );
+        if !lossy && target != ImageFormat::Png {
+            return Err(OpenPixelError::InvalidArgument(format!(
+                "target size is only supported for lossy formats (JPEG, AVIF, HEIC, HEIF) and PNG (best compression) — {} has no quality setting to search",
+                target.id()
+            )));
+        }
+        let (source_format, img) = self.decode_bytes(bytes, options.convert.selected_frame)?;
+        let metadata = extract_metadata(bytes, source_format);
+        let anim = animation_info(bytes, source_format);
+        let (img, orientation_applied, warnings, srgb_converted) = self.prepare_image(
+            &img,
+            &metadata,
+            &anim,
+            source_format,
+            &options.convert,
+            false,
+        )?;
+        let processed = options.pipeline.apply(&img)?;
+        check_dimensions(processed.width, processed.height, &self.config)?;
+        // One encode at a given quality / PNG compression, from the
+        // same decoded + processed pixels every time.
+        let encode_at = |quality: Option<u8>,
+                         png_compression: Option<u8>,
+                         warnings: Vec<String>|
+         -> Result<(ConvertResult, Vec<u8>)> {
+            let mut convert = options.convert.clone();
+            convert.quality = quality;
+            convert.png_compression = png_compression;
+            self.encode_to_bytes(EncodeRequest {
+                image: &processed,
+                source_format,
+                input_bytes: bytes.len() as u64,
+                target,
+                options: &convert,
+                metadata: &metadata,
+                warnings,
+                orientation_applied: orientation_applied.clone(),
+                converted_to_srgb: srgb_converted,
+            })
+        };
+        if target == ImageFormat::Png {
+            let (mut result, out) = encode_at(None, Some(2), warnings)?;
+            let size = out.len() as u64;
+            if size <= target_bytes {
+                return Ok((
+                    TargetSizeOutcome {
+                        result,
+                        quality_used: None,
+                        target_met: true,
+                    },
+                    out,
+                ));
+            }
+            result.warnings.push(format!(
+                "target size {target_bytes} bytes could not be met — PNG is lossless, so quality cannot shrink it; even best compression gives {size} bytes. Convert to JPEG for a smaller file, or resize to smaller dimensions"
+            ));
+            return Ok((
+                TargetSizeOutcome {
+                    result,
+                    quality_used: None,
+                    target_met: false,
+                },
+                out,
+            ));
+        }
+        let mut lo: u32 = 1;
+        let mut hi: u32 = 100;
+        let mut best: Option<(u8, ConvertResult, Vec<u8>)> = None;
+        let mut smallest: Option<(u8, ConvertResult, Vec<u8>)> = None;
+        // Binary search: size grows (near-)monotonically with
+        // quality for JPEG/AVIF/HEIC, so 7 attempts pin down the
+        // highest fitting quality. Each attempt is independent —
+        // all encode from `processed`, never from each other.
+        for _ in 0..7 {
+            if lo > hi {
+                break;
+            }
+            let mid = ((lo + hi) / 2) as u8;
+            let (result, out) = encode_at(Some(mid), None, warnings.clone())?;
+            let size = out.len() as u64;
+            if size <= target_bytes {
+                best = Some((mid, result, out));
+                lo = mid as u32 + 1;
+            } else {
+                let is_smallest = smallest
+                    .as_ref()
+                    .is_none_or(|(_, _, prev): &(_, _, Vec<u8>)| out.len() < prev.len());
+                if is_smallest {
+                    smallest = Some((mid, result, out));
+                }
+                if mid == 0 {
+                    break;
+                }
+                hi = mid as u32 - 1;
+            }
+        }
+        if let Some((quality, result, out)) = best {
+            return Ok((
+                TargetSizeOutcome {
+                    result,
+                    quality_used: Some(quality),
+                    target_met: true,
+                },
+                out,
+            ));
+        }
+        let (quality, mut result, out) =
+            smallest.expect("at least one encode attempt ran in the search");
+        result.warnings.push(format!(
+            "target size {target_bytes} bytes could not be met — smallest result is {} bytes at quality {quality}; try a larger target or resize to smaller dimensions",
+            out.len()
+        ));
+        Ok((
+            TargetSizeOutcome {
+                result,
+                quality_used: Some(quality),
+                target_met: false,
+            },
+            out,
+        ))
+    }
+
+    /// File-based [`Engine::process_to_size_bytes`]: the target
+    /// format comes from the output extension (like
+    /// `process_to_path`), the best result is written to `output`,
+    /// and the outcome reports the quality used and whether the
+    /// target was met.
+    pub fn process_to_size(
+        &self,
+        input: &Path,
+        output: &Path,
+        options: &ProcessOptions,
+        target_bytes: u64,
+    ) -> Result<TargetSizeOutcome> {
+        let bytes = self.read_input(input)?;
+        let target = target_from_output_path(output)?;
+        let (mut outcome, out) =
+            self.process_to_size_bytes(&bytes, target, options, target_bytes)?;
+        write_output_file(output, &out)?;
+        outcome.result.output_path = output.to_string_lossy().to_string();
+        Ok(outcome)
+    }
+
     /// Convert one file with a processing pipeline in between:
     /// decode -> pipeline (in order) -> encode. An empty pipeline
     /// behaves exactly like [`Engine::convert`]. Pipeline errors
@@ -580,20 +801,8 @@ impl Engine {
     /// The encoding itself lives in [`Engine::encode_to_bytes`];
     /// this wrapper only adds the filesystem steps.
     fn encode_and_write(&self, req: EncodeRequest<'_>, output: &Path) -> Result<ConvertResult> {
-        validate_output_path(output)?;
-        if let Some(parent) = output.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent).map_err(|e| OpenPixelError::Io {
-                    path: parent.to_path_buf(),
-                    source: e,
-                })?;
-            }
-        }
         let (mut result, out) = self.encode_to_bytes(req)?;
-        fs::write(output, &out).map_err(|e| OpenPixelError::Io {
-            path: output.to_path_buf(),
-            source: e,
-        })?;
+        write_output_file(output, &out)?;
         result.output_path = output.to_string_lossy().to_string();
         Ok(result)
     }
@@ -643,9 +852,11 @@ impl Engine {
         let owned_image;
         let img = if target == ImageFormat::Ico && (img.width > 256 || img.height > 256) {
             let (src_w, src_h) = (img.width, img.height);
-            let resized =
-                Pipeline::from_operations(vec![Operation::ResizeFit { width: 256, height: 256 }])
-                    .apply(img)?;
+            let resized = Pipeline::from_operations(vec![Operation::ResizeFit {
+                width: 256,
+                height: 256,
+            }])
+            .apply(img)?;
             warnings.push(format!(
                 "resized {src_w}x{src_h} to {}x{} for ICO — ICO supports max 256x256",
                 resized.width, resized.height
@@ -742,6 +953,25 @@ struct EncodeRequest<'a> {
     converted_to_srgb: bool,
 }
 
+/// Validate an output path, create parent directories, write
+/// bytes. Shared by `encode_and_write` and `process_to_size`.
+fn write_output_file(output: &Path, bytes: &[u8]) -> Result<()> {
+    validate_output_path(output)?;
+    if let Some(parent) = output.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent).map_err(|e| OpenPixelError::Io {
+                path: parent.to_path_buf(),
+                source: e,
+            })?;
+        }
+    }
+    fs::write(output, bytes).map_err(|e| OpenPixelError::Io {
+        path: output.to_path_buf(),
+        source: e,
+    })?;
+    Ok(())
+}
+
 /// Target format from an output path's extension.
 fn target_from_output_path(output: &Path) -> Result<ImageFormat> {
     let ext = output.extension().and_then(|e| e.to_str()).ok_or_else(|| {
@@ -820,11 +1050,7 @@ mod tests {
     fn png_bytes_sized(width: u32, height: u32) -> Vec<u8> {
         let mut im = image::RgbImage::new(width, height);
         for (x, y, px) in im.enumerate_pixels_mut() {
-            *px = Rgb([
-                (x % 256) as u8,
-                (y % 256) as u8,
-                ((x + y) % 256) as u8,
-            ]);
+            *px = Rgb([(x % 256) as u8, (y % 256) as u8, ((x + y) % 256) as u8]);
         }
         let mut buf = Vec::new();
         DynamicImage::ImageRgb8(im)
@@ -1222,6 +1448,187 @@ mod tests {
             }]),
         );
         assert!(engine.process(&src, &dst, ImageFormat::Png, &opts).is_err());
+    }
+
+    #[test]
+    fn process_bytes_resize_fit_exact_aspect_and_never_upscales() {
+        use crate::{Operation, Pipeline, ProcessOptions};
+        let engine = Engine::default();
+        // Exact fit: 800x600 into a 400x300 box stays 400x300.
+        let png = png_bytes_sized(800, 600);
+        let opts = ProcessOptions::new(
+            ConvertOptions::default(),
+            Pipeline::from_operations(vec![Operation::ResizeFit {
+                width: 400,
+                height: 300,
+            }]),
+        );
+        let (r, out) = engine.process_bytes(&png, ImageFormat::Png, &opts).unwrap();
+        assert_eq!((r.width, r.height), (400, 300));
+        assert_eq!(engine.detect_format(&out), ImageFormat::Png);
+        // Aspect preserved: 800x600 (4:3) into a 300x300 box is
+        // 300x225, not a distorted 300x300.
+        let opts = ProcessOptions::new(
+            ConvertOptions::default(),
+            Pipeline::from_operations(vec![Operation::ResizeFit {
+                width: 300,
+                height: 300,
+            }]),
+        );
+        let (r, _) = engine.process_bytes(&png, ImageFormat::Png, &opts).unwrap();
+        assert_eq!((r.width, r.height), (300, 225));
+        // Never upscales: a 64x64 image asked to fit 800x600 stays
+        // 64x64 — upscaling adds no detail, only blur.
+        let small = png_bytes_sized(64, 64);
+        let opts = ProcessOptions::new(
+            ConvertOptions::default(),
+            Pipeline::from_operations(vec![Operation::ResizeFit {
+                width: 800,
+                height: 600,
+            }]),
+        );
+        let (r, _) = engine
+            .process_bytes(&small, ImageFormat::Png, &opts)
+            .unwrap();
+        assert_eq!((r.width, r.height), (64, 64));
+    }
+
+    #[test]
+    fn process_to_size_jpeg_fits_target_and_reports_quality() {
+        use crate::{Operation, Pipeline, ProcessOptions};
+        let engine = Engine::default();
+        let png = png_bytes_sized(1024, 768);
+        let opts = ProcessOptions::new(
+            ConvertOptions::default(),
+            Pipeline::from_operations(vec![Operation::ResizeFit {
+                width: 800,
+                height: 600,
+            }]),
+        );
+        let (outcome, out) = engine
+            .process_to_size_bytes(&png, ImageFormat::Jpeg, &opts, 200_000)
+            .unwrap();
+        assert!(
+            outcome.target_met,
+            "warnings: {:?}",
+            outcome.result.warnings
+        );
+        assert!(outcome.result.output_bytes <= 200_000);
+        assert_eq!(out.len() as u64, outcome.result.output_bytes);
+        let quality = outcome
+            .quality_used
+            .expect("lossy search reports a quality");
+        assert!((1..=100).contains(&quality), "quality {quality}");
+        assert_eq!(engine.detect_format(&out), ImageFormat::Jpeg);
+        assert_eq!((outcome.result.width, outcome.result.height), (800, 600));
+        // The search finds the HIGHEST fitting quality, not the
+        // first one that fits: a generous target must not settle
+        // for a low quality.
+        assert!(quality >= 80, "quality {quality} for a 200 KB target");
+    }
+
+    #[test]
+    fn process_to_size_unreachable_returns_smallest_with_warning() {
+        use crate::ProcessOptions;
+        let engine = Engine::default();
+        let png = png_bytes_sized(1024, 768);
+        let opts = ProcessOptions::default();
+        let (outcome, out) = engine
+            .process_to_size_bytes(&png, ImageFormat::Jpeg, &opts, 100)
+            .unwrap();
+        assert!(!outcome.target_met);
+        // Quality 1–3 all bottom out at the same size for this
+        // smooth gradient (the encoder cannot go smaller), so the
+        // search keeps the first attempt that hit the minimum —
+        // the invariant is the SIZE, not which of 1–3 it was.
+        let quality = outcome
+            .quality_used
+            .expect("lossy search reports a quality");
+        assert!((1..=3).contains(&quality), "quality {quality}");
+        assert!(
+            outcome
+                .result
+                .warnings
+                .iter()
+                .any(|w| w.contains("could not be met")),
+            "warnings: {:?}",
+            outcome.result.warnings
+        );
+        assert_eq!(engine.detect_format(&out), ImageFormat::Jpeg);
+        // The smallest result is the quality-1 encode — nothing
+        // smaller exists for this image at any quality.
+        let mut opts_q1 = ProcessOptions::default();
+        opts_q1.convert.quality = Some(1);
+        let (_, q1) = engine
+            .process_bytes(&png, ImageFormat::Jpeg, &opts_q1)
+            .unwrap();
+        assert_eq!(out.len(), q1.len());
+    }
+
+    #[test]
+    fn process_to_size_png_is_honest_about_lossless() {
+        use crate::ProcessOptions;
+        let engine = Engine::default();
+        let png = png_bytes_sized(256, 192);
+        // A generous target: best compression fits, quality is
+        // meaningless for PNG so none is reported.
+        let (outcome, out) = engine
+            .process_to_size_bytes(
+                &png,
+                ImageFormat::Png,
+                &ProcessOptions::default(),
+                1_000_000,
+            )
+            .unwrap();
+        assert!(outcome.target_met);
+        assert_eq!(outcome.quality_used, None);
+        assert_eq!(engine.detect_format(&out), ImageFormat::Png);
+        // An impossible target: the best-compression result comes
+        // back with a warning, not a pretended fit.
+        let (outcome, _) = engine
+            .process_to_size_bytes(&png, ImageFormat::Png, &ProcessOptions::default(), 10)
+            .unwrap();
+        assert!(!outcome.target_met);
+        assert_eq!(outcome.quality_used, None);
+        assert!(
+            outcome
+                .result
+                .warnings
+                .iter()
+                .any(|w| w.contains("lossless")),
+            "warnings: {:?}",
+            outcome.result.warnings
+        );
+    }
+
+    #[test]
+    fn process_to_size_lossless_format_is_an_honest_error() {
+        use crate::ProcessOptions;
+        let engine = Engine::default();
+        let png = png_bytes_sized(256, 192);
+        // BMP has no quality setting to search.
+        let err = engine
+            .process_to_size_bytes(&png, ImageFormat::Bmp, &ProcessOptions::default(), 50_000)
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("no quality setting"),
+            "error: {err}"
+        );
+        // WebP too: image-rs 0.25 encodes WebP losslessly only, so
+        // quality does not change its size — a search would be
+        // theatre, and the engine says so instead of faking it.
+        let err = engine
+            .process_to_size_bytes(&png, ImageFormat::Webp, &ProcessOptions::default(), 50_000)
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("no quality setting"),
+            "error: {err}"
+        );
+        // A zero target is a caller error, not a search.
+        assert!(matches!(
+            engine.process_to_size_bytes(&png, ImageFormat::Jpeg, &ProcessOptions::default(), 0),
+            Err(OpenPixelError::InvalidArgument(_))
+        ));
     }
 
     #[test]

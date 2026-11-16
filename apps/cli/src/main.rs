@@ -152,6 +152,12 @@ enum Commands {
         /// JPEG quality 1-100 (default 85). Ignored for lossless formats.
         #[arg(long)]
         quality: Option<u8>,
+        /// Target output size, e.g. 200KB, 1.5MB, or plain bytes (51200).
+        /// Searches encode quality so the output fits the target (JPEG,
+        /// AVIF, HEIC, HEIF; best PNG compression for PNG). Cannot be
+        /// combined with --quality — the search picks quality for you.
+        #[arg(long, value_name = "SIZE")]
+        target_size: Option<String>,
         /// PNG compression 0=fast, 1=default, 2=best
         #[arg(long)]
         png_compression: Option<u8>,
@@ -456,6 +462,7 @@ fn run(cli: &Cli, engine: &Arc<Engine>) -> Result<(), openpixel_core::OpenPixelE
             input,
             output,
             quality,
+            target_size,
             png_compression,
             background,
             metadata,
@@ -568,6 +575,42 @@ fn run(cli: &Cli, engine: &Arc<Engine>) -> Result<(), openpixel_core::OpenPixelE
                 pipeline,
             );
             let op_count = options.pipeline.len();
+            if let Some(target_size) = target_size {
+                if quality.is_some() {
+                    return Err(openpixel_core::OpenPixelError::InvalidArgument(
+                        "cannot combine --target-size with --quality; the target-size search picks quality for you".to_string(),
+                    ));
+                }
+                let target_bytes = parse_target_size(target_size)?;
+                let outcome = engine.process_to_size(input, output, &options, target_bytes)?;
+                if cli.json {
+                    println!("{}", serde_json::to_string_pretty(&outcome).unwrap());
+                } else if !cli.quiet {
+                    let result = &outcome.result;
+                    println!(
+                        "processed {} ({}x{}) -> {} : {} bytes -> {} bytes (target {} bytes, quality {})",
+                        result.source_format,
+                        result.width,
+                        result.height,
+                        result.target_format,
+                        result.input_bytes,
+                        result.output_bytes,
+                        target_bytes,
+                        match outcome.quality_used {
+                            Some(q) => q.to_string(),
+                            None => "n/a (lossless)".to_string(),
+                        },
+                    );
+                    println!("wrote {}", result.output_path);
+                    if outcome.target_met {
+                        println!("target size met");
+                    } else {
+                        println!("warning: target size NOT met");
+                    }
+                    print_warnings(cli, result);
+                }
+                return Ok(());
+            }
             let result = engine.process_to_path(input, output, &options)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&result).unwrap());
@@ -1049,6 +1092,46 @@ fn parse_dimensions(s: &str) -> Result<(u32, u32), openpixel_core::OpenPixelErro
     let w: u32 = w.parse().map_err(|_| err())?;
     let h: u32 = h.parse().map_err(|_| err())?;
     Ok((w, h))
+}
+
+/// Parse a target file size: "200KB", "1.5MB", "2GB", "51200" (bytes),
+/// "200 B". Units are binary (KB = 1024, MB = 1024^2, GB = 1024^3)
+/// — the same units `formatBytes` reports in the web UI, so a size
+/// the UI shows round-trips back through this flag. Decimals are
+/// allowed with a unit ("1.5MB"); a bare number must be a whole
+/// number of bytes. Anything else is a caller error.
+fn parse_target_size(s: &str) -> Result<u64, openpixel_core::OpenPixelError> {
+    let err = || {
+        openpixel_core::OpenPixelError::InvalidArgument(format!(
+            "invalid target size '{s}' — use e.g. 200KB, 1.5MB, or plain bytes"
+        ))
+    };
+    let s = s.trim();
+    if s.is_empty() {
+        return Err(err());
+    }
+    let lower = s.to_ascii_lowercase();
+    let (number, multiplier) = if let Some(n) = lower.strip_suffix("gb") {
+        (n, 1024u64 * 1024 * 1024)
+    } else if let Some(n) = lower.strip_suffix("mb") {
+        (n, 1024u64 * 1024)
+    } else if let Some(n) = lower.strip_suffix("kb") {
+        (n, 1024u64)
+    } else if let Some(n) = lower.strip_suffix('b') {
+        (n, 1u64)
+    } else {
+        (lower.as_str(), 1u64)
+    };
+    let number = number.trim();
+    let value: f64 = number.parse().map_err(|_| err())?;
+    if !value.is_finite() || value <= 0.0 {
+        return Err(err());
+    }
+    let bytes = (value * multiplier as f64).round() as u64;
+    if bytes == 0 {
+        return Err(err());
+    }
+    Ok(bytes)
 }
 
 /// Parse "10,20,400,300" into (x, y, width, height).

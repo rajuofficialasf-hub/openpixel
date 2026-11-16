@@ -279,6 +279,12 @@ await shot('09-settings-dark.png');
 await page.locator('button[aria-label="Switch to light theme"]').click();
 
 // --- 11. keyboard-only: tab to drop zone, Enter opens picker ---
+// NOTE (16 Nov 2026): headless Chromium's file-chooser interception
+// is racy in this VM — the chooser sometimes does not fire even
+// though the keydown reaches the zone and input.click() runs
+// (verified: the pre-resize build at 08bf9a5 fails identically, so
+// this is environmental, not a regression). Retry the Enter press a
+// few times; a genuinely broken picker still fails every attempt.
 await page.locator('#tab-convert').click();
 await page.keyboard.press('Tab'); // may land on theme button first; tab until dropzone focused
 let chooserOpened = false;
@@ -294,13 +300,16 @@ const focusedNow = await page.evaluate(() => {
   const el = document.activeElement;
   return el ? `${el.tagName}#${el.id} ${el.getAttribute('aria-label') || ''}` : 'none';
 });
-try {
-  const [chooser] = await Promise.all([
-    page.waitForEvent('filechooser', { timeout: 5000 }),
-    page.keyboard.press('Enter'),
-  ]);
-  chooserOpened = !!chooser;
-} catch { chooserOpened = false; }
+for (let attempt = 0; attempt < 3 && !chooserOpened; attempt++) {
+  try {
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser', { timeout: 4000 }),
+      page.keyboard.press('Enter'),
+    ]);
+    chooserOpened = !!chooser;
+    await chooser.cancel().catch(() => {});
+  } catch { chooserOpened = false; }
+}
 check('keyboard: Enter on drop zone opens file picker', chooserOpened, `focused element was ${focusedNow}`);
 
 console.log('\n--- failed requests/console errors ---');

@@ -57,6 +57,22 @@ run "$BIN" process "$IN/rgba.png" "$OUT/proc-resize.jpg" --resize 128x96 --grays
 run "$BIN" info "$OUT/proc-resize.jpg"
 run "$BIN" process "$IN/rgba.png" "$OUT/proc-thumb.png" --thumbnail 32
 run "$BIN" info "$OUT/proc-thumb.png"
+echo "=== 4b. process --target-size (16 Nov 2026) ==="
+# 50 KB target, resized to 800x600: must fit in 50 KiB as a real 800x600 JPEG.
+run "$BIN" process "$IN/photo.jpg" "$OUT/proc-50k.jpg" --resize-fit 800x600 --target-size 50KB
+run "$BIN" info "$OUT/proc-50k.jpg"
+[ "$(stat -c%s "$OUT/proc-50k.jpg")" -le 51200 ] || { echo "FAIL: proc-50k.jpg over 50 KiB"; exit 1; }
+"$BIN" info "$OUT/proc-50k.jpg" | grep -Eq "size:\s+800x600" || { echo "FAIL: proc-50k.jpg not 800x600"; exit 1; }
+# Unreachable target: smallest result + warning, exit 0 (never a silent overshoot).
+"$BIN" process "$IN/photo.jpg" "$OUT/proc-tiny.jpg" --target-size 100B > /tmp/op-e2e/cli/tiny.log 2>&1
+[ $? -eq 0 ] || { echo "FAIL: unreachable --target-size should exit 0"; exit 1; }
+grep -q "target size NOT met" /tmp/op-e2e/cli/tiny.log || { echo "FAIL: unreachable --target-size should warn"; exit 1; }
+# --target-size conflicts with --quality (exit 1).
+"$BIN" process "$IN/photo.jpg" "$OUT/x.jpg" --target-size 50KB --quality 80 > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: --target-size --quality should exit 1"; exit 1; }
+# WebP refuses target-size honestly — image-rs encodes WebP losslessly only (exit 1).
+"$BIN" process "$IN/photo.jpg" "$OUT/x.webp" --target-size 50KB > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: WebP --target-size should exit 1"; exit 1; }
 echo "=== 5. metadata / frames / extract-frame ==="
 run "$BIN" metadata "$IN/photo.jpg"
 run "$BIN" frames "$IN/anim.gif"

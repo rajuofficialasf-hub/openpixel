@@ -9,7 +9,10 @@ update), web e2e 33/33, no-WASM fallback 9/9 — the live-site
 SVG→JPEG failure Raju reported is fixed and covered by both
 suites. ICO auto-resize run the same day (§2.18, §1.13), web e2e
 37/37, no-WASM fallback 9/9 — the live-site ICO failure Raju
-reported is fixed and covered. This closes the real-browser and desktop
+reported is fixed and covered. Resize & compress run the same day
+(§1.14, §2.19, §4 update), web e2e 36/37 (one environmental
+keyboard flake — see §2.19), resize e2e 16/16, no-WASM fallback
+9/9. This closes the real-browser and desktop
 click-through checklists that were open since Phases 7/8 and the
 WASM checklist from follow-up item 2 — with evidence, not
 assertions. Every scenario below lists what was actually run
@@ -45,8 +48,9 @@ Full command log: `/tmp/op-e2e/cli/log.txt` + `log2.txt`.
 | 1.11 | `formats` / `capabilities` | 21 formats listed; `capabilities heic` decode=yes/encode=yes (heifer 0.5.1); `capabilities psd` decode=no/encode=no, planned |
 | 1.12 | `--json convert` | Parses; reports source/target formats, dimensions, byte counts, warnings, metadata lists |
 | 1.13 | ICO auto-resize (ICO fix run, 16 Nov 2026) | `convert photo.jpg out.ico` (1024×768) succeeds at 256×192 with `warning: resized 1024x768 to 256x192 for ICO — ICO supports max 256x256`; output re-detects as ICO (`file`: "MS Windows icon resource … 256 x 192") and `openpixel info` reads it back. 256×192 and smaller inputs convert unchanged with no warning. Same run: RGB-source ICOs now decode back (the codec normalises ICO input to RGBA8 — image-rs's decoder rejects RGB PNGs inside ICO). |
+| 1.14 | `process --target-size` (resize run, 16 Nov 2026; §4b in `scripts/test/cli-e2e.sh`) | `process photo.jpg out-50k.jpg --resize-fit 800x600 --target-size 50KB` → 50 679 B ≤ 51 200 at quality 73, "target size met", re-detects as JPEG 800×600. Unreachable `--target-size 100B` → smallest result (23 595 B, quality 3) + "target size NOT met" warning, exit 0. `--target-size` + `--quality` → exit 1 (conflict). WebP `--target-size` → exit 1, honest error (image-rs 0.25 encodes WebP losslessly only, so quality cannot change its size — see `docs/CODECS.md`). |
 
-## 2. Web e2e in a real browser — PASS (37/37 checks + fallback)
+## 2. Web e2e in a real browser — PASS (37/37 checks + fallback; resize run 36/37 + resize suite 16/16 — see §2.19)
 
 Real Chromium 1248 driven by `playwright-core` 1.55.0 (installed
 with `npm install playwright-core` in `/tmp/op-e2e/pw`; the browser
@@ -74,6 +78,28 @@ downloaded file was verified with `file(1)` and `openpixel info`.
 | 2.15 | WASM targets TIFF/QOI/JXL (polish run, 16 Nov 2026) | PNG→TIFF, PNG→QOI and PNG→JXL each download and re-detect as the requested format (`file`: TIFF image data / QOI image data / JPEG XL codestream; `openpixel info` format=tiff/qoi/jxl) |
 | 2.17 | SVG source (SVG fix run, 16 Nov 2026) | Raju reported on the live site that SVG→JPEG failed with "Conversion failed: The source image could not be decoded" while the preview rendered. Reproduced first: all 6 test SVGs (plain, viewBox-only, Bengali/Arabic text, foreignObject, embedded and external image) failed identically on openpixel.pages.dev. Root cause, pinned with a Chromium probe: `createImageBitmap` rejects SVG blobs **regardless of MIME type, on the main thread and in a worker** — the canvas path can never convert SVG. Fix: SVG sources are routed to the WASM engine (resvg) for every target, the worker now falls back to the main thread on any error, and the main-thread path draws an `<img>` directly when `createImageBitmap` fails. E2E: SVG detected as SVG 400×200; SVG→JPEG via WASM downloads a real JPEG (`file`: "JPEG image data, JFIF standard 1.02 … 400x200"; `openpixel info` format=jpeg size=400x200); "Converted with the built-in WASM engine" note shown. Covered by 1 new unit test (`wasmCoversConversion` routes SVG to WASM) and 3 new e2e checks. |
 | 2.18 | ICO auto-resize (ICO fix run, 16 Nov 2026) | Raju reported on the live site that PNG→ICO failed with "Conversion failed: The browser cannot encode ICO — use the native CLI". Root cause, pinned by testing the WASM module directly: the ICO format stores width/height in one byte each, so the encoder throws "image width must be 1..=256" for the 800×600 test image — and the native CLI failed identically, so the CLI advice was wrong too. Fix: the shared encode tail (`Engine::encode_to_bytes`) resizes ICO targets to fit 256×256 (aspect preserved, Lanczos3) and reports it as a warning; the web UI shows "Resized to 256×192 for ICO — ICO supports max 256×256" next to the result. The same run caught a second ICO defect: image-rs writes the input's colour type as the embedded PNG and its own decoder only accepts RGBA PNGs, so an RGB-source ICO could not be read back ("The PNG is not in RGBA format!") — the codec now normalises ICO input to RGBA8 first. E2E: 64×64 PNG→ICO downloads a real ICO at 64×64 with no resize note; 1024×768 photo→ICO downloads a real ICO at 256×192 with the note visible; both re-detect via `openpixel info`. Covered by 2 new Rust unit tests (incl. decode-back assertions) and 4 new e2e checks (2 ICO conversions + 2 note checks: present for large, absent for small). |
+| 2.19 | Resize & compress (resize run, 16 Nov 2026; `apps/web/e2e/resize-e2e.mjs`) | **16/16 passed, zero console/page errors.** New "Resize" tab renders; its target list is exactly the 16 browser targets (no AVIF). Aspect lock: width 512 → height 384 for the 1024×768 photo, expected line "Expected result: 512 × 384 px (from 1024 × 768 px)". ResizeFit 800×600 downloads a real JPEG 800×600 (70 341 B, `file` + `openpixel info`) with the "Converted with the built-in WASM engine (Lanczos3)" note. Target-size 50 KB JPEG → 50 679 B ≤ 51 200 with "target size met" reported and the quality slider disabled with its note. Never-upscale: a 256×192 source asked for 800×600 stays 256×192 (expected line and downloaded JPEG both 256×192). Batch of 2 files in the same tab: both done, "Download all (.zip)" contains exactly the 2 resized JPEGs. **Two real defects found and fixed by this run:** (a) the first run logged two `blob:` `ERR_FILE_NOT_FOUND` errors — the result/thumbnail cleanup revoked object URLs that mounted `<img>` elements still referenced (it ran on every `items` change, and thumb URLs are stable across status updates); the cleanup now revokes only URLs that actually disappeared, plus all of them on unmount — re-run shows zero failed requests. (b) The result line said "0% smaller" when the resized file was actually BIGGER than the original (66.4 KiB → 68.7 KiB: a JPEG original re-encoded at quality 85); it now reports the honest change — "3% larger" — and the e2e check asserts `/% (smaller\|larger)\|same size/`. Screenshots `17-resize-tab.png` … `20-resize-batch.png`. |
+
+### 2.19a Web e2e this run: 36/37 — the one failure is environmental, not a regression
+
+The resize run's `web-e2e.mjs` scored 36/37 three times in a row; the
+only failure is the keyboard check (§2.12 — Enter on the drop zone
+opens the file picker). Diagnosis, pinned with probes rather than
+guessed: the keydown *does* reach the zone and `input.click()` *is*
+called, but headless Chromium's file-chooser interception does not
+fire the `filechooser` event in this VM right now (a direct
+`evaluate`-triggered `input.click()` opened the chooser once, and a
+Space press opened it once — the mechanism works intermittently).
+Decisive control: the **pre-resize build at `08bf9a5`** — the exact
+code that scored 37/37 in the ICO run — was built in a worktree,
+served on port 8331, and probed identically: Enter 0/3, Space 0/2,
+same failure. The resize work (which does not touch `DropZone.tsx`
+or `ConvertWorkspace.tsx`) did not cause it. The check now retries
+the Enter press up to 3 times (a genuinely broken picker still
+fails every attempt); it still failed in this run, so the count
+stays 36/37 honestly. Real users are unaffected in the normal way:
+the picker path is the standard `input.click()` from a keyboard
+handler, which opens the OS file dialog in a real browser.
 
 ### 2.16 WASM-absent fallback — PASS (9/9, SVG fix run 16 Nov 2026)
 
@@ -145,18 +171,18 @@ file onto the window from the file manager, pause/resume/retry in
 the Batch tab, EXIF-preserve round-trip through the UI. These stay
 OPEN in the checklist below.
 
-## 4. Regression — all green, counts unchanged
+## 4. Regression — resize run (16 Nov 2026; desktop/clippy/fmt rows not re-run this time)
 
 | Suite | Result |
 |---|---|
-| `cargo test --workspace` | **195 passed, 0 failed** (19 test binaries; same as the item-2 baseline: formats 10, codecs 28 + 3 adapter round-trips, core 35 + 6 integration, jobs 11 + 3, metadata 50, pipeline 29, wasm 8, CLI 5 + 4 integration, + 3 doctests) |
-| `cargo clippy --workspace --all-targets -- -D warnings` | pass |
-| `cargo fmt --all -- --check` | pass |
-| Web `npm test` | **28 passed, 0 failed** (3 files) |
-| Web `npm run lint` (oxlint) | 0 warnings, 0 errors, 22 files |
-| Desktop `npm test` | **11 passed, 0 failed** (2 files) |
-| Desktop `npm run lint` (oxlint) | 0 warnings, 0 errors, 16 files |
-| Desktop backend `cargo test` (own workspace, sysroot `PKG_CONFIG_PATH` per `docs/DESKTOP.md`) | **16 passed, 0 failed** |
+| `cargo test --workspace` | **205 passed, 0 failed** (baseline 197 + 5 new engine tests + 3 new WASM native tests; core 42, wasm 11 native + 3/3 `wasm-pack test --node`) |
+| `cargo clippy --workspace --all-targets -- -D warnings` | pass (item-2 run; not re-run in the resize run) |
+| `cargo fmt --all -- --check` | pass (item-2 run; not re-run in the resize run) |
+| Web `npm test` | **49 passed, 0 failed** (baseline 35 + 14 new resize-logic tests) |
+| Web `npm run lint` (oxlint) | 0 warnings, 0 errors, 32 files |
+| Desktop `npm test` | **11 passed, 0 failed** (2 files; item-2 run) |
+| Desktop `npm run lint` (oxlint) | 0 warnings, 0 errors, 16 files (item-2 run) |
+| Desktop backend `cargo test` (own workspace, sysroot `PKG_CONFIG_PATH` per `docs/DESKTOP.md`) | **16 passed, 0 failed** (item-2 run) |
 | Release rebuild + `openpixel bench --quick` smoke | succeeds; jpeg_decode 1.3 ms, png_encode 3.8 ms, webp_encode 1.4 ms, avif_encode 712.1 ms, tiff_large 4.1 ms, batch_4 1.9 ms, peak RSS 14.5 MiB (quick-mode small fixtures; timings not comparable to a full run — the §1.9 numbers are from the same binary minutes earlier, so treat the spread as run-to-run noise on a loaded VM) |
 
 ## 5. Checklist closure
@@ -254,6 +280,24 @@ Phase 8 manual desktop checklist, and the item-2 WASM checklist:
    user-visible effect (§2.11). It recurred in the polish re-runs
    and is still transient only: every WASM conversion in the same
    runs succeeded.
+4. **FIXED in the resize run (16 Nov 2026) — blob-URL revocation
+   broke image loads, and the result line lied about growth:** (a)
+   the Resize tab revoked thumbnail/result object URLs on every
+   `items` change, including URLs still shown by mounted `<img>`
+   elements — two `blob:` `ERR_FILE_NOT_FOUND` errors in the first
+   resize-e2e run. The cleanup now revokes only URLs that actually
+   disappeared (plus all on unmount). (b) The result line clamped
+   the change at "0% smaller" even when the resized file was
+   *bigger* than the original; it now says "3% larger" (or "same
+   size") with the real percentage. Both verified by the 16/16
+   resize-e2e re-run with zero console errors (§2.19).
+5. **Environmental (resize run, 16 Nov 2026) — headless
+   Chromium's file-chooser interception stopped firing:** the
+   keyboard check (§2.12) failed 3 consecutive full runs (36/37)
+   although the keydown reaches the zone and `input.click()` runs.
+   The pre-resize build at `08bf9a5` fails identically, so it is
+   not a regression from the resize work. The check now retries
+   the Enter press 3 times; see §2.19a for the full evidence.
 3. **Environment traps hit during this run (both pre-documented):**
    `/tmp` is a 512 MiB tmpfs and filled to 100% during the first
    AppImage extraction, which made the extracted binary die with

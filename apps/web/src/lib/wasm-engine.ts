@@ -81,7 +81,39 @@ export interface WasmPackage {
     quality: number | undefined,
     background: string | undefined,
   ) => Uint8Array
+  process: (
+    bytes: Uint8Array,
+    opsJson: string,
+    target: string,
+    quality: number | undefined,
+    background: string | undefined,
+    pngCompression: number | undefined,
+  ) => WasmProcessResult
+  process_to_size: (
+    bytes: Uint8Array,
+    opsJson: string,
+    target: string,
+    // u64 in Rust is a BigInt on the JS side (wasm-bindgen).
+    targetBytes: bigint,
+    background: string | undefined,
+  ) => WasmTargetSizeResult
   version: () => string
+}
+
+/** What the WASM `process` export returns: resized bytes + result metadata. */
+export interface WasmProcessResult {
+  /** Fresh `ArrayBuffer`-backed copy, so `new Blob([bytes])` type-checks. */
+  bytes: Uint8Array<ArrayBuffer>
+  width: number
+  height: number
+  warnings: string[]
+}
+
+/** What the WASM `process_to_size` export returns. */
+export interface WasmTargetSizeResult extends WasmProcessResult {
+  /** Quality the search settled on; `null` for PNG (compression level is the knob). */
+  quality: number | null
+  target_met: boolean
 }
 
 const WASM_URL = '/wasm/openpixel_wasm.js'
@@ -211,6 +243,94 @@ export async function probeWithWasm(
     if (format === 'unknown') return null
     const info = mod.info(bytes)
     return { format, width: info.width, height: info.height }
+  } catch {
+    return null
+  }
+}
+
+export interface WasmProcessOptions {
+  opsJson: string
+  quality: number
+  background: string | null
+  pngCompression: number
+}
+
+/**
+ * Resize `bytes` with the WASM engine (the real Rust engine,
+ * Lanczos3). Returns `null` when the engine is absent or cannot do
+ * this resize — the caller falls back to the canvas path. Unlike
+ * `convertWithWasm`, resize prefers WASM even for canvas targets:
+ * the canvas scaler is bilinear, and the point of this feature is
+ * quality. The result bytes are copied into a fresh
+ * `ArrayBuffer`-backed array, like `convertWithWasm`.
+ */
+export async function processWithWasm(
+  bytes: Uint8Array,
+  targetFormat: string,
+  options: WasmProcessOptions,
+): Promise<WasmProcessResult | null> {
+  const mod = await loadWasmEngine()
+  if (!mod) return null
+  try {
+    const sourceFormat = mod.detect(bytes)
+    const support = mod.supported_formats()
+    if (!support.decode.includes(sourceFormat)) return null
+    if (!support.encode.includes(targetFormat)) return null
+    const out = mod.process(
+      bytes,
+      options.opsJson,
+      targetFormat,
+      options.quality,
+      options.background ?? undefined,
+      options.pngCompression,
+    )
+    return {
+      bytes: new Uint8Array(out.bytes),
+      width: out.width,
+      height: out.height,
+      warnings: out.warnings,
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Resize + compress `bytes` to fit `targetBytes` with the WASM
+ * engine (the engine's binary search over quality — see
+ * `Engine::process_to_size_bytes`). Returns `null` when the engine
+ * is absent or rejects the search (e.g. a WebP target, which the
+ * engine encodes losslessly only) — the caller reports that
+ * honestly instead of faking a fit. There is no canvas equivalent:
+ * a target-size search without the engine is not offered.
+ */
+export async function processToSizeWithWasm(
+  bytes: Uint8Array,
+  targetFormat: string,
+  options: WasmProcessOptions & { targetBytes: number },
+): Promise<WasmTargetSizeResult | null> {
+  const mod = await loadWasmEngine()
+  if (!mod) return null
+  try {
+    const sourceFormat = mod.detect(bytes)
+    const support = mod.supported_formats()
+    if (!support.decode.includes(sourceFormat)) return null
+    if (!support.encode.includes(targetFormat)) return null
+    const out = mod.process_to_size(
+      bytes,
+      options.opsJson,
+      targetFormat,
+      BigInt(options.targetBytes),
+      options.background ?? undefined,
+    )
+    return {
+      bytes: new Uint8Array(out.bytes),
+      width: out.width,
+      height: out.height,
+      warnings: out.warnings,
+      quality: out.quality,
+      target_met: out.target_met,
+    }
   } catch {
     return null
   }

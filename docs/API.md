@@ -284,6 +284,30 @@ let img = engine.decode_file(watermark_path)?;
 
 - `ProcessOptions` — `{ convert: ConvertOptions, pipeline: Pipeline }`.
   An empty pipeline behaves exactly like `convert`.
+- Byte-in / byte-out variants for the WASM bindings (no filesystem):
+  `engine.process_bytes(bytes, target, &opts)` returns
+  `(ConvertResult, Vec<u8>)` — the same pipeline as `process`, and
+  the entry point the web Resize tab uses.
+- Target-size search (16 Nov 2026): `engine.process_to_size_bytes
+  (bytes, target, &opts, target_bytes)` returns
+  `(TargetSizeOutcome, Vec<u8>)`, and the file variant
+  `engine.process_to_size(input, output, &opts, target_bytes)`
+  infers the target from the output extension and writes the file.
+  `TargetSizeOutcome` is `{ result: ConvertResult, quality_used:
+  Option<u8>, target_met: bool }`. The source is decoded and the
+  pipeline applied once; a binary search over quality 1..=100 (at
+  most 7 encodes) then finds the highest quality whose output fits
+  the target — every attempt encodes from the same decoded image,
+  never from a compressed output. When nothing fits, the smallest
+  result is returned with `target_met: false` and a warning, never
+  a silent overshoot. Only JPEG, AVIF, HEIC and HEIF have a quality
+  knob to search; PNG tries best compression (`quality_used:
+  None`); WebP is excluded — image-rs 0.25 encodes WebP losslessly
+  only, so quality does not change its size — and every other
+  format returns an honest error instead of a pretended fit.
+  CLI: `openpixel process in.jpg out.jpg --target-size 200KB`
+  (also `1.5MB`, `2GB`, plain bytes); `--target-size` cannot be
+  combined with `--quality`.
 - `PipelineSpec` — the flag-style builder: one optional field per
   operation, assembled in canonical order (see below). `spec.build()`
   returns a `Pipeline`.
@@ -322,7 +346,7 @@ openpixel frames <input>
 openpixel extract-frame <input> <output> [--frame N] [--quality N] [--png-compression N] [--background ...] [--metadata <policy>] [--preserve-metadata] [--to-srgb]
 openpixel discover <input>
 openpixel convert <input> <output> [--quality 1-100] [--png-compression 0|1|2] [--background white|black|#RRGGBB] [--metadata <policy>] [--preserve-metadata] [--frame N] [--to-srgb]
-openpixel process <input> <output> [--quality N] [--png-compression N] [--background ...] [--metadata <policy>] [--preserve-metadata] [--frame N] [--to-srgb]
+openpixel process <input> <output> [--quality N] [--target-size 200KB] [--png-compression N] [--background ...] [--metadata <policy>] [--preserve-metadata] [--frame N] [--to-srgb]
     [--resize 800x600] [--resize-fit 800x600] [--resize-fill 800x600]
     [--pad 800x600 --pad-color white] [--crop 10,20,400,300] [--thumbnail 256]
     [--rotate 90] [--rotate-background white] [--flip-h] [--flip-v] [--grayscale]

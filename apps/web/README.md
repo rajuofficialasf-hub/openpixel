@@ -20,7 +20,7 @@ All dependency versions are pinned exactly in `package.json`
 
 ## What it does
 
-Four tabs, all real operations — no decorative controls:
+Five tabs, all real operations — no decorative controls:
 
 - **Convert** — drag-and-drop or file picker, local preview, format
   detected from magic bytes (not the extension), dimensions from the
@@ -28,6 +28,16 @@ Four tabs, all real operations — no decorative controls:
   can encode), JPEG/WebP quality slider, PNG compression selector,
   background colour for alpha flattening, metadata-policy selector,
   Convert and Download buttons, loading / error / success states.
+- **Resize** — resize & compress: Fit / Fill / Pad / Exact modes,
+  size presets (Full HD, HD, 800×600, 512×512, 256×256, Passport
+  300×400, Custom), width/height with an aspect-ratio lock,
+  never-upscale by default, quality slider, and an optional target
+  file size ("compress to 200 KB") that searches quality for you.
+  Runs through the real engine (Lanczos3) via the WASM module, with
+  a canvas fallback when the module is absent; one image gets a
+  before/after preview, several get the same settings with
+  per-file downloads and a .zip. Target size works for JPEG/HEIC/
+  HEIF/PNG — not WebP (the engine encodes WebP losslessly only).
 - **Batch** — file list with thumbnails, per-file source/target
   format, status and per-file errors; converts up to 4 files at once
   (configurable in Settings); individual downloads, plus

@@ -34,7 +34,7 @@ pub mod security;
 
 pub use engine::{default_output_path, Engine};
 pub use error::{OpenPixelError, Result};
-pub use image::{ConvertOptions, ConvertResult, ImageInfo, ProcessOptions};
+pub use image::{ConvertOptions, ConvertResult, ImageInfo, ProcessOptions, TargetSizeOutcome};
 pub use openpixel_codecs::{CodecRegistry, DecodedImage, EncodeParams, PixelFormat};
 pub use openpixel_formats::{
     detect_format, discover, Confidence, DetectionMethod, DiscoveryResult, FormatCapability,

@@ -1,9 +1,18 @@
 /**
  * Settings persisted on-device (localStorage). No account, no server.
  */
+import type { ResizeMode } from './resize'
+
 export type Theme = 'light' | 'dark' | 'system'
 
 export type MetadataPolicy = 'strip' | 'preserve'
+
+export interface ResizeSettings {
+  mode: ResizeMode
+  preset: string
+  quality: number
+  format: string
+}
 
 export interface Settings {
   theme: Theme
@@ -13,6 +22,7 @@ export interface Settings {
   metadataPolicy: MetadataPolicy
   batchWorkers: number // 1–4 files converted concurrently in the batch view
   show3dBackground: boolean // animated Three.js background behind the header
+  resize: ResizeSettings // last-used Resize tab settings
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -23,6 +33,7 @@ export const DEFAULT_SETTINGS: Settings = {
   metadataPolicy: 'strip',
   batchWorkers: 4,
   show3dBackground: true,
+  resize: { mode: 'fit', preset: 'fhd', quality: 85, format: 'jpeg' },
 }
 
 const STORAGE_KEY = 'openpixel.settings.v1'
@@ -30,7 +41,7 @@ const STORAGE_KEY = 'openpixel.settings.v1'
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { ...DEFAULT_SETTINGS }
+    if (!raw) return { ...DEFAULT_SETTINGS, resize: { ...DEFAULT_SETTINGS.resize } }
     const parsed = JSON.parse(raw) as Partial<Settings>
     return {
       theme: parsed.theme === 'light' || parsed.theme === 'dark' ? parsed.theme : 'system',
@@ -53,9 +64,28 @@ export function loadSettings(): Settings {
         typeof parsed.show3dBackground === 'boolean'
           ? parsed.show3dBackground
           : DEFAULT_SETTINGS.show3dBackground,
+      resize: parseResizeSettings(parsed.resize),
     }
   } catch {
-    return { ...DEFAULT_SETTINGS }
+    return { ...DEFAULT_SETTINGS, resize: { ...DEFAULT_SETTINGS.resize } }
+  }
+}
+
+const RESIZE_MODES: ResizeMode[] = ['fit', 'fill', 'pad', 'exact']
+
+/** Validate stored resize settings — garbage falls back to defaults, never crashes. */
+function parseResizeSettings(value: unknown): ResizeSettings {
+  const fallback = { ...DEFAULT_SETTINGS.resize }
+  if (!value || typeof value !== 'object') return fallback
+  const v = value as Partial<ResizeSettings>
+  return {
+    mode: typeof v.mode === 'string' && (RESIZE_MODES as string[]).includes(v.mode) ? v.mode : fallback.mode,
+    preset: typeof v.preset === 'string' ? v.preset : fallback.preset,
+    quality:
+      typeof v.quality === 'number'
+        ? Math.min(100, Math.max(1, Math.round(v.quality)))
+        : fallback.quality,
+    format: typeof v.format === 'string' ? v.format : fallback.format,
   }
 }
 

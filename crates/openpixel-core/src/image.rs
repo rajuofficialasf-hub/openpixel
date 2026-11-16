@@ -141,6 +141,20 @@ pub struct ProcessOptions {
     pub pipeline: Pipeline,
 }
 
+/// What a target-size search returns, beyond the plain
+/// `ConvertResult`: the quality the search settled on (lossy
+/// targets only — `None` for PNG, where the compression level is
+/// the knob instead), and whether the target was actually met.
+/// When `target_met` is false the bytes are still the smallest
+/// result the search found, and the warning in `result.warnings`
+/// says the target was missed — the caller must show it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TargetSizeOutcome {
+    pub result: ConvertResult,
+    pub quality_used: Option<u8>,
+    pub target_met: bool,
+}
+
 impl ProcessOptions {
     pub fn new(convert: ConvertOptions, pipeline: Pipeline) -> Self {
         Self { convert, pipeline }

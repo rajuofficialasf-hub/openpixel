@@ -6,6 +6,7 @@ import LightModeIcon from '@mui/icons-material/LightMode'
 import { BatchWorkspace } from './components/BatchWorkspace'
 import { CapabilitiesTable } from './components/CapabilitiesTable'
 import { ConvertWorkspace } from './components/ConvertWorkspace'
+import { ResizeWorkspace } from './components/ResizeWorkspace'
 import { SettingsPanel } from './components/SettingsPanel'
 import { loadSettings, resolveTheme, saveSettings, type Settings } from './lib/settings'
 import { WASM_STATUS } from './lib/wasm'
@@ -15,10 +16,11 @@ import { getTheme } from './theme/theme'
 // paint. The chunk loads only when the setting is on.
 const Background3D = lazy(() => import('./components/Background3D'))
 
-type TabId = 'convert' | 'batch' | 'formats' | 'settings'
+type TabId = 'convert' | 'resize' | 'batch' | 'formats' | 'settings'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'convert', label: 'Convert' },
+  { id: 'resize', label: 'Resize' },
   { id: 'batch', label: 'Batch' },
   { id: 'formats', label: 'Formats' },
   { id: 'settings', label: 'Settings' },
@@ -120,6 +122,9 @@ function App() {
           <Box role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
             {tab === 'convert' && (
               <ConvertWorkspace settings={settings} onSettingsChange={setSettings} />
+            )}
+            {tab === 'resize' && (
+              <ResizeWorkspace settings={settings} onSettingsChange={setSettings} />
             )}
             {tab === 'batch' && <BatchWorkspace settings={settings} />}
             {tab === 'formats' && <CapabilitiesTable />}

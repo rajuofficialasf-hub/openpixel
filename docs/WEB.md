@@ -140,6 +140,52 @@ Honest limits of the canvas path, all stated in the UI:
   16 384 px); a very large image is bounded only by tab memory.
   The CLI enforces the limits.
 
+## Resize & compress — Resize tab (16 Nov 2026)
+
+A fifth tab next to Convert: change dimensions and shrink file
+size without losing quality. Upload one image for a detailed
+before/after preview, or several to resize them all with the same
+settings (per-file download, plus a .zip of all results).
+
+- **Modes:** Fit (aspect preserved, never stretches), Fill (scale +
+  centre-crop to the exact size), Pad (fit + pad with the
+  background colour to the exact size), Exact (stretch — warns that
+  it distorts). Presets: Full HD 1920×1080, HD 1280×720, 800×600,
+  512×512, 256×256, Passport 300×400, Custom. Width/Height inputs
+  with an aspect-ratio lock (default on) and an expected-result
+  line, so never-upscale clamping is visible before running.
+- **Quality rules:** the resize runs through the real engine
+  (Lanczos3) via the WASM module — `process` / `process_to_size`
+  in `crates/openpixel-wasm` — and always from the original file,
+  never a re-compressed copy. Never-upscale is on by default
+  (ResizeFit semantics); the "Allow upscaling" toggle warns that
+  upscaling adds no detail. A JPEG source re-encoded to a lossy
+  target warns that some quality will be lost.
+- **Target size ("compress to X KB"):** an optional target (e.g.
+  "200 KB") runs the engine's binary search over quality and
+  returns the highest quality that fits, reporting the quality
+  used and whether the target was met. When the target cannot be
+  met, the smallest result is kept with a warning. The quality
+  slider is disabled while a target size is set.
+- **Honest limits:** target size works for JPEG, HEIC and HEIF
+  (quality search) and PNG (best compression). It does **not**
+  work for WebP — the engine's WebP encoder is lossless-only, so
+  quality does not change its size; the UI says so and disables
+  the combination instead of faking a fit. AVIF is not offered as
+  a resize target (the WASM engine cannot encode it). Without the
+  WASM module, plain resize falls back to the canvas (bilinear,
+  PNG/JPEG/WebP only) and target size is not offered at all; the
+  result says which engine ran. In-browser resize always strips
+  EXIF/ICC/XMP (CLI `--metadata preserve` keeps it, JPEG/PNG
+  only). Last-used mode / preset / quality / format persist in
+  `openpixel.settings.v1`.
+- **Tests:** `apps/web/src/lib/resize.test.ts` (14 unit tests:
+  target-size parsing, aspect math, clamping); Rust tests for
+  `process_bytes` / `process_to_size_bytes` in openpixel-core and
+  the WASM bindings in openpixel-wasm (incl. `wasm-pack test
+  --node`); e2e in `apps/web/e2e/resize-e2e.mjs` (see docs/E2E.md
+  §2.19).
+
 ## WASM status — shipped (follow-up item 2, 16 Nov 2026)
 
 The real Rust engine runs in this browser. What changed since

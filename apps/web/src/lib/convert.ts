@@ -221,6 +221,7 @@ async function convertInWorker(
   targetMime: string,
   quality: number,
   flattenBackground: string | null,
+  targetSize?: { width: number; height: number },
 ): Promise<ConvertedImage> {
   let worker: Worker
   try {
@@ -236,6 +237,8 @@ async function convertInWorker(
       targetMime,
       quality,
       flattenBackground,
+      targetWidth: targetSize?.width,
+      targetHeight: targetSize?.height,
     }
     const result = await new Promise<WorkerConvertSuccess>((resolve, reject) => {
       const timeout = window.setTimeout(() => {
@@ -264,6 +267,7 @@ async function convertOnMainThread(
   targetMime: string,
   quality: number,
   flattenBackground: string | null,
+  targetSize?: { width: number; height: number },
 ): Promise<ConvertedImage> {
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
@@ -274,15 +278,18 @@ async function convertOnMainThread(
   let height: number
   try {
     const bitmap = await decodeBitmap(file)
-    canvas.width = bitmap.width
-    canvas.height = bitmap.height
+    // With a target size the canvas is exactly that size and the
+    // bitmap is drawn scaled into it (the resize fallback); without
+    // one the canvas keeps the source size (plain conversion).
+    width = targetSize?.width ?? bitmap.width
+    height = targetSize?.height ?? bitmap.height
+    canvas.width = width
+    canvas.height = height
     if (flattenBackground) {
       ctx.fillStyle = flattenBackground
-      ctx.fillRect(0, 0, bitmap.width, bitmap.height)
+      ctx.fillRect(0, 0, width, height)
     }
-    ctx.drawImage(bitmap, 0, 0)
-    width = bitmap.width
-    height = bitmap.height
+    ctx.drawImage(bitmap, 0, 0, width, height)
     bitmap.close()
   } catch {
     // `createImageBitmap` rejects some files an `<img>` can still
@@ -295,15 +302,15 @@ async function convertOnMainThread(
     // viewBox-only SVG renders at the browser's 300×150 default
     // here, where the WASM route uses the viewBox size.
     const img = await loadImageElement(file)
-    canvas.width = img.naturalWidth
-    canvas.height = img.naturalHeight
+    width = targetSize?.width ?? img.naturalWidth
+    height = targetSize?.height ?? img.naturalHeight
+    canvas.width = width
+    canvas.height = height
     if (flattenBackground) {
       ctx.fillStyle = flattenBackground
-      ctx.fillRect(0, 0, img.naturalWidth, img.naturalHeight)
+      ctx.fillRect(0, 0, width, height)
     }
-    ctx.drawImage(img, 0, 0)
-    width = img.naturalWidth
-    height = img.naturalHeight
+    ctx.drawImage(img, 0, 0, width, height)
   }
   const blob = await new Promise<Blob | null>((resolve) => {
     canvas.toBlob(resolve, targetMime, quality / 100)
@@ -312,6 +319,42 @@ async function convertOnMainThread(
     throw new Error(`This browser cannot encode ${targetMime}. Try PNG or JPEG instead.`)
   }
   return { blob, width, height, bytes: blob.size, engine: 'canvas' }
+}
+
+/**
+ * Resize with the canvas path only (the fallback when the WASM
+ * engine is absent — see `resize-convert.ts`). The canvas scaler is
+ * bilinear, not the engine's Lanczos3, and the caller says so in
+ * its result. Only PNG/JPEG/WebP targets work here; anything else
+ * throws an honest error. Target-size search is not offered on
+ * this path — it needs the engine.
+ */
+export async function resizeOnCanvas(
+  file: Blob,
+  options: ConvertOptions,
+  width: number,
+  height: number,
+): Promise<ConvertedImage> {
+  const targetMime = canvasMimeType(options.targetFormat)
+  if (!targetMime) {
+    throw new Error(
+      `The browser cannot encode ${options.targetFormat.toUpperCase()} without the WASM engine — ` +
+        `build it with npm run build:wasm, or use the native CLI (openpixel process).`,
+    )
+  }
+  const flattenBackground = targetHasNoAlpha(options.targetFormat) ? options.background : null
+  const targetSize = { width, height }
+  try {
+    return await convertInWorker(file, targetMime, options.quality, flattenBackground, targetSize)
+  } catch {
+    return await convertOnMainThread(
+      file,
+      targetMime,
+      options.quality,
+      flattenBackground,
+      targetSize,
+    )
+  }
 }
 
 /** Load a file into an `<img>` element (main thread only — workers have no DOM). */

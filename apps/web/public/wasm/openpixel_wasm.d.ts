@@ -2,6 +2,28 @@
 /* eslint-disable */
 
 /**
+ * Chroma subsampling format
+ */
+export enum ChromaSampling {
+    /**
+     * Both vertically and horizontally subsampled.
+     */
+    Cs420 = 0,
+    /**
+     * Horizontally subsampled.
+     */
+    Cs422 = 1,
+    /**
+     * Not subsampled.
+     */
+    Cs444 = 2,
+    /**
+     * Monochrome.
+     */
+    Cs400 = 3,
+}
+
+/**
  * Capabilities of the registry *in this build* — the same list the
  * native CLI reports, except AVIF is listed as unavailable (its
  * decoder needs native libdav1d). The web UI reads this instead of
@@ -49,6 +71,46 @@ export function discover(bytes: Uint8Array | number[], extension?: string | null
 export function info(bytes: Uint8Array | number[]): any;
 
 /**
+ * Process `bytes` with a resize pipeline, then encode to `target`
+ * — the Resize tab's entry point. `ops_json` is a JSON array of
+ * resize operations, e.g. `[{"kind":"resize_fit","width":800,"height":600}]`
+ * (kinds: `resize_fit`, `resize_fill`, `pad`, `resize`; `pad` takes
+ * an optional `color` as `#RRGGBB`). Ops arrive as a JSON string —
+ * not a `JsValue` — so the parsing is plain Rust and unit-testable
+ * without a JS runtime. `quality` is 1–100 (JPEG,
+ * HEIC, HEIF; pass `undefined` for the engine default 80);
+ * `background` is the `#RRGGBB` colour alpha is flattened to for
+ * targets without alpha (white when omitted); `png_compression`
+ * is 0 = fast, 1 = default, 2 = best for PNG targets (ignored
+ * for other formats; `undefined` is the engine default 1).
+ *
+ * Returns a JS object `{ bytes, width, height, warnings }` — the
+ * resized bytes plus the result dimensions and any engine warnings
+ * (e.g. the ICO auto-resize note). Errors when the ops are invalid,
+ * the source is undecodable in this build, or the target is not
+ * encodable here.
+ */
+export function process(bytes: Uint8Array | number[], ops_json: string, target: string, quality?: number | null, background?: string | null, png_compression?: number | null): any;
+
+/**
+ * Like [`process`], but the encode quality is searched so the
+ * output fits inside `target_bytes` — "compress to X KB". Returns
+ * `{ bytes, width, height, quality, target_met, warnings }`:
+ * `quality` is the quality the search settled on (`null` for PNG,
+ * where compression level is the knob), and `target_met` says
+ * whether the target was actually reached. When it was not, the
+ * bytes are still the smallest result found and the warnings say
+ * the target was missed — never a silent overshoot.
+ *
+ * Only JPEG, HEIC and HEIF can be searched in this build (AVIF is
+ * unavailable in WASM — its decoder needs native libdav1d — and
+ * WebP is encoded losslessly only by image-rs, so quality does not
+ * change its size). PNG tries best compression. Any other target
+ * is an honest error.
+ */
+export function process_to_size(bytes: Uint8Array | number[], ops_json: string, target: string, target_bytes: bigint, background?: string | null): any;
+
+/**
  * Formats this build can decode / encode, as format ids. The web UI
  * uses this to offer only targets the WASM engine can actually
  * produce, and to fall back to the canvas path for the rest.
@@ -69,11 +131,15 @@ export interface InitOutput {
     readonly detect: (a: number, b: number) => [number, number];
     readonly discover: (a: number, b: number, c: number, d: number, e: number, f: number) => any;
     readonly info: (a: number, b: number) => [number, number, number];
+    readonly process: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number, number];
+    readonly process_to_size: (a: number, b: number, c: number, d: number, e: number, f: number, g: bigint, h: number, i: number) => [number, number, number];
     readonly supported_formats: () => any;
     readonly version: () => [number, number];
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_free: (a: number, b: number, c: number) => void;
+    readonly __wbindgen_exn_store: (a: number) => void;
+    readonly __externref_table_alloc: () => number;
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __externref_table_dealloc: (a: number) => void;
     readonly __wbindgen_start: () => void;
