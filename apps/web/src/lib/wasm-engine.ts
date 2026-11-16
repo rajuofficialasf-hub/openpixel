@@ -29,6 +29,14 @@
  * wasm32 build); the engine reports that, and this module never
  * claims otherwise.
  *
+ * SVG is a WASM source too, even for canvas targets (JPEG/PNG/WebP):
+ * the canvas worker decodes with `createImageBitmap`, which rejects
+ * every SVG blob ("The source image could not be decoded") while an
+ * `<img>` displays the same file fine — so the canvas path cannot
+ * convert SVG at all, and the WASM engine (resvg) is the only
+ * in-browser route. `wasmCoversConversion` routes SVG there; the
+ * preview still uses an `<img>`, which is unaffected.
+ *
  * The WASM conversion runs synchronously on the calling thread, so
  * `convertImage` only uses it for conversions the canvas path
  * cannot do at all — the worker-based canvas path stays the default
@@ -108,10 +116,27 @@ export async function getWasmSupport(): Promise<WasmSupport | null> {
 }
 
 /**
+ * Sources the canvas path cannot decode at all, even though an
+ * `<img>` can display them — so `wasmCoversConversion` routes them
+ * to the WASM engine instead of letting the worker fail.
+ *
+ * SVG is the one (verified 16 Nov 2026 on the live site: every SVG
+ * — plain rect+text, viewBox-only, Bengali/Arabic text, foreignObject,
+ * embedded or external image — failed in the worker with
+ * "The source image could not be decoded", while the `<img>` preview
+ * rendered each one). `createImageBitmap` rejects SVG blobs; the
+ * WASM engine rasterises them with resvg. The preview stays an
+ * `<img>` and is unaffected, and `BROWSER_DECODABLE` still lists SVG
+ * for display purposes — this list is about the *conversion* path.
+ */
+const CANVAS_UNDECODABLE: readonly string[] = ['svg']
+
+/**
  * Whether the WASM engine is the right path for this conversion:
  * the engine is loaded, it can decode the source and encode the
  * target, and the canvas path cannot do the conversion (source the
- * browser cannot decode, or a target the canvas cannot encode).
+ * browser cannot decode, a source `createImageBitmap` rejects such
+ * as SVG, or a target the canvas cannot encode).
  * Pure function of its arguments — unit-tested, no I/O.
  */
 export function wasmCoversConversion(
@@ -122,7 +147,11 @@ export function wasmCoversConversion(
   if (!support) return false
   if (!support.decode.includes(sourceFormat)) return false
   if (!support.encode.includes(targetFormat)) return false
-  return !BROWSER_DECODABLE.includes(sourceFormat) || !BROWSER_ENCODABLE.includes(targetFormat)
+  return (
+    !BROWSER_DECODABLE.includes(sourceFormat) ||
+    CANVAS_UNDECODABLE.includes(sourceFormat) ||
+    !BROWSER_ENCODABLE.includes(targetFormat)
+  )
 }
 
 export interface WasmConvertedImage {

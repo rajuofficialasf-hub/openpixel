@@ -47,8 +47,8 @@ User drops a file
 
 | Path | Sources | Targets |
 |---|---|---|
-| Browser canvas (this app) | PNG, JPEG, WebP, GIF (first frame only), BMP, SVG (rasterised), AVIF (only if the browser decodes it) | PNG, JPEG, WebP |
-| WASM engine (this app, when built — see below) | Everything the canvas path handles, plus TIFF, QOI, HEIC, HEIF, JXL, JPEG 2000, ICO, PNM, TGA, EXR, HDR | Everything the canvas path handles, plus BMP, TIFF, QOI, HEIC, HEIF, JXL, JPEG 2000, ICO, PNM, TGA, GIF |
+| Browser canvas (this app) | PNG, JPEG, WebP, GIF (first frame only), BMP, AVIF (only if the browser decodes it) | PNG, JPEG, WebP |
+| WASM engine (this app, when built — see below) | Everything the canvas path handles, plus SVG (rasterised with resvg), TIFF, QOI, HEIC, HEIF, JXL, JPEG 2000, ICO, PNM, TGA, EXR, HDR | Everything the canvas path handles, plus BMP, TIFF, QOI, HEIC, HEIF, JXL, JPEG 2000, ICO, PNM, TGA, GIF |
 | Native CLI / desktop app | All 16 engine formats (incl. TIFF, TGA, ICO, PNM, QOI, AVIF, JXL, HDR, EXR, JPEG 2000, SVG) | All 15 engine-encodable formats |
 
 Not convertible anywhere yet: APNG, RAW, PSD (planned in the
@@ -57,6 +57,18 @@ convert natively and in WASM since follow-up item 1 (16 Nov 2026).
 
 Honest limits of the canvas path, all stated in the UI:
 
+- **SVG is not a canvas source.** `createImageBitmap` rejects every
+  SVG blob ("The source image could not be decoded") — verified
+  16 Nov 2026 on the live site, where all six test SVGs (plain,
+  viewBox-only, Bengali/Arabic text, foreignObject, embedded and
+  external image) failed in the worker while the `<img>` preview
+  rendered them. SVG is therefore routed to the WASM engine (resvg)
+  for every target, including PNG/JPEG/WebP. Without the WASM
+  module, the probe reads dimensions from an `<img>` and conversion
+  falls back to drawing that element on the main thread (a
+  viewBox-only SVG then renders at the browser's 300×150 default
+  instead of its viewBox size). The preview is an `<img>` and is
+  unaffected either way.
 - Metadata is always stripped by a canvas round-trip (EXIF/ICC/XMP).
   "Preserve" in the metadata selector warns and still strips; the
   CLI (`--metadata preserve`) is the way to keep metadata, and only

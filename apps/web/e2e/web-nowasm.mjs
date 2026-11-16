@@ -1,5 +1,6 @@
 // WASM-absent fallback check — item 4. Serves a copy of dist/ with public/wasm removed.
 import { chromium } from 'playwright-core';
+import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
@@ -59,6 +60,43 @@ check('no-WASM build: no misleading "Conversion failed" label', !bodyText.includ
 const convertDisabled = await page.locator('button', { hasText: /^Convert to / }).isDisabled();
 check('no-WASM build: Convert button disabled for TIFF', convertDisabled);
 await page.screenshot({ path: path.join(SHOT, '11-nowasm-tiff.png') });
+
+// SVG without WASM (16 Nov 2026): the probe falls back to <img>
+// dimensions and conversion falls back to the main-thread <img>
+// draw — so SVG->JPEG works even with no WASM module. Regression
+// for the live-site SVG failure: without this, the probe failed
+// and the Convert button stayed disabled.
+const svgPath = path.join(IN, 'simple.svg');
+if (!fs.existsSync(svgPath)) {
+  fs.writeFileSync(
+    svgPath,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200">
+  <rect width="400" height="200" fill="#0e7a5f"/>
+  <text x="200" y="110" font-family="sans-serif" font-size="42" fill="#fff" text-anchor="middle">Hello SVG</text>
+</svg>
+`,
+  );
+}
+await page.locator('button', { hasText: 'Choose a different file' }).click();
+await page.setInputFiles('#convert-file', svgPath);
+await page.waitForFunction(
+  () => document.body.innerText.includes('Detected format') && !document.body.innerText.includes('Reading…'),
+  { timeout: 15000 },
+);
+const svgDetected = await page.locator('dl').innerText();
+check('no-WASM build: SVG detected as SVG', /SVG/.test(svgDetected), svgDetected.replace(/\n/g, ' | ').slice(0, 200));
+await page.selectOption('#target-format', 'jpeg');
+await page.locator('button', { hasText: /^Convert to / }).click();
+await page.waitForSelector('text=Converted:', { timeout: 60000 });
+const [dlSvg] = await Promise.all([
+  page.waitForEvent('download', { timeout: 30000 }),
+  page.locator('button', { hasText: /^Download / }).click(),
+]);
+const pSvg = path.join(DL, 'nowasm-' + dlSvg.suggestedFilename());
+await dlSvg.saveAs(pSvg);
+const fSvg = execFileSync('file', ['-b', pSvg], { encoding: 'utf8' }).trim();
+check('no-WASM build: SVG->JPEG converts via <img> fallback', fSvg.startsWith('JPEG image data'), `${path.basename(pSvg)}: ${fSvg}`);
+await page.screenshot({ path: path.join(SHOT, '12-nowasm-svg.png') });
 
 console.log('\npage/console errors:', errs.length ? errs.join('\n') : '(none)');
 const fails = results.filter((r) => !r.ok).length;

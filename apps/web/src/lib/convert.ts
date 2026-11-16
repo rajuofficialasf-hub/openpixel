@@ -8,7 +8,13 @@
  *
  * What converts here (honest list — see also `capabilities.ts`):
  *   sources: PNG, JPEG, WebP, GIF (first frame only), BMP, SVG
- *            (rasterised), AVIF (only if this browser decodes it)
+ *            (rasterised by the WASM engine with resvg — the canvas
+ *            worker cannot decode SVG: `createImageBitmap` rejects
+ *            every SVG blob, so SVG→PNG/JPEG/WebP is routed to WASM
+ *            by `wasmCoversConversion`; without the WASM module the
+ *            main-thread `<img>` fallback in `convertOnMainThread`
+ *            draws the SVG instead), AVIF (only if this browser
+ *            decodes it)
  *   targets: PNG, JPEG, WebP (whatever `canvas.toBlob` supports);
  *            BMP goes through the WASM engine, never the canvas —
  *            `canvas.toBlob` silently returns PNG for `image/bmp`.
@@ -21,13 +27,15 @@
  * present (`npm run build:wasm`), conversions the canvas path cannot
  * do at all are tried with the real Rust engine in the browser
  * first — TIFF / QOI / HEIC / HEIF / JXL / JPEG 2000 / ICO / PNM /
- * TGA / EXR / HDR sources, and TIFF / QOI / HEIC / HEIF / JXL /
- * JPEG 2000 / ICO / PNM / TGA / GIF targets. AVIF stays unavailable
- * in WASM (no wasm32 libdav1d). If the module is absent or the
- * engine rejects the conversion, the canvas path runs exactly as
- * before and errors honestly for targets it cannot encode. The
- * canvas path is never replaced for conversions it already handles:
- * it runs in a worker (non-blocking) while WASM runs synchronously.
+ * TGA / EXR / HDR sources, SVG sources (the worker's
+ * `createImageBitmap` rejects every SVG blob), and TIFF / QOI /
+ * HEIC / HEIF / JXL / JPEG 2000 / ICO / PNM / TGA / GIF targets.
+ * AVIF stays unavailable in WASM (no wasm32 libdav1d). If the module
+ * is absent or the engine rejects the conversion, the canvas path
+ * runs exactly as before and errors honestly for targets it cannot
+ * encode. The canvas path is never replaced for conversions it
+ * already handles: it runs in a worker (non-blocking) while WASM
+ * runs synchronously.
  *
  * Metadata: a canvas round-trip always strips EXIF/ICC/XMP, and the
  * WASM binding strips it too (it converts with the default
@@ -98,9 +106,7 @@ export async function probeImage(file: Blob): Promise<ProbedImage> {
     return { format, width, height }
   } catch {
     // The browser cannot decode this file (e.g. TIFF / QOI / HEIC):
-    // ask the WASM engine, which knows the real dimensions. A
-    // failed probe still throws below — the file is genuinely
-    // unreadable in this browser, and the native CLI is the answer.
+    // ask the WASM engine, which knows the real dimensions.
     const wasm = await probeWithWasm(new Uint8Array(await file.arrayBuffer()))
     if (wasm) {
       return {
@@ -109,7 +115,23 @@ export async function probeImage(file: Blob): Promise<ProbedImage> {
         height: wasm.height,
       }
     }
-    throw new ProbeError(format)
+    // Last resort: an `<img>` can display files `createImageBitmap`
+    // rejects — notably every SVG (verified 16 Nov 2026: the worker
+    // and `createImageBitmap` refuse SVG blobs while `<img>` renders
+    // them). Reading dimensions from the element is what lets the
+    // no-WASM build offer SVG conversion at all (the main-thread
+    // `<img>` fallback in `convertOnMainThread` does the rasterising).
+    // Dimensions are the element's natural size, so a viewBox-only
+    // SVG reports the browser's 300×150 default here, where the
+    // WASM route uses the viewBox size.
+    try {
+      const img = await loadImageElement(file)
+      return { format, width: img.naturalWidth, height: img.naturalHeight }
+    } catch {
+      // A failed probe still throws below — the file is genuinely
+      // unreadable in this browser, and the native CLI is the answer.
+      throw new ProbeError(format)
+    }
   }
 }
 
@@ -178,17 +200,17 @@ export async function convertImage(file: Blob, options: ConvertOptions): Promise
   }
   try {
     return await convertInWorker(file, targetMime, options.quality, flattenBackground)
-  } catch (err) {
-    // Worker unavailable (or it failed to start) — fall back to the
-    // main thread rather than failing the conversion. A decode/encode
-    // failure inside the worker is rethrown as-is only when it is a
-    // real conversion error; the worker path reports those via its
-    // own error message, so a throw here means the worker itself
-    // could not run.
-    if (err instanceof WorkerUnavailableError) {
-      return await convertOnMainThread(file, targetMime, options.quality, flattenBackground)
-    }
-    throw err
+  } catch {
+    // The worker is an optimisation, not the only decode path: a
+    // failure there must not be terminal when the main thread can
+    // still decode the file. That is exactly the SVG case —
+    // `createImageBitmap` rejects SVG blobs in the worker while an
+    // `<img>` on the main thread renders them (verified 16 Nov 2026:
+    // every SVG failed in the worker, preview included) — and the
+    // same holds for any format the worker rejects but `<img>`
+    // accepts. The main-thread attempt throws its own, more
+    // actionable error when it also cannot decode the file.
+    return await convertOnMainThread(file, targetMime, options.quality, flattenBackground)
   }
 }
 
@@ -243,23 +265,46 @@ async function convertOnMainThread(
   quality: number,
   flattenBackground: string | null,
 ): Promise<ConvertedImage> {
-  const bitmap = await decodeBitmap(file)
   const canvas = document.createElement('canvas')
-  canvas.width = bitmap.width
-  canvas.height = bitmap.height
   const ctx = canvas.getContext('2d')
   if (!ctx) {
-    bitmap.close()
     throw new Error('Could not get a 2D canvas context.')
   }
-  if (flattenBackground) {
-    ctx.fillStyle = flattenBackground
-    ctx.fillRect(0, 0, bitmap.width, bitmap.height)
+  let width: number
+  let height: number
+  try {
+    const bitmap = await decodeBitmap(file)
+    canvas.width = bitmap.width
+    canvas.height = bitmap.height
+    if (flattenBackground) {
+      ctx.fillStyle = flattenBackground
+      ctx.fillRect(0, 0, bitmap.width, bitmap.height)
+    }
+    ctx.drawImage(bitmap, 0, 0)
+    width = bitmap.width
+    height = bitmap.height
+    bitmap.close()
+  } catch {
+    // `createImageBitmap` rejects some files an `<img>` can still
+    // display — notably every SVG (the worker and `createImageBitmap`
+    // both refuse SVG blobs, while `<img>` renders them). Draw the
+    // element straight to the canvas instead of going through a
+    // bitmap at all. This is the no-WASM fallback for SVG: with the
+    // WASM module present, SVG never reaches this path (it is routed
+    // to resvg first). Dimensions come from the element itself, so a
+    // viewBox-only SVG renders at the browser's 300×150 default
+    // here, where the WASM route uses the viewBox size.
+    const img = await loadImageElement(file)
+    canvas.width = img.naturalWidth
+    canvas.height = img.naturalHeight
+    if (flattenBackground) {
+      ctx.fillStyle = flattenBackground
+      ctx.fillRect(0, 0, img.naturalWidth, img.naturalHeight)
+    }
+    ctx.drawImage(img, 0, 0)
+    width = img.naturalWidth
+    height = img.naturalHeight
   }
-  ctx.drawImage(bitmap, 0, 0)
-  const width = bitmap.width
-  const height = bitmap.height
-  bitmap.close()
   const blob = await new Promise<Blob | null>((resolve) => {
     canvas.toBlob(resolve, targetMime, quality / 100)
   })
@@ -267,4 +312,21 @@ async function convertOnMainThread(
     throw new Error(`This browser cannot encode ${targetMime}. Try PNG or JPEG instead.`)
   }
   return { blob, width, height, bytes: blob.size, engine: 'canvas' }
+}
+
+/** Load a file into an `<img>` element (main thread only — workers have no DOM). */
+function loadImageElement(file: Blob): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      resolve(img)
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('This browser cannot decode this image. Try the native CLI instead.'))
+    }
+    img.src = url
+  })
 }

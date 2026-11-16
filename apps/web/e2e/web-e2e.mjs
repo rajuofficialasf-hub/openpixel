@@ -154,6 +154,36 @@ for (const target of ['tiff', 'qoi', 'jxl']) {
   check(`PNG->${target.toUpperCase()} via WASM is a real ${target.toUpperCase()}`, info.ok, info.detail);
 }
 
+// --- 6c. SVG source (16 Nov 2026): createImageBitmap rejects SVG
+// blobs, so SVG->JPEG must go through the WASM engine (resvg) —
+// regression for the live-site failure Raju reported
+// (madrasatus-sunnah-logo.svg: every SVG failed in the worker with
+// "The source image could not be decoded" while the <img> preview
+// rendered). Fixture written here so this script is self-contained.
+const svgPath = path.join(IN, 'simple.svg');
+fs.writeFileSync(
+  svgPath,
+  `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200">
+  <rect width="400" height="200" fill="#0e7a5f"/>
+  <text x="200" y="110" font-family="sans-serif" font-size="42" fill="#fff" text-anchor="middle">Hello SVG</text>
+</svg>
+`,
+);
+await page.locator('button', { hasText: 'Choose a different file' }).click();
+await uploadConvert(svgPath);
+check('SVG detected as SVG 400x200', (await detectedFormat()).startsWith('SVG'), await detectedFormat());
+await page.selectOption('#target-format', 'jpeg');
+const svgJpg = await convertAndDownload();
+const svgJpgInfo = await BunOrNode(svgJpg);
+check('SVG->JPEG via WASM is a real JPEG', svgJpgInfo.ok, svgJpgInfo.detail);
+const svgWasmNote = await page.locator('[role="status"]').allInnerTexts();
+check(
+  'SVG conversion used the WASM engine',
+  svgWasmNote.join(' ').includes('Converted with the built-in WASM engine'),
+  svgWasmNote.join(' | ').slice(0, 200),
+);
+await shot('15-svg-wasm.png');
+
 // --- 7. GIF first-frame note + canvas convert to WebP ---
 await page.locator('button', { hasText: 'Choose a different file' }).click();
 await uploadConvert(path.join(IN, 'anim.gif'));

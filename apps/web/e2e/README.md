@@ -26,8 +26,8 @@ real PNG/JPEG/TIFF/HEIC/GIF into that directory with the same names.
 ## Run
 
 ```bash
-node apps/web/e2e/web-e2e.mjs        # 30 checks, Chromium vs :8321
-node apps/web/e2e/web-nowasm.mjs     # 7 checks, WASM-absent fallback vs :8322
+node apps/web/e2e/web-e2e.mjs        # 33 checks, Chromium vs :8321
+node apps/web/e2e/web-nowasm.mjs     # 9 checks, WASM-absent fallback vs :8322
 ```
 
 For the fallback run, serve a copy of `dist/` with `public/wasm/`
@@ -49,22 +49,27 @@ HEIC→PNG via the WASM engine with the "Converted with the built-in
 WASM engine" note; PNG→HEIC via WASM re-detected as HEIC;
 PNG→BMP via the WASM engine re-detected as a real BMP (the canvas
 cannot encode BMP — see below); QOI source → PNG via WASM;
-PNG→TIFF/QOI/JXL via WASM, each re-detected; GIF first-frame note
-+ GIF→WebP; batch of 3 files incl. an unsupported `.txt` (skipped
-with a reason) with the downloaded zip verified to contain 2 real
-WebP files; Formats tab lists 21 formats; theme toggle light/dark
-persists across reload; keyboard-only Tab to the drop zone + Enter
-opens the file picker. Screenshots land in `screenshots/`
-(`01-home.png` … `09-settings-dark.png`, `14-polish-qoi.png`).
+PNG→TIFF/QOI/JXL via WASM, each re-detected; SVG→JPEG via the WASM
+engine (resvg — `createImageBitmap` rejects SVG blobs, so the
+canvas path can never convert SVG; see docs/E2E.md §2.17); GIF
+first-frame note + GIF→WebP; batch of 3 files incl. an unsupported
+`.txt` (skipped with a reason) with the downloaded zip verified to
+contain 2 real WebP files; Formats tab lists 21 formats; theme
+toggle light/dark persists across reload; keyboard-only Tab to the
+drop zone + Enter opens the file picker. Screenshots land in
+`screenshots/` (`01-home.png` … `09-settings-dark.png`,
+`14-polish-qoi.png`, `15-svg-wasm.png`).
 
 `web-nowasm.mjs` — with `public/wasm/` removed: the app loads and
 the intro no longer claims WASM targets; PNG→JPEG still converts
-via canvas; a TIFF upload fails honestly ("This browser cannot
-decode this image. Try the native CLI instead.") with the sniffed
-format still shown ("Detected format: TIFF"), no misleading
-"Conversion failed" label, and Convert disabled — no crash. The
-missing `openpixel_wasm.js` logs one expected 404 in the console.
-Screenshots `10-nowasm-home.png`, `11-nowasm-tiff.png`.
+via canvas; SVG→JPEG still converts via the `<img>` fallback
+(probe reads dimensions from the element); a TIFF upload fails
+honestly ("This browser cannot decode this image. Try the native
+CLI instead.") with the sniffed format still shown ("Detected
+format: TIFF"), no misleading "Conversion failed" label, and
+Convert disabled — no crash. The missing `openpixel_wasm.js` logs
+one expected 404 in the console. Screenshots `10-nowasm-home.png`,
+`11-nowasm-tiff.png`, `12-nowasm-svg.png`.
 
 ## Known notes (see docs/E2E.md)
 

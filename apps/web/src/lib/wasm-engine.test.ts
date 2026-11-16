@@ -83,6 +83,19 @@ describe('wasmCoversConversion', () => {
     expect(wasmCoversConversion('png', 'bmp', WASM_SUPPORT)).toBe(true)
   })
 
+  it('routes SVG sources to WASM — createImageBitmap cannot decode SVG blobs', () => {
+    // Regression (16 Nov 2026, live site): every SVG — plain
+    // rect+text, viewBox-only, Bengali/Arabic text, foreignObject,
+    // embedded or external image — failed in the canvas worker with
+    // "The source image could not be decoded", while the <img>
+    // preview rendered each one. The WASM engine rasterises SVG
+    // with resvg, so SVG goes to WASM even for canvas targets.
+    expect(wasmCoversConversion('svg', 'jpeg', WASM_SUPPORT)).toBe(true)
+    expect(wasmCoversConversion('svg', 'png', WASM_SUPPORT)).toBe(true)
+    expect(wasmCoversConversion('svg', 'webp', WASM_SUPPORT)).toBe(true)
+    expect(wasmCoversConversion('svg', 'tiff', WASM_SUPPORT)).toBe(true)
+  })
+
   it('never claims AVIF — it is not in the wasm build', () => {
     expect(wasmCoversConversion('png', 'avif', WASM_SUPPORT)).toBe(false)
     expect(wasmCoversConversion('avif', 'png', WASM_SUPPORT)).toBe(false)
