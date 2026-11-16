@@ -41,6 +41,12 @@ jxl-oxide = "=0.12.6"
 zune-jpegxl = "=0.5.2"
 zune-core = "=0.5.3"
 jpeg2k = { version = "=0.11.0", default-features = false, features = ["image"] }
+# HEIC/HEIF follow-up (16 Nov 2026, pinned exact — see docs/CODECS.md):
+# heifer 0.5.1 is pure Rust (no C library, no libheif), MIT OR Apache-2.0,
+# decode + encode. The libheif route was blocked: the VM's libheif1
+# 1.23.3-1 has no matching -dev package and the system heif-enc ships
+# no HEVC/AV1 encoder at all.
+heifer = "=0.5.1"
 # Phase 5 metadata & animation (pinned exact — see docs/CODECS.md):
 # gif/tiff/flate2 were already transitive deps of image-rs 0.25.10
 # at these exact versions; tintbox is a pure-Rust LittleCMS

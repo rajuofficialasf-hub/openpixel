@@ -18,6 +18,8 @@ jxl-oxide.workspace = true
 zune-jpegxl.workspace = true
 zune-core.workspace = true
 jpeg2k.workspace = true
+# HEIC/HEIF follow-up (16 Nov 2026): pure-Rust heifer, no C library.
+heifer.workspace = true
 
 [dev-dependencies]
 tempfile = "=3.27.0"

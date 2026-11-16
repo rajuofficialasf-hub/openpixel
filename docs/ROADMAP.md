@@ -114,6 +114,29 @@
   desktop backend `cargo test` 16 passed (see `docs/TESTING.md` for
   the full Phase 9 verification table).
 
+- [x] **HEIC/HEIF follow-up** (done 16 Nov 2026, verified by
+  coordinator): HEIC/HEIF moved from detection-only to full
+  decode+encode via pure-Rust `heifer` 0.5.1 — no libheif, no C
+  library, MIT OR Apache-2.0. The libheif route stayed blocked
+  (installed `libheif1` 1.23.3-1 has no matching `-dev`; the
+  system `heif-enc` ships no HEVC/AV1 encoder at all), and a
+  vendored libheif source build was not attempted because the
+  pure-Rust route superseded it. Proven against Apple
+  `sips`-encoded fixtures (MAE 0.00–0.77 vs Apple's reference
+  decode) and cross-checked with system libheif (`heif-info` /
+  `heif-convert` read our output). Registry now 18 codecs /
+  3 planned (APNG, RAW, PSD), 17 decode+encode, 21 capabilities.
+  Rust workspace 182 tests (was 176). See `docs/CODECS.md` and
+  `docs/TESTING.md`.
+
+## Follow-ups (approved 16 Nov 2026 — HEIC done above; the rest open)
+
+- [ ] **WASM engine** (dav1d-free build so the web app can convert
+  natively).
+- [ ] **Windows/macOS builds** (CI + installers).
+- [ ] **Full end-to-end testing** (real browser + desktop
+  click-through).
+
 Each phase: small milestones, tests with every feature, stop-and-report
 before the next phase. No phase claims a format it has not implemented
 and tested.

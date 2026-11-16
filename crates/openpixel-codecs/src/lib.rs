@@ -19,12 +19,17 @@
 //! * [`HdrCodec`] / [`ExrCodec`] — image-rs hdr/exr, 8-bit SDR in
 //!   Phase 3 (float values are clamped, and the note says so).
 //! * [`Jpeg2000Codec`] — jpeg2k/openjp2, a pure-Rust OpenJPEG port.
+//!
+//! HEIC/HEIF follow-up (16 Nov 2026, see `docs/CODECS.md`):
+//! * [`HeicCodec`] / [`HeifCodec`] — heifer 0.5.1, pure Rust,
+//!   decode + lossy 4:2:0 encode, no C library.
 
 pub mod avif;
 pub mod error;
 pub mod exr;
 pub mod float;
 pub mod hdr;
+pub mod heic;
 pub mod image_rs;
 pub mod jpeg2000;
 pub mod jxl;
@@ -38,6 +43,7 @@ pub use avif::AvifCodec;
 pub use error::{CodecError, CodecResult};
 pub use exr::ExrCodec;
 pub use hdr::HdrCodec;
+pub use heic::{HeicCodec, HeifCodec};
 pub use image_rs::ImageRsCodec;
 pub use jpeg2000::Jpeg2000Codec;
 pub use jxl::JxlCodec;

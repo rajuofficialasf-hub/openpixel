@@ -6,9 +6,10 @@ use openpixel_formats::{FormatCapability, ImageFormat, MAX_DIMENSION};
 /// Each entry names the native dependency and the phase that will wire it.
 ///
 /// Phase 3 moved AVIF, SVG, JXL, HDR, EXR and JPEG 2000 from this
-/// list into registered codecs (see `docs/CODECS.md`). What remains
-/// is blocked, not forgotten — the reason is in each entry and in
-/// `docs/CODECS.md`.
+/// list into registered codecs (see `docs/CODECS.md`). The HEIC/HEIF
+/// follow-up (16 Nov 2026) moved HEIC and HEIF too (pure-Rust heifer).
+/// What remains is blocked, not forgotten — the reason is in each
+/// entry and in `docs/CODECS.md`.
 pub fn planned_capabilities() -> Vec<FormatCapability> {
     use ImageFormat as F;
     let mut v: Vec<FormatCapability> = Vec::new();
@@ -38,28 +39,6 @@ pub fn planned_capabilities() -> Vec<FormatCapability> {
             MAX_DIMENSION,
         ));
     };
-    add(
-        F::Heic,
-        true,
-        false,
-        true,
-        true,
-        false,
-        "libheif (blocked in Phase 3 — see docs/CODECS.md)",
-        "LGPL-3.0 (libheif)",
-        "planned — detection only",
-    );
-    add(
-        F::Heif,
-        true,
-        false,
-        true,
-        true,
-        false,
-        "libheif (blocked in Phase 3 — see docs/CODECS.md)",
-        "LGPL-3.0 (libheif)",
-        "planned — detection only",
-    );
     add(
         F::Apng,
         true,

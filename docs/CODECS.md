@@ -115,6 +115,13 @@ What each new codec actually does and does not do:
   matching `-dev` package is available, or when the VM image
   provides one. No HEIC code is linked; the registry still reports
   `planned — detection only`.
+
+  **Follow-up, 16 Nov 2026 — resolved WITHOUT libheif** (see
+  "HEIC / HEIF follow-up" below). The pure-Rust `heifer` 0.5.1
+  crate decodes and encodes HEIC/HEIF with no C library at all, so
+  the libheif version mismatch no longer matters and no libheif
+  code is linked. The apt failure is still recorded verbatim
+  below for the record.
 - **libjxl (C) — not needed.** JXL is covered in pure Rust by
   jxl-oxide + zune-jpegxl (above). The C library would add a
   system dependency for no new capability.
@@ -124,6 +131,137 @@ What each new codec actually does and does not do:
   bindings would change performance only, at the cost of a C build
   per platform — that is a Phase 6 benchmark decision, to be
   measured before it is made, not assumed in Phase 3.
+
+## HEIC / HEIF follow-up (16 Nov 2026, Ubuntu 24.04, Rust 1.100.0)
+
+HEIC/HEIF is now **implemented — decode + encode** (`HeicCodec` /
+`HeifCodec` in `crates/openpixel-codecs/src/heic.rs`, registry
+counts 18 codecs / 3 planned, 17 decode+encode). Pinned exactly:
+`heifer = "=0.5.1"` (workspace `Cargo.toml`).
+
+### Attempts, in order, with outcomes
+
+(a) **Matching `libheif-dev` — FAILED, not forced.**
+`apt-cache policy` confirms the mismatch: installed `libheif1`
+is **1.23.3-1** (priority 1001, from `/var/lib/dpkg/status` —
+manually installed, no apt source) while `libheif-dev` is
+**1.17.6-1ubuntu4.9**. `apt-get install -s libheif-dev` fails:
+
+> `libheif-dev : Depends: libheif1 (= 1.17.6-1ubuntu4.9) but
+> 1.23.3-1 is to be installed` — `E: Unable to correct problems,
+> you have held broken packages.`
+
+Downgrading `libheif1` was not attempted: it would break the
+installed 1.23.3 plugins (`libheif-plugin-dav1d`,
+`libheif-plugin-ffmpegdec`, `libheif-examples`).
+
+(b) **Build libheif from source into a vendored prefix — NOT
+attempted, superseded.** The pure-Rust route below succeeded
+first and is strictly better for this engine (no C toolchain, no
+LGPL, no cmake + plugin build, wasm-friendly). No vendored C++
+build exists in `native/`; if libheif is ever needed (e.g. for
+AV1-coded HEIF items, which heifer cannot decode), the recipe
+belongs in `scripts/setup/` with licence files under
+`native/licenses/`.
+
+(c) **`libheif-rs` 3.0.0 / `libheif-sys` 5.3.1 — NOT used.** Both
+need the `libheif-dev` headers from (a). `libheif-rs`'s
+`embedded-libheif` feature (vendored C++ build) was not attempted
+either, for the same reason as (b).
+
+(d) **Pure-Rust `heifer` 0.5.1 — CHOSEN.** Found on crates.io
+while evaluating (c): a complete HEIF/HEIC decoder *and* encoder
+in pure Rust (ISOBMFF container + HEVC decode + HEVC intra
+encode), no C, no `unsafe`, MIT OR Apache-2.0, MSRV 1.85. Its
+dependency tree is four crates (`heifer`, `heifer-isobmff`,
+`heifer-hevc-dec`, `heifer-hevc-enc`, plus `thiserror`, already a
+workspace dependency) — all MIT OR Apache-2.0. Alternatives
+considered and not chosen: `heic-rs` 0.1.4 (decode-only, young
+0.1.x — a downstream project found panics on malformed files in
+0.1.1, so it would need a `catch_unwind` guard), `heic` 0.1.6
+(AGPL-3.0 — incompatible with this project's permissive
+licensing), `heifer`'s sibling `heic-decoder` 0.1.1 (decode-only).
+
+### Proof (all on this machine)
+
+- **Encode is real:** a 16×12 RGB image encoded by heifer is
+  424 bytes starting `00 00 00 18 66 74 79 70 68 65 69 63`
+  (`ftypheic`); `file(1)` reports "ISO Media, HEIF Image HEVC
+  Main or Main Still Picture Profile"; the system libheif
+  (`heif-info` 1.23.3) parses it fully and `heif-convert`
+  converts it to PNG. Heifer output is genuine HEIC, confirmed
+  by an independent decoder.
+- **Decode is real and independent of our encoder:** Apple
+  `sips`-encoded fixtures from the `heic-rs` test corpus (MIT OR
+  Apache-2.0, checked in under
+  `crates/openpixel-codecs/tests/fixtures/` with provenance in
+  its README) decode with MAE **0.00–0.77** against Apple's own
+  reference PNGs (`flat-64`, `checker-64`, `rgb-strips-96`);
+  grid photos decode (`checker-1024` 1024×1024, `photo-2048`
+  2048×1536 in ~45 ms). The system `heif-enc` on this VM cannot
+  produce a HEIC fixture at all — it reports "No HEVC encoder
+  available" and "No AV1 encoder available" (only the dav1d and
+  ffmpegdec *decode* plugins are installed) — so the Apple
+  fixtures are the independent ground truth, not a local encode.
+- **Round-trips:** HEIC→PNG and HEIC→JPEG through the engine
+  re-detect correctly; `openpixel capabilities heic` /
+  `capabilities heif` report decode=yes / encode=yes.
+
+| Format | Decode | Encode | How (pinned version) | Licence |
+|---|---|---|---|---|
+| HEIC | yes | yes (lossy 4:2:0) | heifer 0.5.1 (pure Rust) | MIT OR Apache-2.0 |
+| HEIF | yes | yes (lossy 4:2:0, `ftyp` major brand rewritten `heic` -> `mif1` on encode) | heifer 0.5.1 (pure Rust) | MIT OR Apache-2.0 |
+
+What the adapter actually does and does not do:
+
+- **Decode** — HEVC still pictures, single `hvc1` items and
+  `grid` tiles, with `irot`/`imir`/`clap` transforms applied.
+  Colour is converted to sRGB from the embedded ICC profile
+  (e.g. Display P3) or `nclx` data; files whose colour space
+  cannot be converted (PQ/HLG HDR) fall back to the coded
+  samples and say so in `note` instead of failing. 8-bit sources
+  decode to `Rgb8`/`Rgba8`; 10/12-bit sources to `Rgb16`/`Rgba16`
+  with samples scaled to the full 16-bit range. Alpha is kept
+  when the file has an auxiliary alpha plane. The decoder's own
+  pixel cap is set to the engine's 100 MP limit, and dimensions
+  are checked against the 16 384 px cap after decode (the engine
+  re-checks them too).
+- **Encode** — lossy YCbCr 4:2:0 (BT.601), quality 1–100 from
+  `--quality` (default 80). 16-bit input drops to 8-bit first,
+  like AVIF. Alpha is stored as a monochrome auxiliary image
+  only when some pixel is not fully opaque. There is no lossless
+  HEVC path wired: quality 100 is still lossy, and the
+  capability string says so.
+- **Still images only** — an image sequence (`.heics`) decodes
+  its primary image; sequences are not enumerated.
+- **HEIF vs HEIC** — one implementation, two registry entries
+  (the registry keys by format). `heifer` always writes the
+  `heic` major brand, so `HeifCodec::encode` rewrites those 4
+  bytes to `mif1` (the generic HEIF brand; `heic` stays a
+  compatible brand) so the output passes the engine's
+  re-detection validation as HEIF. No pixel or item bytes are
+  touched, and the rewritten file still parses in libheif and in
+  heifer (covered by tests, including the engine-level
+  PNG→HEIF conversion).
+- **No AV1 items** — heifer decodes HEVC-coded items only; an
+  AV1-coded HEIF item fails with a clean `Unsupported` error.
+  AVIF files keep their own codec and are unaffected.
+
+### Licence / patent notes
+
+- **No LGPL anywhere in this path.** No libheif code is linked,
+  dynamically or otherwise, so the LGPL-3.0 dynamic-linking
+  obligation recorded for libheif in Phase 3 does not apply to
+  the heifer implementation. The old "LGPL-3.0" row in the
+  "Detected only" table below is superseded by the table above.
+- **HEVC patents still apply.** HEVC (H.265) is covered by
+  third-party patents (including the Access Advance pool).
+  `heifer` grants only copyright permissions (MIT OR Apache-2.0);
+  no patent rights are granted, and using HEVC decode/encode in a
+  shipped product may need a patent licence. This is the same
+  notice the `heic` crate carries. Nothing in this engine changes
+  that; distributors should review it before shipping HEIC
+  support commercially.
 
 ## Phase 5 — metadata, animation, colour (evaluated 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0)
 
@@ -209,7 +347,7 @@ the rows below are updated to say so. What is still only detected:
 | Format | Signature detected | Planned implementation | Licence / risk |
 |---|---|---|---|
 | AVIF | `ftypavif/avis` | **implemented in Phase 3** (ravif + dav1d) | see Phase 3 table |
-| HEIC / HEIF | `ftypheic/mif1` | libheif — **blocked in Phase 3** (no matching `-dev` package; see above) | **LGPL-3.0** — dynamic linking / licence compliance needed; HEVC patents — review |
+| HEIC / HEIF | `ftypheic/mif1` | **implemented in the HEIC/HEIF follow-up** (heifer 0.5.1, pure Rust — see above) | MIT OR Apache-2.0; HEVC patents — review before commercial shipping |
 | JPEG XL | `FF 0A` / JXL box | **implemented in Phase 3** (jxl-oxide + zune-jpegxl) | see Phase 3 table |
 | JPEG 2000 | `jP  ` box | **implemented in Phase 3** (jpeg2k/openjp2, pure Rust) | see Phase 3 table |
 | SVG | strict start-of-file sniff (Phase 3) | **implemented in Phase 3** (resvg, rasterisation only) | see Phase 3 table |

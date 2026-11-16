@@ -730,7 +730,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_format_and_unimplemented_heic() {
+    fn rejects_unknown_format_but_heic_now_converts() {
         let dir = tempfile::tempdir().unwrap();
         let bad = dir.path().join("bad.bin");
         fs::write(&bad, b"this is not an image at all").unwrap();
@@ -739,13 +739,35 @@ mod tests {
             engine.get_image_info(&bad),
             Err(OpenPixelError::UnknownFormat)
         ));
+        // HEIC was unimplemented before the 16 Nov 2026 follow-up
+        // (pure-Rust heifer); converting PNG -> HEIC now succeeds and
+        // the output re-detects as HEIC. Same for HEIF (the adapter
+        // rewrites the ftyp major brand to `mif1` on encode).
         let src = dir.path().join("a.png");
         test_image_rgb().save(&src).unwrap();
         let dst = dir.path().join("b.heic");
-        assert!(matches!(
-            engine.convert(&src, &dst, ImageFormat::Heic, &ConvertOptions::default()),
-            Err(OpenPixelError::NotImplemented(_))
-        ));
+        let r = engine
+            .convert(&src, &dst, ImageFormat::Heic, &ConvertOptions::default())
+            .unwrap();
+        assert_eq!(r.target_format, ImageFormat::Heic);
+        assert_eq!(
+            engine.get_image_info(&dst).unwrap().format,
+            ImageFormat::Heic
+        );
+        let dst_heif = dir.path().join("c.heif");
+        let r = engine
+            .convert(
+                &src,
+                &dst_heif,
+                ImageFormat::Heif,
+                &ConvertOptions::default(),
+            )
+            .unwrap();
+        assert_eq!(r.target_format, ImageFormat::Heif);
+        assert_eq!(
+            engine.get_image_info(&dst_heif).unwrap().format,
+            ImageFormat::Heif
+        );
     }
 
     #[test]
@@ -762,7 +784,7 @@ mod tests {
         let engine = Engine::default();
         let caps = engine.get_capabilities();
         assert_eq!(caps.len(), 21);
-        assert_eq!(caps.iter().filter(|c| c.can_encode).count(), 15);
+        assert_eq!(caps.iter().filter(|c| c.can_encode).count(), 17);
         // Removing a codec removes it from the capability list too.
         let mut registry = CodecRegistry::default();
         registry.remove(ImageFormat::Webp);

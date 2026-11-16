@@ -86,6 +86,61 @@ Web app in `apps/web/` (React 19.3.1 + TypeScript 7.0.2 + Vite 8.3.8
   (5) keyboard-only: tab to the drop zone, Enter opens the picker;
   (6) GIF converts as first frame only, with the note shown.
 
+## Verified results — HEIC/HEIF follow-up, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0
+
+HEIC/HEIF moved from detection-only to full decode+encode via
+pure-Rust `heifer` 0.5.1 (see `docs/CODECS.md` for the attempt log:
+the libheif route stayed blocked on the `libheif1` 1.23.3-1 /
+`libheif-dev` 1.17.6 mismatch, and the system `heif-enc` ships no
+HEVC/AV1 encoder at all).
+
+- `cargo fmt --all` + `cargo fmt --all -- --check` — pass.
+- `cargo clippy --workspace --all-targets -- -D warnings` — passes.
+- `cargo test --workspace` — **182 passed, 0 failed** (was 176):
+  formats 10, codecs **28** (was 22: 6 new HEIC unit tests —
+  round-trip, quality, Apple fixtures vs Apple reference, grid
+  fixtures, HEIF brand encode, corrupted input) + 3 adapter
+  round-trips (now including HEIC and HEIF), core **30** (the
+  `rejects_unknown_format_and_unimplemented_heic` test now asserts
+  PNG→HEIC *and* PNG→HEIF succeed, with output re-detecting as the
+  target format), jobs 11, metadata 50, pipeline 29, CLI 5 + 4
+  integration. One real clippy error was found and fixed during the
+  work (`chunks_exact` with a constant size in a HEIF test —
+  switched to `as_chunks`; `cargo test` had passed throughout
+  because the lint only fires under clippy's `-D warnings`).
+- `cargo build --release` — succeeds, binary
+  `target/release/openpixel`.
+- Manual CLI verification on a real Apple `sips`-encoded photo
+  (`photo-2048.heic`, 2048×1536, grid 4×3): `info` reports heic
+  2048×1536 rgb8; `discover` reports heic/Signature/High;
+  `capabilities heic` and `capabilities heif` both report
+  decode=yes / encode=yes; HEIC→PNG (55 438 → 2 071 716 bytes),
+  HEIC→JPEG (→ 227 637 bytes), PNG→HEIC (2 071 716 → 45 537
+  bytes), PNG→HEIF (→ 45 537 bytes, `file` reports "ISO Media,
+  HEIF Image", `info` reports heif) and HEIF→PNG all succeed and
+  re-detect correctly.
+- Independent cross-checks: system libheif (`heif-info` 1.23.3)
+  parses our HEIC output (2048×1536, 4:2:0, 8-bit, tiles 4×3)
+  and our HEIF output (main brand `mif1`, compatible `mif1,
+  heic`); `heif-convert` converts both back to PNG. Our decode
+  of the Apple photo vs libheif's decode of the same file: MAE
+  **0.323**. Apple fixtures vs Apple's own reference PNGs: MAE
+  0.00–0.77. Heifer output verified genuine HEIC before any
+  engine code was written (see `docs/CODECS.md`).
+- Web: `src/data/capabilities.json` regenerated with
+  `npm run generate:capabilities` (21 formats; only the HEIC and
+  HEIF entries changed — `can_decode`/`can_encode` false→true,
+  dependency `heifer 0.5.1`, licence MIT OR Apache-2.0).
+- Bug found and fixed during this follow-up: the first version
+  claimed HEIF encode=yes while heifer always writes the `heic`
+  major brand, so the engine's output re-detection rejected
+  PNG→HEIF ("wrote heic, expected heif"). `HeifCodec::encode`
+  now rewrites the 4 `ftyp` major-brand bytes to `mif1`
+  (`heic` stays a compatible brand); the rewritten file still
+  parses in libheif and heifer, and the generic adapter
+  round-trip test now enforces HEIF re-detection instead of
+  skipping it.
+
 ## Verified results — Phase 9, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0, Node v24 / npm 10.9.4
 
 Production QA. No new features except what QA required (six security
@@ -583,4 +638,9 @@ Re-run `cargo test --workspace` to reproduce.
 Integration fixtures are generated in-code (no binary fixtures checked
 in yet) so the suite is reproducible from a clean checkout.
 `tests/fixtures/` is reserved for checked-in real-world images in
-later phases.
+later phases. Exception: the HEIC/HEIF follow-up (16 Nov 2026)
+checked in Apple `sips`-encoded HEIC fixtures under
+`crates/openpixel-codecs/tests/fixtures/` (MIT OR Apache-2.0, see
+its README for provenance) because the VM's `heif-enc` cannot
+produce a HEIC file at all — there is no other local source of
+real-world HEIC bytes.

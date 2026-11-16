@@ -334,16 +334,16 @@
     "mime_types": [
       "image/heic"
     ],
-    "can_decode": false,
-    "can_encode": false,
+    "can_decode": true,
+    "can_encode": true,
     "supports_alpha": true,
     "supports_animation": false,
     "supports_metadata": true,
     "supports_icc": true,
     "supports_multiple_frames": false,
-    "native_dependency": "libheif (blocked in Phase 3 — see docs/CODECS.md)",
-    "license": "LGPL-3.0 (libheif)",
-    "status": "planned — detection only",
+    "native_dependency": "heifer 0.5.1 (pure Rust, no C library)",
+    "license": "MIT OR Apache-2.0",
+    "status": "implemented — still images only; lossy 4:2:0 encode, quality 1-100; 8/10/12-bit decode (10/12-bit scaled to 16-bit); sRGB conversion from Display P3 ICC/nclx",
     "max_dimension": 16384
   },
   {
@@ -354,16 +354,16 @@
     "mime_types": [
       "image/heif"
     ],
-    "can_decode": false,
-    "can_encode": false,
+    "can_decode": true,
+    "can_encode": true,
     "supports_alpha": true,
     "supports_animation": false,
     "supports_metadata": true,
     "supports_icc": true,
     "supports_multiple_frames": false,
-    "native_dependency": "libheif (blocked in Phase 3 — see docs/CODECS.md)",
-    "license": "LGPL-3.0 (libheif)",
-    "status": "planned — detection only",
+    "native_dependency": "heifer 0.5.1 (pure Rust, no C library)",
+    "license": "MIT OR Apache-2.0",
+    "status": "implemented — still images only; lossy 4:2:0 encode, quality 1-100; encoder rewrites the `ftyp` major brand `heic` -> `mif1` so output re-detects as HEIF (`heic` stays a compatible brand)",
     "max_dimension": 16384
   },
   {
