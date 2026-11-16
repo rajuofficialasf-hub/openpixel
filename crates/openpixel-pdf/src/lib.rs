@@ -39,10 +39,15 @@ pub use security::{PdfPermissions, WatermarkOptions};
 pub use text::{PageText, TextLine};
 pub use zip::{build_zip, ZipEntry};
 
-/// Whether the `pdfium` feature is compiled in. The documents
-/// engine reports this in its health check instead of guessing —
-/// without PDFium, PDF → TXT/HTML/EPUB/DOCX extraction is an
-/// honest `NotImplemented`.
+/// Whether PDFium can actually be used right now. The documents
+/// engine reports this in its health check instead of guessing.
+/// "Available" means the `pdfium` feature is compiled in AND a
+/// libpdfium binary is found at runtime — a compile-time-only
+/// check lied on machines with the feature on but no library
+/// installed (CI, Phase 3 run e9cfc29: all three CLI jobs failed
+/// because the test took the "available" branch and unwrapped a
+/// conversion that honestly refused). Without PDFium, PDF →
+/// TXT/HTML/EPUB/DOCX extraction is an honest `NotImplemented`.
 pub fn pdfium_available() -> bool {
-    cfg!(feature = "pdfium")
+    render::pdfium_library_present()
 }

@@ -40,6 +40,28 @@ fn missing_libpdfium_error() -> PdfError {
     )
 }
 
+/// Whether PDFium can actually be used right now: the `pdfium`
+/// feature is compiled in AND a libpdfium binary is found at
+/// runtime (a resolvable library file, or a system library that
+/// binds). A compile-time-only check lied on machines with the
+/// feature on but no library installed (CI): the documents tests
+/// took the "available" branch and unwrapped a conversion that
+/// honestly refused — see the Phase 3 CI run (e9cfc29), all three
+/// CLI jobs. This probe only locates/binds the library; it never
+/// initialises PDFium, so it cannot disturb the render worker's
+/// single binding.
+#[cfg(feature = "pdfium")]
+pub(crate) fn pdfium_library_present() -> bool {
+    use pdfium_render::prelude::Pdfium;
+    worker::resolve_pdfium_library().is_some() || Pdfium::bind_to_system_library().is_ok()
+}
+
+/// Without the feature there is no PDFium code at all.
+#[cfg(not(feature = "pdfium"))]
+pub(crate) fn pdfium_library_present() -> bool {
+    false
+}
+
 /// The render worker (feature `pdfium` only). One thread owns the
 /// one `Pdfium`; everyone else talks to it over a channel. The
 /// channel carries both job kinds — rendering and text extraction
@@ -133,45 +155,7 @@ pub(crate) mod worker {
 
     fn bind_pdfium() -> Result<pdfium_render::prelude::Pdfium> {
         use pdfium_render::prelude::Pdfium;
-        use std::path::PathBuf;
-        let resolve = || -> Option<PathBuf> {
-            if let Ok(p) = std::env::var("OPENPIXEL_PDFIUM_PATH") {
-                let p = PathBuf::from(p);
-                if p.is_file() {
-                    return Some(p);
-                }
-            }
-            if let Ok(d) = std::env::var("OPENPIXEL_PDFIUM_DIR") {
-                let p = Pdfium::pdfium_platform_library_name_at_path(&d);
-                if p.is_file() {
-                    return Some(p);
-                }
-            }
-            if let Ok(exe) = std::env::current_exe() {
-                if let Some(dir) = exe.parent() {
-                    let p = Pdfium::pdfium_platform_library_name_at_path(dir);
-                    if p.is_file() {
-                        return Some(p);
-                    }
-                }
-            }
-            let dev = PathBuf::from("target/pdfium");
-            let p = Pdfium::pdfium_platform_library_name_at_path(&dev);
-            if p.is_file() {
-                return Some(p);
-            }
-            // Compile-time workspace location (dev/test builds):
-            // the workspace `target/pdfium` cache, wherever the
-            // test binary runs from (cargo test runs with CWD =
-            // the package dir).
-            let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/pdfium");
-            let p = Pdfium::pdfium_platform_library_name_at_path(&dev);
-            if p.is_file() {
-                return Some(p);
-            }
-            None
-        };
-        let bindings = match resolve() {
+        let bindings = match resolve_pdfium_library() {
             Some(path) => Pdfium::bind_to_library(&path).map_err(|e| {
                 PdfError::Lopdf(format!(
                     "could not bind libpdfium at {}: {e}",
@@ -181,6 +165,50 @@ pub(crate) mod worker {
             None => Pdfium::bind_to_system_library().map_err(|_| missing_libpdfium_error())?,
         };
         Ok(Pdfium::new(bindings))
+    }
+
+    /// Locate a libpdfium binary using the same resolution order as
+    /// `bind_pdfium` (env vars, beside the binary, dev `target/pdfium`
+    /// cache). `None` when no file is found — the system library is
+    /// NOT checked here; `bind_to_system_library` covers that path.
+    pub(crate) fn resolve_pdfium_library() -> Option<std::path::PathBuf> {
+        use pdfium_render::prelude::Pdfium;
+        use std::path::PathBuf;
+        if let Ok(p) = std::env::var("OPENPIXEL_PDFIUM_PATH") {
+            let p = PathBuf::from(p);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+        if let Ok(d) = std::env::var("OPENPIXEL_PDFIUM_DIR") {
+            let p = Pdfium::pdfium_platform_library_name_at_path(&d);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+        if let Ok(exe) = std::env::current_exe() {
+            if let Some(dir) = exe.parent() {
+                let p = Pdfium::pdfium_platform_library_name_at_path(dir);
+                if p.is_file() {
+                    return Some(p);
+                }
+            }
+        }
+        let dev = PathBuf::from("target/pdfium");
+        let p = Pdfium::pdfium_platform_library_name_at_path(&dev);
+        if p.is_file() {
+            return Some(p);
+        }
+        // Compile-time workspace location (dev/test builds):
+        // the workspace `target/pdfium` cache, wherever the
+        // test binary runs from (cargo test runs with CWD =
+        // the package dir).
+        let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/pdfium");
+        let p = Pdfium::pdfium_platform_library_name_at_path(&dev);
+        if p.is_file() {
+            return Some(p);
+        }
+        None
     }
 
     fn render_one(
@@ -410,6 +438,27 @@ impl PdfEngine {
 mod tests {
     use super::*;
     use crate::engine::tests::make_pdf;
+    use crate::pdfium_available;
+
+    #[test]
+    fn pdfium_available_agrees_with_render() {
+        // Regression: the old implementation returned only
+        // `cfg!(feature = "pdfium")` — true on CI, where the
+        // feature is on but no libpdfium binary exists, so the
+        // documents test took the "available" branch and unwrapped
+        // a conversion that honestly refused (Phase 3 run e9cfc29,
+        // all three CLI jobs). Availability must agree with an
+        // actual render attempt in both directions.
+        let engine = PdfEngine::default();
+        let doc = make_pdf(1, "Agree");
+        let available = pdfium_available();
+        let rendered = engine.render_to_images(&doc, None, 1.0);
+        assert_eq!(
+            rendered.is_ok(),
+            available,
+            "pdfium_available()={available} but render returned {rendered:?}"
+        );
+    }
 
     #[test]
     fn renders_real_pages_with_visible_text() {
@@ -449,6 +498,12 @@ mod tests {
 mod no_feature_tests {
     use super::*;
     use crate::engine::tests::make_pdf;
+    use crate::pdfium_available;
+
+    #[test]
+    fn pdfium_available_is_false_without_feature() {
+        assert!(!pdfium_available());
+    }
 
     #[test]
     fn render_without_pdfium_feature_is_an_honest_error() {
