@@ -265,10 +265,11 @@ the Tauri bundle config — all verified as far as this VM allows.
   `dtolnay/rust-toolchain@v1` (toolchain `1.100.0`, `clippy,
   rustfmt`), `Swatinem/rust-cache@v2`,
   `actions/setup-node@v4` (Node 24), `actions/upload-artifact@v4`.
-  Per-platform dav1d: apt `libdav1d-dev` on Linux (the VM's
-  sysroot workaround is NOT used — a clean runner installs the
-  standard Tauri apt deps directly), vcpkg `dav1d:x64-windows`
-  with `PKG_CONFIG_PATH` on Windows, Homebrew `dav1d` on macOS.
+  Per-platform dav1d build tools (dav1d itself is built from
+  source, statically linked): apt `meson ninja-build nasm` on
+  Linux (the VM's sysroot workaround is NOT used — a clean runner
+  installs the standard Tauri apt deps directly), choco `nasm
+  meson ninja` on Windows, Homebrew `meson ninja nasm` on macOS.
 - Workflow validation: YAML parses (`python3` PyYAML — the `on:`
   key reads as boolean `True`, the known YAML 1.1 quirk, not an
   error) and `actionlint` 1.7.7 (release binary downloaded from
@@ -599,7 +600,7 @@ server anywhere; the backend calls `Engine` / `JobManager` directly.
 ## Verified results — Phase 6, 16 Nov 2026, Ubuntu 24.04, Rust 1.100.0
 
 Re-run `cargo test --workspace` to reproduce. System setup first:
-`sudo ./scripts/setup/ubuntu-24.04.sh` (libdav1d-dev, as in Phase 5).
+`sudo ./scripts/setup/ubuntu-24.04.sh` (meson, ninja, nasm — dav1d build tools, as in Phase 5).
 
 - `cargo build --release` — succeeds, binary `target/release/openpixel`.
 - `cargo test --workspace` — **171 passed, 0 failed** (was 152):

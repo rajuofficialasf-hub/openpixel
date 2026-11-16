@@ -15,8 +15,8 @@
 - [x] **Phase 3 — Native Codecs** (done 16 Nov 2026, verified by
   coordinator): SVG rasterisation (resvg 0.48 / usvg 0.48,
   decode-only, scripts and external resources disabled), AVIF
-  (ravif encode + system dav1d decode — needs `libdav1d-dev`, see
-  `scripts/setup/ubuntu-24.04.sh`), JPEG XL (jxl-oxide decode +
+  (ravif encode + dav1d decode, built from source and statically
+  linked — see `scripts/setup/ubuntu-24.04.sh`), JPEG XL (jxl-oxide decode +
   zune-jpegxl lossless encode — the `image` crate 0.25.10 has no
   `jxl` feature), HDR + EXR (image-rs, clamped to 8-bit SDR in
   Phase 3, noted on the image), JPEG 2000 (jpeg2k/openjp2,

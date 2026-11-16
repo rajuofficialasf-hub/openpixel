@@ -52,7 +52,7 @@ pinned exactly in `Cargo.toml` / `Cargo.lock`.
 | Format | Decode | Encode | How (pinned version) | Licence |
 |---|---|---|---|---|
 | SVG | yes (rasterise) | **no** — raster-to-vector is never supported | resvg 0.48.1 / usvg 0.48.1 + fontdb 0.24.0, pure Rust | MIT OR Apache-2.0 (corrected: older resvg was MPL-2.0; 0.48 is not) |
-| AVIF | yes | yes (8-bit, stills) | image-rs 0.25.10 `avif` (ravif 0.13 / rav1e 0.8) + `avif-native` (dav1d 0.11 → system libdav1d 1.4.1, mp4parse 0.17) | BSD-3-Clause (ravif) / BSD-2-Clause (rav1e, dav1d) / MPL-2.0 (mp4parse) / MIT (dav1d bindings) |
+| AVIF | yes | yes (8-bit, stills) | image-rs 0.25.10 `avif` (ravif 0.13 / rav1e 0.8) + `avif-native` (dav1d 0.11 → dav1d 1.5.0 built from source, statically linked, mp4parse 0.17) | BSD-3-Clause (ravif) / BSD-2-Clause (rav1e, dav1d) / MPL-2.0 (mp4parse) / MIT (dav1d bindings) |
 | JPEG XL | yes | yes (**lossless only**) | jxl-oxide 0.12.6 (decode) + zune-jpegxl 0.5.2 / zune-core 0.5.3 (encode), pure Rust | MIT OR Apache-2.0 (jxl-oxide) / MIT OR Apache-2.0 OR Zlib (zune) |
 | HDR | yes | yes | image-rs 0.25.10 `hdr` (pure Rust) | MIT OR Apache-2.0 |
 | EXR | yes | yes | image-rs 0.25.10 `exr` → exr crate 1.74.3 (pure Rust) | BSD-3-Clause (exr crate) |
@@ -73,10 +73,20 @@ What each new codec actually does and does not do:
 - **AVIF** — still images only; animated AVIF decodes the first
   frame. Encode is 8-bit (ravif `BitDepth::Eight`), speed 4
   (ravif's default), quality from `--quality` (default 80).
-  Decode needs the **system C library libdav1d** (`libdav1d-dev`
-  at build time, `libdav1d7` at runtime — install with
-  `scripts/setup/ubuntu-24.04.sh`). It is the only Phase 3 codec
-  with a C dependency, and it is dynamically linked.
+  Decode needs the **C library dav1d**, but it is **built from
+  source and linked statically, not taken from the system**:
+  `dav1d-sys` clones dav1d 1.5.0 from code.videolan.org and builds
+  it with meson (`-Ddefault_library=static`); `.cargo/config.toml`
+  forces this with `SYSTEM_DEPS_DAV1D_BUILD_INTERNAL=always`, because
+  the probe's default is to never build internally — and the old
+  dynamic link made shipped binaries fail to start on machines
+  without libdav1d (the Windows installers did not even contain
+  `dav1d.dll`; verified 16 Nov 2026). Build tools needed: meson
+  (>= 0.49), ninja, nasm >= 2.14 on x86/x86_64, a C compiler, and
+  network access to code.videolan.org at build time
+  (`scripts/setup/ubuntu-24.04.sh`). It is the only Phase 3 codec
+  with a C dependency, and it is statically linked — the shipped
+  binaries need no libdav1d at runtime.
 - **JPEG XL** — the `image` crate 0.25.10 has **no `jxl` feature**,
   so JXL does not come from image-rs at all: decode is `jxl-oxide`
   (first frame only for animation; CMYK is rejected honestly — no

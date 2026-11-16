@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Phase 3: Rust itself, plus ONE system library (libdav1d-dev, for
+# Phase 3: Rust itself, plus the dav1d build tools (meson, ninja,
+# nasm — dav1d is built from source and statically linked, for
 # AVIF decode). On Ubuntu 24.04 run the platform script:
 #   sudo ./scripts/setup/ubuntu-24.04.sh
 # It is safe to re-run. See docs/CODECS.md for why nothing else

@@ -53,7 +53,8 @@ Image input is untrusted input. Treat every file as hostile until proven otherwi
   leaks through outputs *by accident* — but GPS stripping as a *policy*
   (preserve / strip / selected) is a Phase 5 feature.
 - **Native-library CVEs:** Phase 3 added one C library
-  (system libdav1d 1.4.1, AVIF decode). Phase 9 added `cargo audit`
+  (dav1d 1.5.0, built from source and statically linked, AVIF
+  decode). Phase 9 added `cargo audit`
   + the SBOM (`sbom.json`, `scripts/release/generate-sbom.py`) and
   completed the native licence texts in `native/licenses/`; see
   `docs/TESTING.md` ("Verified results — Phase 9") for the audit

@@ -17,7 +17,7 @@ allocation.**
   toolchain (`rustup toolchain install nightly`). Stable cannot
   build libfuzzer targets. Both were installed on this machine in
   Phase 9 (cargo-fuzz 0.13.2, nightly 1.102.0).
-- System library `libdav1d-dev` (AVIF decode — same as the normal
+- dav1d build tools (meson, ninja, nasm — same as the normal
   build; see `scripts/setup/ubuntu-24.04.sh`).
 
 ## Run

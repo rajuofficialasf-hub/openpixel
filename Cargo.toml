@@ -21,8 +21,9 @@ edition = "2021"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-# Phase 3: avif (ravif encode) + avif-native (dav1d decode, needs
-# system libdav1d-dev — see scripts/setup/ubuntu-24.04.sh),
+# Phase 3: avif (ravif encode) + avif-native (dav1d decode, built
+# from source and linked statically — see .cargo/config.toml;
+# no system libdav1d is needed or used),
 # hdr + exr (pure Rust, built into image-rs).
 # WASM (follow-up item 2, 16 Nov 2026): `avif-native` is NOT in this
 # list. The dav1d C library has no wasm32 build, so AVIF decode is

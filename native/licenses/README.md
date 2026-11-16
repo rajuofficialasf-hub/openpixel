@@ -7,7 +7,7 @@ workspace licence (MIT OR Apache-2.0).
 
 | Codec | What is used | Licence | File(s) |
 |---|---|---|---|
-| AVIF decode | system `libdav1d` 1.4.1 (C library, via `dav1d-sys`) | **BSD-2-Clause** (the C library) | `libdav1d-DEBIAN-copyright.txt` (Debian copyright file for the installed package; contains the BSD-2-Clause text) |
+| AVIF decode | `dav1d` 1.5.0 (C library, built from source via `dav1d-sys`) | **BSD-2-Clause** (the C library) | `libdav1d-DEBIAN-copyright.txt` (Debian copyright file; contains the BSD-2-Clause text — retained as the licence text for the dav1d C library) |
 | AVIF decode | `dav1d` Rust bindings 0.11 | MIT | `dav1d-rs-MIT.txt` |
 | AVIF encode | `ravif` 0.13 / `rav1e` 0.8 | BSD-3-Clause (ravif) / BSD-2-Clause (rav1e) | `ravif-BSD-3-Clause.txt`, `rav1e-BSD-2-Clause.txt` (copied from the vendored crate sources in Phase 9) |
 | AVIF decode | `mp4parse` 0.17 (AVIF container parsing) | MPL-2.0 | `mp4parse-MPL-2.0.txt` (copied from the vendored crate source in Phase 9) |

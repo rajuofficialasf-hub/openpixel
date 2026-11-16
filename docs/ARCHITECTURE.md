@@ -345,8 +345,9 @@ Application Layer
   A shared `float.rs` holds the HDR/EXR float helpers and the
   honest clamp note. The engine and CLI needed no changes — the
   registry and the SVG sniff carry the whole feature.
-- `scripts/setup/ubuntu-24.04.sh`: installs `libdav1d-dev`, the one
-  system library Phase 3 needs. `native/licenses/` holds the
+- `scripts/setup/ubuntu-24.04.sh`: installs meson, ninja, nasm —
+  the dav1d build tools (dav1d is built from source and statically
+  linked; no system library). `native/licenses/` holds the
   third-party licence texts.
 - One design fix found by testing: OpenJPEG's default 6
   resolutions need each side ≥ 32 px, so the JP2 encoder scales

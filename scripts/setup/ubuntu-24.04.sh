@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 # OpenPixel Engine — Phase 3 native-codec setup for Ubuntu 24.04 (x86_64).
 #
-# Installs the ONE system library Phase 3 actually needs:
-#   libdav1d-dev  — AV1 decoder used by AVIF decode (image crate
-#                   `avif-native` feature -> dav1d-sys -> pkg-config
-#                   `dav1d >= 1.3.0`). Ubuntu 24.04 ships 1.4.1.
-#                   Runtime dependency is libdav1d7 (installed with it).
+# Installs the build tools dav1d (AV1 decoder, used by AVIF decode)
+# needs to build from source:
+#   meson + ninja + nasm — dav1d-sys clones dav1d 1.5.0 from
+#   code.videolan.org and builds it with meson
+#   (-Ddefault_library=static); see .cargo/config.toml, which forces
+#   the source build (SYSTEM_DEPS_DAV1D_BUILD_INTERNAL=always).
+#   nasm >= 2.14 is required for the x86_64 assembly.
+#
+# No system libdav1d is needed or used anymore (changed 16 Nov 2026):
+# the old dynamic link made shipped binaries fail to start on machines
+# without libdav1d, and the Windows installers did not even contain
+# dav1d.dll. Do NOT install libdav1d-dev — if it is present, builds
+# still use the static source build (the config forces it), so the
+# package would only be dead weight.
 #
 # Everything else in Phase 3 is pure Rust (no system library):
 #   SVG      resvg/usvg            (crates.io)
@@ -38,6 +47,6 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 apt-get update -qq
-apt-get install -y -qq libdav1d-dev
-echo "dav1d: $(pkg-config --modversion dav1d)"
+apt-get install -y -qq meson ninja-build nasm pkg-config
+echo "meson: $(meson --version), ninja: $(ninja --version), nasm: $(nasm -v)"
 echo "Phase 3 system setup done. Pure-Rust codecs need nothing else."

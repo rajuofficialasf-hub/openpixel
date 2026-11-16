@@ -10,6 +10,14 @@
 #   macOS jobs all passed; both Windows jobs failed on missing
 #   pkg-config for dav1d-sys — fixed by installing pkgconfiglite
 #   (see the Windows dav1d steps).
+# - 16 Nov 2026: dav1d is built from source and linked STATICALLY
+#   (SYSTEM_DEPS_DAV1D_BUILD_INTERNAL=always, .cargo/config.toml).
+#   The old dynamic-link route (vcpkg / Homebrew / apt libdav1d) made
+#   the shipped binaries fail to start without the library — the
+#   Windows installers did not even contain dav1d.dll (verified by
+#   inspecting the run 43842730311 artifact). The per-OS steps below
+#   now install only the dav1d *build tools* (meson, ninja, nasm);
+#   no system libdav1d is installed or used anywhere.
 #
 # Triggers: pushes and PRs to main, plus manual dispatch.
 # Concurrency: one run per ref; a newer push cancels the older run.
@@ -30,12 +38,18 @@ concurrency:
 env:
   RUST_TOOLCHAIN: "1.100.0"
   NODE_VERSION: "24"
+  # dav1d (AVIF decode) is always built from source and linked
+  # statically — see .cargo/config.toml for why. dav1d-sys's
+  # system_deps probe defaults to never building internally, so
+  # without this the build would link a system libdav1d dynamically
+  # (or fail outright when none is installed).
+  SYSTEM_DEPS_DAV1D_BUILD_INTERNAL: "always"
 
 jobs:
   # ---------------------------------------------------------------- CLI
-  # Engine + CLI on all three OSes. The only system library the engine
-  # needs is libdav1d (AVIF decode, dav1d-sys); how it is obtained
-  # differs per OS — see the per-OS steps below.
+  # Engine + CLI on all three OSes. The only system tooling the engine
+  # build needs is meson + ninja + nasm, to build dav1d from source
+  # (static) — see the per-OS steps below.
   cli:
     name: CLI (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -62,58 +76,41 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      # --- Linux: the standard Tauri/engine apt deps. The
-      # libzstd-dev pin conflict and the downloaded sysroot in
-      # scripts/setup/fetch-tauri-sysroot.sh are problems of THIS VM
-      # only — a clean GitHub runner installs the -dev packages
-      # directly (see docs/DESKTOP.md, "The libzstd-dev block").
+      # --- Linux: meson + ninja + nasm build dav1d 1.5.0 from its
+      # vendored sources (dav1d-sys build.rs clones
+      # code.videolan.org/videolan/dav1d.git). nasm >= 2.14 is
+      # required for the x86_64 assembly; Ubuntu 24.04 ships
+      # meson 1.5.1, ninja 1.11.1, nasm 2.16.01.
       - name: Install system deps (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libdav1d-dev
+          sudo apt-get install -y meson ninja-build nasm pkg-config
 
-      # --- Windows: vcpkg is preinstalled on windows-latest runners.
-      # dav1d-sys finds libdav1d through pkg-config, so PKG_CONFIG_PATH
-      # must point at vcpkg's pkgconfig dir. Two traps, both learned
-      # from real CI failures (Nov 2026):
-      #  1. vcpkg provides NO pkg-config binary — install pkgconfiglite
-      #     via Chocolatey (run 43832448184 failed on this).
-      #  2. VCPKG_INSTALLATION_ROOT is a *shell* variable on the
-      #     runner, NOT a workflow `env` context variable: the
-      #     expression ${{ env.VCPKG_INSTALLATION_ROOT }} renders
-      #     EMPTY, so PKG_CONFIG_PATH became "/installed/..." and
-      #     pkg-config could not find dav1d.pc (run 43835712580).
-      #     So the path is written to $GITHUB_ENV from the shell,
-      #     where the variable exists, and the cargo steps below do
-      #     NOT set PKG_CONFIG_PATH themselves.
-      #  3. dav1d is linked DYNAMICALLY (ldd on the local binary:
-      #     libdav1d.so.7). vcpkg puts dav1d.dll in
-      #     installed\x64-windows\bin, which is NOT on the runner's
-      #     PATH — so the built openpixel.exe cannot START: it dies
-      #     instantly (0xC0000135, no stdout/stderr). That is why
-      #     all 4 batch_cli integration tests failed in 0.04 s in
-      #     run 43837637514 while the Desktop job passed (it only
-      #     builds/bundles, never runs the binary). The bin dir is
-      #     therefore also appended to $GITHUB_PATH here, so every
-      #     later step — including `cargo test` — can load the DLL.
-      - name: Install dav1d via vcpkg (Windows)
+      # --- Windows: dav1d is built from source and linked statically,
+      # so NO vcpkg dav1d, NO pkg-config and NO DLL-on-PATH are needed
+      # anymore. The vendored build needs meson + ninja + nasm
+      # (x86_64 asm, nasm >= 2.14) and MSVC (preinstalled on
+      # windows-latest; meson finds it via vswhere).
+      # History — the old dynamic-link traps, all gone now:
+      #  1. vcpkg provides NO pkg-config binary (run 43832448184).
+      #  2. ${{ env.VCPKG_INSTALLATION_ROOT }} renders empty in
+      #     workflow expressions (run 43835712580).
+      #  3. the vcpkg DLL was not on PATH, so the binary died at load
+      #     time (run 43837637514) — and the shipped installers lacked
+      #     dav1d.dll entirely (verified 16 Nov 2026).
+      - name: Install dav1d build tools (Windows)
         if: runner.os == 'Windows'
-        run: |
-          choco install pkgconfiglite -y
-          vcpkg install dav1d:x64-windows
-          "PKG_CONFIG_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
-        env:
-          VCPKG_DEFAULT_TRIPLET: x64-windows
+        run: choco install nasm meson ninja -y
 
-      # --- macOS: Homebrew's dav1d provides the library and the
-      # dav1d.pc pkg-config file dav1d-sys looks for. Xcode Command
-      # Line Tools (C compiler) are preinstalled on macos-latest.
-      # Expected route — not yet verified by a real run.
-      - name: Install dav1d via Homebrew (macOS)
+      # --- macOS: dav1d is built from source (static), so Homebrew
+      # only provides the build tools. No gas-preprocessor needed:
+      # dav1d's meson build needs it only for MSVC/ARM64, not clang.
+      # Xcode Command Line Tools (C compiler) are preinstalled on
+      # macos-latest.
+      - name: Install dav1d build tools (macOS)
         if: runner.os == 'macOS'
-        run: brew install dav1d pkg-config
+        run: brew install meson ninja nasm pkg-config
 
       - name: Check formatting (Linux only)
         if: runner.os == 'Linux'
@@ -138,8 +135,8 @@ jobs:
           retention-days: 30
 
   # ------------------------------------------------------------- Desktop
-  # Tauri desktop app (apps/desktop). Needs the same libdav1d as the
-  # CLI plus each platform's Tauri prerequisites:
+  # Tauri desktop app (apps/desktop). Needs the same dav1d build tools
+  # as the CLI plus each platform's Tauri prerequisites:
   # - Linux: WebKitGTK/GTK -dev packages (standard apt install on a
   #   clean runner — no sysroot workaround needed here).
   # - Windows: WebView2 runtime is preinstalled on windows-latest.
@@ -195,27 +192,28 @@ jobs:
 
       # --- Linux: standard Tauri 2 prerequisites (see docs/DESKTOP.md
       # "System libraries"). No sysroot workaround on a clean runner.
+      # meson + ninja + nasm are the dav1d source-build tools (same
+      # as the CLI job); pkg-config is preinstalled on the runner.
       - name: Install system deps (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libdav1d-dev libwebkit2gtk-4.1-dev \
+          sudo apt-get install -y meson ninja-build nasm pkg-config \
+            libwebkit2gtk-4.1-dev \
             libappindicator3-dev librsvg2-dev patchelf \
             libgtk-3-dev libsoup-3.0-dev
 
-      - name: Install dav1d via vcpkg (Windows)
+      # --- Windows: dav1d is built from source (static) — see the
+      # CLI job's note. No vcpkg, no pkg-config, no DLL handling.
+      - name: Install dav1d build tools (Windows)
         if: runner.os == 'Windows'
-        run: |
-          choco install pkgconfiglite -y
-          vcpkg install dav1d:x64-windows
-          "PKG_CONFIG_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
-        env:
-          VCPKG_DEFAULT_TRIPLET: x64-windows
+        run: choco install nasm meson ninja -y
 
-      - name: Install dav1d via Homebrew (macOS)
+      # --- macOS: dav1d is built from source (static) — see the
+      # CLI job's note.
+      - name: Install dav1d build tools (macOS)
         if: runner.os == 'macOS'
-        run: brew install dav1d pkg-config
+        run: brew install meson ninja nasm pkg-config
 
       - name: Install frontend deps
         working-directory: apps/desktop

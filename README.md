@@ -49,7 +49,7 @@ that powers the CLI, the web app and the desktop app.
   (`dav1d-sys` needs a wasm32 libdav1d sysroot; see `docs/WEB.md`)
 - **Desktop app** (`apps/desktop/`): Tauri 2, native file dialogs,
   drag-and-drop, offline, Linux `.deb` + `.AppImage` built (see
-  `docs/DESKTOP.md`); Windows/macOS installers not built (see
+  `docs/DESKTOP.md`); Windows/macOS installers built by CI (see
   `docs/BUILD.md` for cross-platform notes)
 
 ## Quick start
@@ -58,7 +58,8 @@ that powers the CLI, the web app and the desktop app.
 # Install Rust (if needed) — https://rustup.rs
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 
-# Phase 3 needs one system library (AVIF decode): libdav1d-dev
+# Phase 3 needs dav1d build tools (AVIF decode): meson, ninja, nasm
+# (dav1d itself is built from source and statically linked)
 sudo ./scripts/setup/ubuntu-24.04.sh
 
 # Build + test
