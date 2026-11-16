@@ -155,6 +155,17 @@ export interface PdfInfo {
   creator: string | null
   producer: string | null
   encrypted: boolean
+  /** Encryption details from the /Encrypt dict; null unless
+   * `encrypted` is true. `page_count` is 0 for encrypted files
+   * (unknown without the password) — see docs/PDF.md. */
+  encryption: {
+    algorithm: string
+    revision: number | null
+    print: boolean
+    modify: boolean
+    copy: boolean
+    annotate: boolean
+  } | null
   page_sizes: [number, number][]
 }
 

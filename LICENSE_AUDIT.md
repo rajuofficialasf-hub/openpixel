@@ -42,6 +42,37 @@ choice to Raju instead of working around it.
 |---|---|---|---|---|---|
 | LibreOffice (headless, system dependency — NOT bundled) | **24.2.7.2** (this VM, Ubuntu 24.04) | MPL-2.0 | libreoffice.org / Ubuntu package `libreoffice` | **External process** — `openpixel-documents` spawns `soffice --headless` (fresh profile per conversion, 120 s default timeout); no code is linked or embedded | Not shipped by OpenPixel. The user installs LibreOffice themselves (desktop/server); the CLI reports `doc formats` with the detected version, or an honest "not available" when it is absent. MPL-2.0 permits this use without source disclosure; the Office formats it reads/writes (OOXML, ODF) are the user's own documents. No conversion API is called — everything runs locally. |
 
+## Phase 4 — OCR (Tesseract native + tesseract.js browser)
+
+| Component | Version | Licence | Source | Linking | Redistribution |
+|---|---|---|---|---|---|
+| Tesseract (native OCR engine) | **5.3.4** (this VM, Ubuntu 24.04; CI: same major via apt/brew/vcpkg) | Apache-2.0 | tesseract-ocr.github.io / Ubuntu package `tesseract-ocr`, Homebrew `tesseract`, vcpkg `tesseract` | **Dynamic** — `libtesseract.so.5` is linked at build time by `tesseract-sys` and loaded at runtime; it is NOT compiled into our binary and NOT committed to the repo | Not shipped by OpenPixel yet (packaging gap, Phase 8 — see docs/OCR.md). The user installs Tesseract themselves; the `ocr` commands fail with install instructions when it is absent. Apache-2.0 permits this use without source disclosure. |
+| Leptonica (image library Tesseract uses) | **1.82.0** (this VM) | BSD-2-Clause | leptonica.org / Ubuntu package `libleptonica-dev` (headers) + `liblept.so.5` (runtime) | **Dynamic** — `liblept.so.5`, same as Tesseract above | Same as Tesseract above. |
+| tesseract-sys (Rust binding) | `=0.6.3` | MIT | crates.io / github.com/ccouzens/tesseract-sys | Static (Rust crate, compiled into `openpixel-ocr`) | Include the MIT licence text in distributions; no source disclosure required |
+| leptonica-sys (Rust binding) | `=0.4.9` | MIT | crates.io / github.com/ccouzens/leptonica-sys | Static (Rust crate, compiled into `openpixel-ocr`) | Include the MIT licence text in distributions; no source disclosure required |
+| tesseract.js (browser OCR) | `=7.0.0` | Apache-2.0 | npm / github.com/naptha/tesseract.js | Static — bundled into the web app (worker + core WASM self-hosted under `apps/web/public/`) | Include the Apache-2.0 licence text in distributions; no source disclosure required |
+| tessdata_fast language data (eng, ben) | `tessdata_fast` main (17 Nov 2026); `ben.traineddata` 855,841 B | Apache-2.0 | github.com/tesseract-ocr/tessdata_fast | **Data, not code** — downloaded at provisioning time (native) / served from `apps/web/public/tessdata/` (browser); never committed to the repo except as the two files under `public/` | Apache-2.0 data; attribute the Tesseract project. No model is uploaded anywhere and no text leaves the machine. |
+
+### Tesseract provisioning (verified 17 Nov 2026)
+
+- **This VM:** `apt install tesseract-ocr tesseract-ocr-eng
+  tesseract-ocr-ben` works, but `libtesseract-dev` +
+  `libleptonica-dev` cannot install (the `libzstd-dev` /
+  hatch-patched `libzstd1` conflict — see docs/OCR.md). The
+  headers were extracted from the downloaded -dev .debs into
+  `/usr/local/include/` with unversioned `.so` symlinks +
+  pkg-config files in `/usr/local/lib/pkgconfig/`. **The VM reset
+  wipes all of this** — re-run the provisioning after a reset.
+- **Windows CI:** choco's tesseract is NOT usable for building —
+  the package ships only runtime DLLs (no headers, no import
+  library, no traineddata at all; verified by extracting the
+  5.5.3 installer). CI uses vcpkg (`tesseract:x64-windows`)
+  instead — see `.github/workflows/release.yml`.
+- **No new licence was added to `deny.toml`** for Phase 4:
+  Apache-2.0 and BSD-2-Clause were already allowed, and
+  `cargo deny check licenses` is green. The copyleft bar is
+  unchanged.
+
 ### LibreOffice provisioning (verified 16 Nov 2026)
 
 - The Phase 3 brief expected an `apt` install (~286 MB). It

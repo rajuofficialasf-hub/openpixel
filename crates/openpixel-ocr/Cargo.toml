@@ -1,0 +1,42 @@
+[package]
+name = "openpixel-ocr"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OpenPixel OCR engine — Tesseract native OCR with a pluggable engine trait (Studio Phase 4)"
+
+[dependencies]
+# `default-features = false`: codecs defaults to `native-avif`
+# (dav1d, which cannot build for wasm32). This crate only needs
+# the `DecodedImage` type from codecs; AVIF decode for real OCR
+# inputs comes from the caller's engine (the CLI enables it via
+# openpixel-core's default features, and cargo unifies features
+# in a native build). Same pattern as openpixel-core.
+openpixel-codecs = { path = "../openpixel-codecs", default-features = false }
+openpixel-pipeline = { path = "../openpixel-pipeline" }
+image.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+# Searchable-PDF output staging (temp dir for Tesseract's PDF
+# renderer, which writes a file). Only needed with native-ocr.
+tempfile = { version = "=3.27.0", optional = true }
+
+[dev-dependencies]
+image.workspace = true
+lopdf.workspace = true
+
+[features]
+default = []
+# Native OCR via Tesseract (C library — needs system tesseract +
+# leptonica dev files at build time; see docs/OCR.md). Off by
+# default: the CLI enables it explicitly, and the `native_ocr`
+# test module is compiled only with this feature.
+native-ocr = ["dep:tesseract-sys", "dep:leptonica-sys", "dep:tempfile"]
+
+[dependencies.tesseract-sys]
+workspace = true
+optional = true
+
+[dependencies.leptonica-sys]
+workspace = true
+optional = true

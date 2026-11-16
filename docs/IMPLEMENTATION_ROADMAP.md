@@ -191,7 +191,7 @@ authoritative where it differs from the plan above):**
   Full details: `docs/PDF.md` (Compression, Security, Text
   extraction, Document conversion sections).
 
-## Phase 4 — OCR and Extraction
+## Phase 4 — OCR and Extraction — DONE 17 Nov 2026
 
 **Entry:** Phase 2 exit green (OCR needs PDF page images);
 Tesseract system-dependency plan for CI approved.
@@ -210,6 +210,61 @@ boxes on every result.
 table recognition quality (PaddleOCR may be needed later —
 deferred, not promised); handwriting recognition is
 "where supported" only.
+
+**Done 17 Nov 2026 — what actually shipped:**
+- **Native engine:** new crate `openpixel-ocr`, Tesseract 5.3.4
+  via `tesseract-sys =0.6.3` behind the `native-ocr` feature
+  (off by default, same pattern as `pdfium`). `OcrEngine`
+  trait so a second engine can plug in later; Tesseract is
+  the only implementation. PaddleOCR NOT in this phase
+  (deferred per Raju's decision).
+- **Preprocessing:** pipeline ops `Threshold` / `Denoise`
+  (3×3 median) / `Deskew` (projection-profile, 0.25° steps);
+  OCR modes none/light (default)/full. Also exposed as
+  `openpixel process --op threshold:128 | denoise | deskew[:5]`.
+- **Searchable PDF:** Tesseract's own PDF renderer (image +
+  text layer with a proper ToUnicode map) — `pdftotext` finds
+  the text, including Bengali. It OCRs the image as given (no
+  preprocessing on that path — the renderer embeds the image
+  it OCRs).
+- **CLI:** `openpixel ocr` (txt/html/json) and `openpixel pdf
+  ocr` (image or scanned PDF → searchable PDF, PDFium render
+  first at `--scale`, default 3.0 = 216 DPI).
+- **Web:** OCR tab with tesseract.js 7.0.0, fully self-hosted
+  (worker + core + eng/ben traineddata from tessdata_fast,
+  loaded on demand, no CDN at runtime); dist 11 → 20 MB,
+  initial bundle +15 KB. ocr-e2e 14/14.
+- **Accuracy (measured, tessdata_fast, Tesseract 5.3.4):**
+  eng-clean CER 0.000, ben-clean CER 0.130 (Light) — conjunct
+  words (স্টুডিও, জবাবদিহিতা) are the failure mode; deskew
+  recovers +3° skew exactly (0.349 → 0.000). Full table:
+  docs/OCR.md. Never 100% — the numbers are in the docs.
+- **Encrypted `pdf info` fix** (Phase 3 follow-up): inspect
+  reports `Encrypted: yes` + algorithm/revision/permissions
+  from the `/Encrypt` dict without a password; page count is
+  unknown (0 in JSON), not zero — lopdf loads no objects for
+  an encrypted document waiting for its password.
+- **Not done:** OCR→Word/Excel (the plan's item) — no
+  converter was built; the OCR result types (words with
+  bounding boxes) are the hook for it, but it is not a
+  feature yet. Table/layout recognition also not done —
+  words carry bounding boxes, no table detection. Handwriting
+  is out of scope (printed text only), per the parent brief.
+- **CI:** Linux apt installs tesseract + dev headers +
+  eng/ben; macOS brew; Windows vcpkg (choco's tesseract was
+  verified unusable for building — runtime DLLs only, no
+  headers, no traineddata). The Windows CI path is validated
+  by the CI run, not locally.
+- **Provisioning gap (honest):** this VM cannot install
+  `libtesseract-dev`/`libleptonica-dev` via apt (libzstd-dev
+  conflict with the hatch-patched libzstd1) — headers were
+  extracted from the -dev .debs into `/usr/local` with
+  symlinks + pkg-config files; the VM reset wipes all of it.
+  The CLI binary links libtesseract dynamically — same class
+  of distribution gap as libpdfium (Phase 8 packaging).
+- Tests: `cargo test --workspace` green (see commit message
+  for counts), web 76/76, CLI e2e §12, ocr-e2e 14/14,
+  pdf-e2e 15/15. Full details: `docs/OCR.md`.
 
 ## Phase 5 — Advanced Editing and Security
 

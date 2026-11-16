@@ -208,6 +208,9 @@ fn apply_operation(op: &Operation, image: &DecodedImage) -> PipelineResult<Decod
             margin,
         } => Ok(watermark(image, overlay, *position, *opacity, *margin)),
         Operation::Flatten { background } => Ok(image.flatten_alpha(*background)),
+        Operation::Threshold { threshold } => Ok(threshold_image(image, *threshold)),
+        Operation::Denoise => Ok(denoise_image(image)),
+        Operation::Deskew { max_angle } => Ok(deskew_image(image, *max_angle)),
     }
 }
 
@@ -391,6 +394,139 @@ fn rotate_arbitrary(image: &DecodedImage, degrees: f32, background: [u8; 3]) -> 
         }
     }
     finish_rgba(out, out_w, out_h, image)
+}
+
+/// Greyscale bytes of an image (luma, 0 = black, 255 = white).
+fn to_luma(image: &DecodedImage) -> Vec<u8> {
+    image.to_dynamic().to_luma8().into_raw()
+}
+
+/// Rebuild a Luma8 image, keeping the source's animation metadata.
+fn luma_image(data: Vec<u8>, width: u32, height: u32, src: &DecodedImage) -> DecodedImage {
+    DecodedImage {
+        width,
+        height,
+        pixel_format: PixelFormat::Luma8,
+        data,
+        is_animated: src.is_animated,
+        frame_count: src.frame_count,
+        note: src.note.clone(),
+    }
+}
+
+/// Binarise to pure black/white at `threshold`.
+fn threshold_image(image: &DecodedImage, threshold: u8) -> DecodedImage {
+    let luma = to_luma(image);
+    let out: Vec<u8> = luma
+        .iter()
+        .map(|&v| if v < threshold { 0 } else { 255 })
+        .collect();
+    luma_image(out, image.width, image.height, image)
+}
+
+/// 3x3 median filter on greyscale (salt-and-pepper denoise).
+/// Border pixels use the pixels that exist (a smaller window).
+fn denoise_image(image: &DecodedImage) -> DecodedImage {
+    let luma = to_luma(image);
+    let (w, h) = (image.width as usize, image.height as usize);
+    let mut out = vec![0u8; w * h];
+    for y in 0..h {
+        for x in 0..w {
+            let mut window = [0u8; 9];
+            let mut n = 0;
+            for dy in -1i32..=1 {
+                for dx in -1i32..=1 {
+                    let nx = x as i32 + dx;
+                    let ny = y as i32 + dy;
+                    if nx >= 0 && ny >= 0 && (nx as usize) < w && (ny as usize) < h {
+                        window[n] = luma[ny as usize * w + nx as usize];
+                        n += 1;
+                    }
+                }
+            }
+            window[..n].sort_unstable();
+            out[y * w + x] = window[n / 2];
+        }
+    }
+    luma_image(out, image.width, image.height, image)
+}
+
+/// Auto-deskew: estimate the text skew angle and rotate the image
+/// back. When no clear angle is found (angle < 0.15°, or no ink at
+/// all) the input is returned unchanged — deskew never degrades a
+/// straight image.
+fn deskew_image(image: &DecodedImage, max_angle: f32) -> DecodedImage {
+    let luma = to_luma(image);
+    let angle = estimate_skew(&luma, image.width, image.height, max_angle);
+    if angle.abs() < 0.15 {
+        return image.clone();
+    }
+    rotate_arbitrary(image, angle, [255, 255, 255])
+}
+
+/// Estimate the correction angle (degrees) that straightens the text
+/// in a greyscale image, by the horizontal projection profile:
+/// downscale to at most 800 px wide, then for each candidate angle
+/// rotate the ink points and score the row histogram by the sum of
+/// squared row weights — straight text concentrates ink in few
+/// rows, so the best angle maximises the score. Returns 0.0 when
+/// there is no ink or `max_angle` is 0.
+fn estimate_skew(luma: &[u8], width: u32, height: u32, max_angle: f32) -> f32 {
+    if max_angle <= 0.0 || width == 0 || height == 0 {
+        return 0.0;
+    }
+    // Downscale factor so the working width is at most 800 px.
+    let scale = (800.0 / width as f64).min(1.0);
+    let sw = ((width as f64 * scale).round() as usize).max(1);
+    let sh = ((height as f64 * scale).round() as usize).max(1);
+    // Collect ink points (darkness-weighted) on the downscaled grid.
+    let mut points: Vec<(f64, f64, f64)> = Vec::new();
+    for y in 0..sh {
+        let sy = ((y as f64 / scale) as usize).min(height as usize - 1);
+        for x in 0..sw {
+            let sx = ((x as f64 / scale) as usize).min(width as usize - 1);
+            let v = luma[sy * width as usize + sx];
+            if v < 200 {
+                points.push((x as f64, y as f64, (200 - v) as f64 / 200.0));
+            }
+        }
+    }
+    if points.is_empty() {
+        return 0.0;
+    }
+    let (cx, cy) = (sw as f64 / 2.0, sh as f64 / 2.0);
+    let mut best_angle = 0.0f64;
+    let mut best_score = f64::NEG_INFINITY;
+    let steps = ((max_angle as f64 / 0.25).round() as i32).max(1);
+    // Try angles in order of increasing magnitude (0, ±0.25, ±0.5,
+    // …) so that a tie — common on perfectly straight pages, where
+    // ±0.25° rounds back to the same rows — resolves to the
+    // smallest correction, never a spurious rotation.
+    let mut candidates: Vec<f64> = vec![0.0];
+    for i in 1..=steps {
+        candidates.push(i as f64 * 0.25);
+        candidates.push(-(i as f64 * 0.25));
+    }
+    for angle in candidates {
+        let rad = angle.to_radians();
+        let (sin, cos) = (rad.sin(), rad.cos());
+        // Row of each ink point after rotating by `angle` (the same
+        // forward map `rotate_arbitrary` uses, so the winning angle
+        // is directly the correction to apply).
+        let mut rows: std::collections::HashMap<i32, f64> = std::collections::HashMap::new();
+        for &(x, y, w) in &points {
+            let dx = x - cx;
+            let dy = y - cy;
+            let r = (dx * sin + dy * cos).round() as i32;
+            *rows.entry(r).or_insert(0.0) += w;
+        }
+        let score: f64 = rows.values().map(|v| v * v).sum();
+        if score > best_score {
+            best_score = score;
+            best_angle = angle;
+        }
+    }
+    best_angle as f32
 }
 
 #[cfg(test)]
@@ -919,5 +1055,163 @@ mod tests {
         .apply(&rgb_image())
         .is_err());
         let _ = rgba_px(&rgba_image(), 0, 0); // keeps the helper used
+                                              // Deskew max angle out of range.
+        assert!(
+            Pipeline::from_operations(vec![Operation::Deskew { max_angle: 46.0 }])
+                .apply(&rgb_image())
+                .is_err()
+        );
+        assert!(
+            Pipeline::from_operations(vec![Operation::Deskew { max_angle: -1.0 }])
+                .apply(&rgb_image())
+                .is_err()
+        );
+    }
+
+    /// White image with a few grey pixels: threshold at 128 makes
+    /// pure black/white only.
+    fn grey_image() -> DecodedImage {
+        DecodedImage {
+            width: 4,
+            height: 2,
+            pixel_format: PixelFormat::Luma8,
+            data: vec![0, 60, 127, 128, 200, 255, 30, 250],
+            is_animated: false,
+            frame_count: None,
+            note: None,
+        }
+    }
+
+    #[test]
+    fn threshold_binarises_at_the_cutoff() {
+        let out = Pipeline::from_operations(vec![Operation::Threshold { threshold: 128 }])
+            .apply(&grey_image())
+            .unwrap();
+        assert_eq!(out.pixel_format, PixelFormat::Luma8);
+        assert_eq!(out.data, vec![0, 0, 0, 255, 255, 255, 0, 255]);
+    }
+
+    #[test]
+    fn denoise_removes_a_lone_speck_and_keeps_a_line() {
+        // 5x5 white field with one black speck in the middle and a
+        // black horizontal band (2 px tall) at the bottom. A 1 px
+        // line is indistinguishable from noise to a 3x3 median, so
+        // the band must be 2 px to survive — that is the filter
+        // working as designed, not a bug.
+        let mut data = vec![255u8; 25];
+        data[12] = 0;
+        for y in 3..5 {
+            for x in 0..5 {
+                data[y * 5 + x] = 0;
+            }
+        }
+        let img = DecodedImage {
+            width: 5,
+            height: 5,
+            pixel_format: PixelFormat::Luma8,
+            data,
+            is_animated: false,
+            frame_count: None,
+            note: None,
+        };
+        let out = Pipeline::from_operations(vec![Operation::Denoise])
+            .apply(&img)
+            .unwrap();
+        assert_eq!(out.data[12], 255, "lone speck removed");
+        for y in 3..5 {
+            for x in 0..5 {
+                assert_eq!(out.data[y * 5 + x], 0, "band kept");
+            }
+        }
+    }
+
+    /// White page with three horizontal black bars (text-like lines).
+    fn lined_page() -> DecodedImage {
+        let (w, h) = (200, 120);
+        let mut data = vec![255u8; (w * h) as usize];
+        for y in [20, 55, 90] {
+            for yy in y..y + 6 {
+                for x in 20..180 {
+                    data[(yy * w + x) as usize] = 0;
+                }
+            }
+        }
+        DecodedImage {
+            width: w,
+            height: h,
+            pixel_format: PixelFormat::Luma8,
+            data,
+            is_animated: false,
+            frame_count: None,
+            note: None,
+        }
+    }
+
+    /// Sum of squared row ink — the same score deskew maximises.
+    fn row_score(img: &DecodedImage) -> f64 {
+        let luma = to_luma(img);
+        let w = img.width as usize;
+        let mut rows = vec![0f64; img.height as usize];
+        for (i, &v) in luma.iter().enumerate() {
+            if v < 200 {
+                rows[i / w] += (200 - v) as f64 / 200.0;
+            }
+        }
+        rows.iter().map(|v| v * v).sum()
+    }
+
+    #[test]
+    fn deskew_straightens_a_3_degree_skew() {
+        let straight = lined_page();
+        let skewed = Pipeline::from_operations(vec![Operation::RotateArbitrary {
+            degrees: 3.0,
+            background: [255, 255, 255],
+        }])
+        .apply(&straight)
+        .unwrap();
+        assert!(
+            row_score(&skewed) < row_score(&straight) * 0.9,
+            "skew must spread the ink across rows"
+        );
+        let fixed = Pipeline::from_operations(vec![Operation::Deskew { max_angle: 5.0 }])
+            .apply(&skewed)
+            .unwrap();
+        assert!(
+            row_score(&fixed) > row_score(&straight) * 0.9,
+            "deskew must restore the row concentration"
+        );
+    }
+
+    #[test]
+    fn deskew_does_not_degrade_a_straight_page() {
+        let straight = lined_page();
+        let out = Pipeline::from_operations(vec![Operation::Deskew { max_angle: 5.0 }])
+            .apply(&straight)
+            .unwrap();
+        // Either untouched, or rotated by a sub-degree angle that
+        // keeps the row concentration essentially intact.
+        assert!(
+            row_score(&out) >= row_score(&straight) * 0.99,
+            "deskew must not degrade a straight page"
+        );
+        assert!((out.width as i32 - straight.width as i32).abs() <= 2);
+        assert!((out.height as i32 - straight.height as i32).abs() <= 2);
+    }
+
+    #[test]
+    fn deskew_leaves_a_blank_page_untouched() {
+        let blank = DecodedImage {
+            width: 50,
+            height: 50,
+            pixel_format: PixelFormat::Luma8,
+            data: vec![255; 2500],
+            is_animated: false,
+            frame_count: None,
+            note: None,
+        };
+        let out = Pipeline::from_operations(vec![Operation::Deskew { max_angle: 5.0 }])
+            .apply(&blank)
+            .unwrap();
+        assert_eq!(out.data, blank.data);
     }
 }

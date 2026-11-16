@@ -30,6 +30,7 @@ node apps/web/e2e/web-e2e.mjs        # 37 checks, Chromium vs :8321
 node apps/web/e2e/web-nowasm.mjs     # 9 checks, WASM-absent fallback vs :8322
 node apps/web/e2e/resize-e2e.mjs     # 16 checks, Resize tab vs :8321
 node apps/web/e2e/pdf-e2e.mjs        # 15 checks, PDF tab vs :8323
+node apps/web/e2e/ocr-e2e.mjs        # 14 checks, OCR tab vs :8324
 ```
 
 Serve `apps/web/dist` on port 8323 for the PDF run the same way
@@ -39,6 +40,11 @@ as 8321 above (`python3 -m http.server 8323 --bind 127.0.0.1` in
 generated with the debug CLI (`openpixel pdf from-images` on the
 `/tmp/op-e2e/cli/in/` PNG/JPEG fixtures) — regenerate them with
 those commands if `/tmp` was wiped.
+
+Serve `apps/web/dist` on port 8324 for the OCR run the same way.
+Its fixtures are the Rust crate's accuracy fixtures
+(`crates/openpixel-ocr/tests/fixtures/eng-clean.png`,
+`ben-clean.png`) — no generation needed, they are committed.
 
 For the fallback run, serve a copy of `dist/` with `public/wasm/`
 removed on port 8322 first:
@@ -110,6 +116,17 @@ counts; compress (screen mode) downloads a real 4-page PDF no
 bigger than the input, with the measured sizes in the status
 line; images→PDF builds a real 2-page PDF; dark-mode screenshot.
 Screenshots `21-pdf-tab.png` … `23-pdf-dark.png`.
+
+`ocr-e2e.mjs` — the OCR tab, Studio Phase 4 (17 Nov 2026; see
+docs/E2E.md §2.21): tab renders; no worker / core / traineddata
+file is fetched before the user runs OCR (on-demand loading);
+the English accuracy fixture recognises to the known words with
+mean confidence shown (94.0%, 30 words); the recognised text
+downloads as a real .txt; the Bengali fixture recognises line 1
+exactly (85.0%, 16 words — lines 2–3 have errors with
+tessdata_fast, see docs/OCR.md); no request leaves the local
+origin (any CDN fetch fails the run); zero console/page errors.
+Screenshots `24-ocr-tab.png` … `26-ocr-dark.png`.
 
 ## Known notes (see docs/E2E.md)
 

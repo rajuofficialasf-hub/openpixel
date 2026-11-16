@@ -5,6 +5,7 @@ use openpixel_core::{
     Pipeline, PipelineSpec, ProcessOptions, WatermarkPosition, WatermarkSpec,
 };
 use openpixel_jobs::{JobManager, JobManagerConfig};
+use openpixel_ocr::OcrEngine;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -250,7 +251,8 @@ enum Commands {
         /// rotate:90, flip-h, flip-v, grayscale, brightness:0.2,
         /// contrast:0.1, saturation:1.5, blur:2.0, sharpen:1.0,
         /// thumbnail:256, pad:800x600, flatten, resize-fit:800x600,
-        /// resize-fill:800x600. Repeatable; order is honoured.
+        /// resize-fill:800x600, threshold:128, denoise, deskew:5.
+        /// Repeatable; order is honoured.
         #[arg(long, value_name = "SPEC")]
         op: Vec<String>,
     },
@@ -266,6 +268,28 @@ enum Commands {
     Doc {
         #[command(subcommand)]
         command: DocCommands,
+    },
+    /// OCR (Studio Phase 4): read text from an image with native
+    /// Tesseract. Needs Tesseract 5 + leptonica installed — see
+    /// docs/OCR.md. A PDF input is refused here; use
+    /// `openpixel pdf ocr` for scanned PDFs.
+    Ocr {
+        input: PathBuf,
+        /// Output file (default: print to stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Languages, e.g. eng, ben, eng+ben (default eng)
+        #[arg(long, default_value = "eng")]
+        lang: String,
+        /// Page segmentation mode 0..=13 (default 3 = automatic)
+        #[arg(long, default_value = "3")]
+        psm: u8,
+        /// Preprocessing: none, light (default), full
+        #[arg(long, default_value = "light")]
+        preprocess: String,
+        /// Output format: txt, html or json (default txt)
+        #[arg(long, default_value = "txt")]
+        format: String,
     },
 }
 
@@ -486,6 +510,31 @@ enum PdfCommands {
         /// EPUB/DOCX are text-only reflows, not the original layout.
         #[arg(long, default_value = "txt")]
         format: String,
+    },
+    /// OCR a scanned PDF (or a single image) into a searchable PDF:
+    /// the original image with a real text layer, findable with
+    /// `pdftotext`. A PDF input renders via PDFium first (needs
+    /// libpdfium — see docs/PDF.md). The text layer comes from
+    /// OCRing the image as given (like `tesseract … pdf`) — no
+    /// pipeline preprocessing applies on this path; see docs/OCR.md.
+    Ocr {
+        input: PathBuf,
+        output: PathBuf,
+        /// Languages, e.g. eng, ben, eng+ben (default eng)
+        #[arg(long, default_value = "eng")]
+        lang: String,
+        /// Page segmentation mode 0..=13 (default 3 = automatic)
+        #[arg(long, default_value = "3")]
+        psm: u8,
+        /// Pages to OCR, e.g. 1,3,5 or 1-3,5 (PDF input only;
+        /// default: all pages)
+        #[arg(long)]
+        pages: Option<String>,
+        /// Render scale for PDF input: 1.0 = 72 DPI, 3.0 = 216 DPI
+        /// (default 3.0 — Tesseract reads small print best at
+        /// 200+ DPI)
+        #[arg(long, default_value = "3.0")]
+        scale: f32,
     },
 }
 
@@ -1050,6 +1099,74 @@ fn run(cli: &Cli, engine: &Arc<Engine>) -> Result<(), openpixel_core::OpenPixelE
         }
         Commands::Pdf { command } => run_pdf(cli, engine, command),
         Commands::Doc { command } => run_doc(cli, command),
+        Commands::Ocr {
+            input,
+            output,
+            lang,
+            psm,
+            preprocess,
+            format,
+        } => {
+            let format = format.trim().to_ascii_lowercase();
+            if !matches!(format.as_str(), "txt" | "html" | "json") {
+                return Err(openpixel_core::OpenPixelError::InvalidArgument(format!(
+                    "unknown OCR format '{format}' — use txt, html or json"
+                )));
+            }
+            let options = ocr_options(lang, *psm, preprocess)?;
+            let bytes = read_pdf_bytes(input)?;
+            if bytes.starts_with(b"%PDF-") {
+                return Err(openpixel_core::OpenPixelError::InvalidArgument(format!(
+                    "{} is a PDF — `openpixel ocr` reads images; use `openpixel pdf ocr` for scanned PDFs",
+                    input.display()
+                )));
+            }
+            let (_, image) = engine.decode_bytes(&bytes, None)?;
+            let ocr = openpixel_ocr::TesseractEngine::new().map_err(ocr_err)?;
+            let result = ocr.recognize(&image, &options).map_err(ocr_err)?;
+            let out: Vec<u8> = match format.as_str() {
+                "txt" => format!("{}\n", result.text).into_bytes(),
+                "html" => ocr_result_to_html(&result).into_bytes(),
+                "json" => serde_json::to_string_pretty(&result).unwrap().into_bytes(),
+                _ => unreachable!(),
+            };
+            match output {
+                Some(path) => {
+                    write_pdf_bytes(path, &out)?;
+                    if !cli.quiet {
+                        println!(
+                            "ocr: {} words, mean confidence {:.0}% ({} ms) -> {} ({} bytes, {})",
+                            result.words.len(),
+                            result.mean_confidence,
+                            result.duration_ms,
+                            path.display(),
+                            out.len(),
+                            format
+                        );
+                    }
+                }
+                None => {
+                    // Text output goes to stdout; the summary goes
+                    // to stderr so piping the text stays clean.
+                    use std::io::Write;
+                    std::io::stdout().write_all(&out).map_err(|e| {
+                        openpixel_core::OpenPixelError::Io {
+                            path: PathBuf::from("<stdout>"),
+                            source: e,
+                        }
+                    })?;
+                    if !cli.quiet {
+                        eprintln!(
+                            "ocr: {} words, mean confidence {:.0}% ({} ms)",
+                            result.words.len(),
+                            result.mean_confidence,
+                            result.duration_ms
+                        );
+                    }
+                }
+            }
+            Ok(())
+        }
     }
 }
 
@@ -1107,6 +1224,87 @@ fn pdf_err(e: openpixel_pdf::PdfError) -> openpixel_core::OpenPixelError {
         }
         other => openpixel_core::OpenPixelError::InvalidArgument(other.to_string()),
     }
+}
+
+/// Map an OCR error onto the CLI's error type (same pattern as
+/// `pdf_err`: a missing Tesseract install stays NotImplemented
+/// with the install hint; everything else is a caller-visible
+/// failure of the input or the options).
+fn ocr_err(e: openpixel_ocr::OcrError) -> openpixel_core::OpenPixelError {
+    match e {
+        openpixel_ocr::OcrError::Unavailable(msg) => {
+            openpixel_core::OpenPixelError::NotImplemented(msg)
+        }
+        other => openpixel_core::OpenPixelError::InvalidArgument(other.to_string()),
+    }
+}
+
+/// Split a `--lang` value on '+' or ','; `--lang eng+ben` and
+/// `--lang eng,ben` mean the same thing.
+fn parse_ocr_languages(lang: &str) -> Vec<String> {
+    lang.split(['+', ','])
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Build OCR options from the CLI flags.
+fn ocr_options(
+    lang: &str,
+    psm: u8,
+    preprocess: &str,
+) -> Result<openpixel_ocr::OcrOptions, openpixel_core::OpenPixelError> {
+    let mode = std::str::FromStr::from_str(preprocess)
+        .map_err(|e: String| openpixel_core::OpenPixelError::InvalidArgument(e))?;
+    let options = openpixel_ocr::OcrOptions {
+        languages: parse_ocr_languages(lang),
+        psm,
+        dpi: None,
+        preprocess: mode,
+    };
+    options.validate().map_err(ocr_err)?;
+    Ok(options)
+}
+
+/// Escape text for the HTML OCR output.
+fn escape_html(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Render one OCR result as a small standalone HTML page: one
+/// paragraph per recognised line, each word a span carrying its
+/// bounding box + confidence in the title attribute.
+fn ocr_result_to_html(result: &openpixel_ocr::OcrResult) -> String {
+    let mut s = String::from(
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>OCR result</title>\n<style>body{font-family:sans-serif;line-height:1.6;margin:2em}.ocr_word{border-bottom:1px dotted #888}</style>\n</head>\n<body>\n",
+    );
+    for line in result.lines() {
+        s.push_str("<p>");
+        for word in line {
+            s.push_str(&format!(
+                "<span class=\"ocr_word\" title=\"bbox {} {} {} {}; confidence {:.0}\">{}</span> ",
+                word.x,
+                word.y,
+                word.width,
+                word.height,
+                word.confidence,
+                escape_html(&word.text)
+            ));
+        }
+        s.push_str("</p>\n");
+    }
+    s.push_str("</body>\n</html>\n");
+    s
 }
 
 /// Read a PDF (or image, for `from-images`) with the same
@@ -1238,9 +1436,29 @@ fn run_pdf(
                 println!("{}", serde_json::to_string_pretty(&info).unwrap());
             } else {
                 println!("file:      {}", input.display());
-                println!("pages:     {}", info.page_count);
+                if info.encrypted {
+                    // The page count is unknown without the
+                    // password (lopdf loads no objects) — say so
+                    // instead of printing the 0 the struct carries.
+                    println!("pages:     unknown (encrypted)");
+                } else {
+                    println!("pages:     {}", info.page_count);
+                }
                 println!("version:   {}", info.version);
                 println!("encrypted: {}", yes(info.encrypted));
+                if let Some(enc) = &info.encryption {
+                    println!("algorithm: {}", enc.algorithm);
+                    if let Some(r) = enc.revision {
+                        println!("revision:  {r}");
+                    }
+                    println!(
+                        "allowed:   print:{} modify:{} copy:{} annotate:{}",
+                        yes(enc.print),
+                        yes(enc.modify),
+                        yes(enc.copy),
+                        yes(enc.annotate)
+                    );
+                }
                 if let Some(t) = &info.title {
                     println!("title:     {t}");
                 }
@@ -1253,13 +1471,18 @@ fn run_pdf(
                 if let Some(p) = &info.producer {
                     println!("producer:  {p}");
                 }
-                let sizes: Vec<String> = info
-                    .page_sizes
-                    .iter()
-                    .enumerate()
-                    .map(|(i, (w, h))| format!("p{}: {w:.0}x{h:.0} pt", i + 1))
-                    .collect();
-                println!("page sizes: {}", sizes.join(", "));
+                // Empty for encrypted documents (page sizes are
+                // unknown without the password); skip the line
+                // instead of printing a bare label.
+                if !info.page_sizes.is_empty() {
+                    let sizes: Vec<String> = info
+                        .page_sizes
+                        .iter()
+                        .enumerate()
+                        .map(|(i, (w, h))| format!("p{}: {w:.0}x{h:.0} pt", i + 1))
+                        .collect();
+                    println!("page sizes: {}", sizes.join(", "));
+                }
             }
             Ok(())
         }
@@ -1768,6 +1991,105 @@ fn run_pdf(
             }
             Ok(())
         }
+        PdfCommands::Ocr {
+            input,
+            output,
+            lang,
+            psm,
+            pages,
+            scale,
+        } => {
+            // `pdf ocr` offers no --preprocess flag: the text
+            // layer is built from the image as given (like
+            // `tesseract … pdf`), so preprocessing does not apply
+            // on this path — see docs/OCR.md.
+            let options = openpixel_ocr::OcrOptions {
+                languages: parse_ocr_languages(lang),
+                psm: *psm,
+                dpi: None,
+                preprocess: openpixel_ocr::PreprocessMode::None,
+            };
+            options.validate().map_err(ocr_err)?;
+            let bytes = read_pdf_bytes(input)?;
+            let ocr = openpixel_ocr::TesseractEngine::new().map_err(ocr_err)?;
+            let title = input
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "OpenPixel OCR".into());
+            // One page per input: a PDF renders its pages via
+            // PDFium first (scale 3.0 = 216 DPI by default); a
+            // single image is used as given (Leptonica reads the
+            // bytes — the engine validates decodability first so
+            // a bad file fails here, not inside Tesseract).
+            let page_bytes: Vec<(Vec<u8>, String)> = if bytes.starts_with(b"%PDF-") {
+                let list = pages.as_deref().map(parse_page_list).transpose()?;
+                let rendered = pdf
+                    .render_to_images(&bytes, list.as_deref(), *scale)
+                    .map_err(pdf_err)?;
+                let mut out = Vec::with_capacity(rendered.len());
+                let encode_options = ConvertOptions::default();
+                for page in &rendered {
+                    let (_result, encoded) = engine
+                        .encode_decoded(&page.image, ImageFormat::Png, &encode_options)
+                        .map_err(|e| {
+                            openpixel_core::OpenPixelError::InvalidArgument(format!(
+                                "could not encode rendered page {} as PNG for OCR: {e}",
+                                page.page
+                            ))
+                        })?;
+                    out.push((encoded, format!("page {}", page.page)));
+                }
+                out
+            } else {
+                let (_, _) = engine.decode_bytes(&bytes, None)?;
+                vec![(bytes, title.clone())]
+            };
+            let search_pages: Vec<openpixel_ocr::SearchablePage<'_>> = page_bytes
+                .iter()
+                .map(|(b, name)| openpixel_ocr::SearchablePage {
+                    image_bytes: b,
+                    filename: name,
+                })
+                .collect();
+            let (out, results) = ocr
+                .searchable_pdf(&search_pages, &title, &options)
+                .map_err(ocr_err)?;
+            write_pdf_bytes(output, &out)?;
+            let words: usize = results.iter().map(|r| r.words.len()).sum();
+            let mean_conf = if words == 0 {
+                0.0
+            } else {
+                results
+                    .iter()
+                    .map(|r| r.mean_confidence as f64 * r.words.len() as f64)
+                    .sum::<f64>()
+                    / words as f64
+            };
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&PdfOcrSummary {
+                        command: "ocr",
+                        output: output.clone(),
+                        pages: results.len() as u32,
+                        words: words as u64,
+                        mean_confidence: mean_conf,
+                        bytes: out.len() as u64,
+                    })
+                    .unwrap()
+                );
+            } else if !cli.quiet {
+                println!(
+                    "searchable PDF: {} pages, {} words, mean confidence {:.0}% -> {} ({} bytes)",
+                    results.len(),
+                    words,
+                    mean_conf,
+                    output.display(),
+                    out.len()
+                );
+            }
+            Ok(())
+        }
     }
 }
 
@@ -1795,6 +2117,20 @@ struct PdfExtractTextSummary {
     output: PathBuf,
     pages: u32,
     chars: u64,
+    bytes: u64,
+}
+
+/// What `pdf ocr` reports, in text and `--json`. The confidence is
+/// the word-weighted mean across pages — it describes the text
+/// layer itself, which `searchable_pdf` returns from the same
+/// recognition.
+#[derive(Debug, serde::Serialize)]
+struct PdfOcrSummary {
+    command: &'static str,
+    output: PathBuf,
+    pages: u32,
+    words: u64,
+    mean_confidence: f64,
     bytes: u64,
 }
 
@@ -2473,6 +2809,21 @@ fn parse_op_spec(s: &str) -> Result<Operation, openpixel_core::OpenPixelError> {
             };
             Ok(Operation::Flatten { background: bg })
         }
+        // Studio Phase 4: OCR preprocessing ops, exposed so a scan
+        // can be cleaned before `pdf ocr` (which OCRs as given):
+        // `openpixel process scan.png clean.png --op deskew --op denoise`.
+        "threshold" => Ok(Operation::Threshold {
+            threshold: need_arg("threshold:128")?
+                .parse::<u8>()
+                .map_err(|_| invalid(format!("invalid threshold '{}'", arg.unwrap())))?,
+        }),
+        "denoise" => Ok(Operation::Denoise),
+        "deskew" => Ok(Operation::Deskew {
+            max_angle: match arg {
+                Some(a) => parse_f32(a, "deskew max angle")?,
+                None => 5.0,
+            },
+        }),
         "watermark" => Err(invalid(
             "--op watermark is not supported (it needs an image file); use --watermark <file> instead".to_string(),
         )),
@@ -2519,6 +2870,22 @@ mod tests {
         assert!(matches!(
             parse_op_spec("sharpen:1.5:10").unwrap(),
             Operation::Sharpen { threshold: 10, .. }
+        ));
+        assert!(matches!(
+            parse_op_spec("threshold:128").unwrap(),
+            Operation::Threshold { threshold: 128 }
+        ));
+        assert!(matches!(
+            parse_op_spec("denoise").unwrap(),
+            Operation::Denoise
+        ));
+        assert!(matches!(
+            parse_op_spec("deskew").unwrap(),
+            Operation::Deskew { max_angle } if max_angle == 5.0
+        ));
+        assert!(matches!(
+            parse_op_spec("deskew:10").unwrap(),
+            Operation::Deskew { max_angle } if max_angle == 10.0
         ));
         assert!(matches!(
             parse_op_spec("flatten:#ff0000").unwrap(),

@@ -68,6 +68,7 @@ Full command log: `/tmp/op-e2e/cli/log.txt` + `log2.txt`.
 | 1.14 | `process --target-size` (resize run, 16 Nov 2026; §4b in `scripts/test/cli-e2e.sh`) | `process photo.jpg out-50k.jpg --resize-fit 800x600 --target-size 50KB` → 50 679 B ≤ 51 200 at quality 73, "target size met", re-detects as JPEG 800×600. Unreachable `--target-size 100B` → smallest result (23 595 B, quality 3) + "target size NOT met" warning, exit 0. `--target-size` + `--quality` → exit 1 (conflict). WebP `--target-size` → exit 1, honest error (image-rs 0.25 encodes WebP losslessly only, so quality cannot change its size — see `docs/CODECS.md`). |
 | 1.15 | `pdf` subcommand (Studio Phase 2, 16 Nov 2026; §10 in `scripts/test/cli-e2e.sh`) | Fixtures are real PDFs built with `pdf from-images` (rgba.png + photo.jpg + checker-64.heic → 3-page `doc3.pdf`; 2-page `doc2.pdf`). `info` → 3 pages, version 1.5, page sizes in pt, `--json` parses with `page_count` 3. `merge` 3+2 → 5 pages; `split --ranges 1-3,5` → 3+1 pages; `rotate --pages 1 --degrees 90` → `/Rotate 90` in the bytes, 3 pages; `extract`/`remove` → 2 pages; `reorder 3,2,1` → 3; `duplicate` → 4; `insert --at 2` → 5; `replace --page 2` → 4; `reverse` → 3; `booklet` → 4 (padded to a multiple of 4); `nup 2x2` → 1 sheet — every output re-verified with `pdfinfo`. `render --scale 1.0` → genuine PNGs at exactly the page sizes (256×192, 1024×768, 64×64; `file` + `openpixel info`); `--format jpg` → genuine JFIF; `--pages 2 --scale 2.0` → exactly 1 file, 2048×1536. Error cases exit 1, clean message, no crash: rotate 45, extract page 9, `info` on a PNG, render to SVG (decode-only), merge with a non-PDF. |
 | 1.16 | PDF compression / security / text extraction + `doc` conversion (Studio Phase 3, 16 Nov 2026; §11 in `scripts/test/cli-e2e.sh`) | Office fixtures generated inline with python-docx/openpyxl/python-pptx (no checked-in Office files). **Compression** on `doc3.pdf` (1,798,354 B, 3 pages, Flate RGB images): screen → 74,829 B (**95.8%**), ebook → 125,772 B (**93.0%**), printer → 266,873 B (**85.2%**); 3 recompressed, 0 skipped; all modes keep 3 pages (`pdfinfo`); screen ≤ ebook ≤ printer. **Security:** `protect` (user + owner passwords, `--no-print --no-copy`) → `pdfinfo -upw` reports `Encrypted: yes (print:no copy:no … algorithm:RC4)`, 3 pages; `unlock` with the user password → `Encrypted: no`, 3 pages; wrong password exit 1, no password exit 2 (clap). **Watermark:** 3 pages, "CONFIDENTIAL" in the content stream. **`doc formats`:** human table + `--json` (LibreOffice 24.2.7.2, `pdf_text_extraction: true`, 31 rows; the JSON asserts the honest gaps are absent — no pdf→xlsx, no pptx→txt — and every row is `cli_desktop`). **Office→PDF (LibreOffice, text verified with `pdftotext`):** docx→pdf 29,216 B, 2 pages; xlsx→pdf 8,104 B, 1 page; pptx→pdf 14,485 B, 2 slides; txt→pdf 9,481 B; csv→pdf 10,259 B; html→pdf 16,577 B; rtf→pdf 14,272 B. **Office→Office:** xlsx→csv is byte-exact back (43 B, `Apple,10,1.5`); docx→txt keeps the heading. **Text extraction (PDFium):** `extract-text` in all four formats from the docx→pdf output (152 chars, 2 pages) — txt 185 B, html 710 B, epub 1,792 B (chapter verified by unzipping), docx 1,734 B (document.xml verified); the docx round-trips through LibreOffice back to PDF (17,087 B) with the text intact; `doc convert` pdf→txt uses the PdfText engine. **Honest refusals:** pdf→xlsx and pptx→txt exit 1 with the alternatives named ("pdf can convert to: html, txt, epub, docx"). |
+| 1.17 | OCR + searchable PDF + encrypted `pdf info` (Studio Phase 4, 17 Nov 2026; §12 in `scripts/test/cli-e2e.sh`) | Fixtures are the committed Rust accuracy fixtures (`crates/openpixel-ocr/tests/fixtures/`). **12a** `ocr` eng-clean → all 3 lines exact, **CER 0.000 / WER 0.000**, 30 words, 96%. **12b** `ocr --lang ben` ben-clean → **CER 0.130 / WER 0.125** (16 words, 93% — the conjunct words are the failure mode, see docs/OCR.md). **12c** `--format json` → language eng, 30 words, mean confidence 96.0%, engine "tesseract 5.3.4", every word with bbox + confidence. **12d** `--format html` → word spans with `bbox …; confidence …` titles. **12e** eng-skewed (+3°): `--preprocess none` baseline **CER 0.349 / WER 0.467**, `--preprocess full` recovers it exactly (**CER 0.000 / WER 0.000**). **12f** `pdf ocr` on a 2-page scanned PDF (eng+ben) → "searchable PDF: 2 pages, 46 words, mean confidence 94%"; `pdfinfo` 2 pages, Producer Tesseract; `pdftotext` finds the English text exactly AND the Bengali text. **12g** `pdf ocr` on a single image → 1 page, 30 words, 95%, text layer findable. **12h** `pdf info` on an encrypted PDF (protect `--no-print --no-copy`) → `pages: unknown (encrypted)`, `encrypted: yes`, `algorithm: RC4-128`, `revision: 3`, `allowed: print:no modify:yes copy:no annotate:yes`; `--json` asserts the same object. **12i** error cases exit 1: `ocr` on a PDF input, `--lang xx`, `--psm 14`, `--preprocess bogus`, missing file. **12j** `process --op deskew --op denoise` on the skewed page, then `ocr --preprocess none` → **CER 0.005 / WER 0.033** (one character, "OpenpPixel"); `--op threshold:128` works; `--op bogus` exits 1. |
 
 ## 2. Web e2e in a real browser — PASS (37/37 checks + fallback; resize run 36/37 + resize suite 16/16 — see §2.19)
 
@@ -188,6 +189,53 @@ JPEG render output (PNG verified; JPEG uses the same canvas
 non-PDF rejection in the browser; the no-WASM fallback path
 for the PDF tab (ops disabled with a warning, preview still
 works — code path only, not browser-verified). These stay OPEN.
+
+### 2.21 OCR tab (Studio Phase 4, 17 Nov 2026; `apps/web/e2e/ocr-e2e.mjs`)
+
+**14/14 passed, zero console/page/failed-request errors**,
+production build served on port 8324. Fixtures are the Rust
+crate's accuracy fixtures
+(`crates/openpixel-ocr/tests/fixtures/`): `eng-clean.png` and
+`ben-clean.png`, rendered from known text. The suite also
+proves the self-hosting claim: it records every request, fails
+if any leaves the local origin, and asserts no worker / core /
+traineddata file is fetched before the user runs OCR.
+
+| # | Scenario | Observed result |
+|---|---|---|
+| 2.21.1 | Page loads, title OpenPixel | Title "OpenPixel — Local Image Converter" |
+| 2.21.2 | OCR tab renders | Tab `#tab-ocr` / panel `#panel-ocr`, heading "Text recognition (OCR)" |
+| 2.21.3 | Honest capability note | Names tesseract.js and the native CLI (`openpixel ocr`); handwriting out of scope |
+| 2.21.4 | No worker/core/traineddata fetched before Run OCR | On-demand loading — zero OCR requests at page load or tab open |
+| 2.21.5 | English fixture recognises the known words | All three lines exact — "The quick brown fox jumps over the lazy dog. / OpenPixel Studio reads scanned documents and turns them into searchable text. / Monitoring and evaluation reports must be accurate, timely and complete." |
+| 2.21.6 | Result shows mean confidence, word count, duration, engine label | "Mean confidence: 94.0% · 30 words · 3.2 s · English · tesseract.js (browser)" |
+| 2.21.7 | Mean confidence parses as a number in 0–100 | Same status line |
+| 2.21.8 | Download .txt contains the recognised text | `eng-clean-ocr.txt` (195 chars) |
+| 2.21.9 | Bengali fixture recognises the known Bengali words | Line 1 exact — "আমি ঢাকায় থাকি।" (lines 2–3 have errors with tessdata_fast — see below) |
+| 2.21.10 | Bengali result labels the language Bengali | "Mean confidence: 85.0% · 16 words · 1.5 s · Bengali · tesseract.js (browser)" |
+| 2.21.11 | Dark mode toggles on the OCR tab | `<html class="dark">`, screenshot `26-ocr-dark.png` |
+| 2.21.12 | No request leaves the local origin (no CDN fetch) | 16 requests, all local |
+| 2.21.13 | OCR files were fetched from this site | worker.min.js, tesseract-core-lstm.wasm.js, eng.traineddata, ben.traineddata |
+| 2.21.14 | Zero console errors / page errors / failed requests | (none) |
+
+**Bengali accuracy with tessdata_fast is imperfect in the
+browser too** (same as native): on `ben-clean.png` lines 2–3
+came back with errors ("ওপেনপিক্সেল ও স্ক্যান করা নথি পড়তে
+পারে৷", "স্বচ্ছতা ও তা উন্নয়নের মূল ভিত্তি।") vs the fixture
+text; only line 1 matched exactly. The `best` tessdata would
+likely be more accurate but is much larger — a trade-off left
+open, not silently fixed. One benign Tesseract console note
+("Estimating resolution as …" for DPI-less fixtures) is
+explicitly filtered in the suite with a comment. A 7-tab smoke
+check confirmed Convert/Resize/PDF/OCR/Batch/Formats/Settings
+all render with zero errors.
+
+**Not covered by this run:** the Enhance checkbox and the
+Single-block / Single-line PSM options beyond a one-off
+browser check (Enhance + Single-line ran clean end-to-end:
+57.0%, 11 words — it read only the middle line, as PSM 7
+should, and enhancing an already-clean image hurt accuracy,
+which is exactly what the UI copy warns). These stay OPEN.
 
 ### 2.16 WASM-absent fallback — PASS (9/9, SVG fix run 16 Nov 2026)
 

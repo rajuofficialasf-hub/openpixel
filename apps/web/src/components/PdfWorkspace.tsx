@@ -160,7 +160,23 @@ export function PdfWorkspace() {
     // Info comes from the WASM engine when it is loaded; the page
     // count falls back to pdf.js, so the tab still shows it
     // without the module (previews and PDF→image work either way).
+    // An encrypted PDF reports `encrypted: true` instead of
+    // erroring — refuse it here: the browser cannot open it
+    // (every WASM op and pdf.js refuse encrypted inputs), so the
+    // native CLI is the only route. Name the algorithm when the
+    // engine read it.
     const pdfInfo = await getPdfInfo(data)
+    if (pdfInfo?.encrypted) {
+      setFile(null)
+      setBytes(null)
+      setError(
+        pdfInfo.encryption
+          ? `This PDF is encrypted (${pdfInfo.encryption.algorithm}). Encrypted PDFs cannot be opened in the browser; use the native CLI.`
+          : 'This PDF is encrypted. Encrypted PDFs cannot be opened in the browser; use the native CLI.',
+      )
+      setLoading(false)
+      return
+    }
     if (pdfInfo) {
       setInfo(pdfInfo)
     } else {

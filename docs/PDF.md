@@ -80,11 +80,20 @@ unreachable orphans. Fixed with a regression test:
   not carried over** by merge/split/page ops (Phase 1 known limit,
   still true). The output is a valid PDF with the right pages;
   document-level metadata beyond what `inspect` reads is dropped.
-- **Encrypted PDFs fail cleanly** (`Encrypted` error) — no password
-  support in this phase, never a crash, never a silent decrypt.
-  Phase 3 adds password *protection* (`protect`/`unlock` below);
+- **Encrypted PDFs fail cleanly** (`Encrypted` error) for every
+  operation that needs the content — no password support in
+  this phase, never a crash, never a silent decrypt. Phase 3
+  adds password *protection* (`protect`/`unlock` below);
   opening an encrypted PDF still needs its password, and
-  `unlock` is the only way in.
+  `unlock` is the only way in. **Exception, Phase 4:** `pdf
+  info` no longer errors on an encrypted PDF — it reports
+  `Encrypted: yes` with the algorithm (from `/V`), revision and
+  the permission bits (print/modify/copy/annotate, from `/P`),
+  read from the `/Encrypt` dictionary without a password, and
+  `pages: unknown (encrypted)`. The page count is genuinely
+  unknowable without the password: lopdf loads no objects for an
+  encrypted document waiting for its password, so `page_count`
+  is 0 in JSON and `page_sizes` is empty — unknown, not zero.
 - **Malformed PDFs fail cleanly** with the lopdf error message.
 - **N-up ignores a source page's `/Rotate`** (the form matrix
   translates the MediaBox origin but does not apply rotation).
@@ -401,7 +410,7 @@ through PDFium in the tests.
 | Page preview | yes — **pdf.js** renders the page to canvas | yes — PDFium (native) |
 | PDF→image file (PNG/JPG) | yes — **pdf.js** render → canvas → download | yes — **PDFium** render → image engine encode |
 | PDFium render | **no** — PDFium is a native binary, it cannot load in the browser | yes (needs libpdfium, see above) |
-| Encrypted PDFs | fails cleanly (lopdf) | fails cleanly (lopdf); `pdf unlock` is the way in |
+| Encrypted PDFs | refused — the tab cannot open them; the engine's `pdf_info` reports `Encrypted: yes` + algorithm/permissions, page count unknown | refused by content ops; `pdf info` reports encryption status (Phase 4); `pdf unlock` is the way in |
 | PDF compress (screen/ebook/printer) | yes — WASM (`pdf_compress`), same engine, same best-of rule | yes |
 | Password protect / unlock / watermark | **no** — passwords and native-only ops stay in the CLI/desktop | yes |
 | Text extraction (PDF→TXT/HTML/EPUB/DOCX) | **no** — needs PDFium (native) | yes (needs libpdfium) |

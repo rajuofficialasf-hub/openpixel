@@ -47,6 +47,8 @@ impl Default for PdfConfig {
 /// What `inspect` reports about a PDF.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PdfInfo {
+    /// Page count — 0 for an encrypted document, where the count
+    /// is unknown without the password (see `inspect`'s docs).
     pub page_count: u32,
     pub version: String,
     pub title: Option<String>,
@@ -54,9 +56,83 @@ pub struct PdfInfo {
     pub creator: Option<String>,
     pub producer: Option<String>,
     pub encrypted: bool,
+    /// Encryption details, read from the (unencrypted) /Encrypt
+    /// dictionary — present exactly when `encrypted` is true.
+    /// `None` on an encrypted file means the dictionary itself
+    /// could not be read, not that the file is unencrypted.
+    pub encryption: Option<EncryptionInfo>,
     /// Effective page size in points (width, height) per page, in
     /// page order: CropBox when present, else MediaBox.
     pub page_sizes: Vec<(f64, f64)>,
+}
+
+/// Encryption details from a PDF's /Encrypt dictionary. Read
+/// without a password: the dictionary is not itself encrypted,
+/// only the document's strings and streams are. Permissions are
+/// the standard security-handler bits (a set bit ALLOWS the
+/// action).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EncryptionInfo {
+    /// e.g. "RC4-40", "RC4-128", "AES-128", "AES-256".
+    pub algorithm: String,
+    /// Security-handler revision (/R), when present.
+    pub revision: Option<i64>,
+    pub print: bool,
+    pub modify: bool,
+    pub copy: bool,
+    pub annotate: bool,
+}
+
+/// Read the /Encrypt dictionary from a loaded document. Returns
+/// `None` when the document is not encrypted or the dictionary
+/// cannot be read.
+fn encryption_info(doc: &Document) -> Option<EncryptionInfo> {
+    let dict = doc
+        .trailer
+        .get(b"Encrypt")
+        .ok()?
+        .as_reference()
+        .ok()
+        .and_then(|id| doc.get_dictionary(id).ok())?;
+    let int = |key: &[u8]| -> Option<i64> { dict.get(key).ok().and_then(|o| o.as_i64().ok()) };
+    let v = int(b"V").unwrap_or(0);
+    let r = int(b"R");
+    let algorithm = match v {
+        1 => "RC4-40".to_string(),
+        2 => "RC4-128".to_string(),
+        4 => {
+            // V=4: the cipher comes from the /CF << /StdCF /CFM >>
+            // entry — /V2 is RC4, /AESV2 is AES-128.
+            let cfm = dict
+                .get(b"CF")
+                .ok()
+                .and_then(|o| o.as_dict().ok())
+                .and_then(|cf| cf.get(b"StdCF").ok())
+                .and_then(|o| o.as_dict().ok())
+                .and_then(|stdcf| stdcf.get(b"CFM").ok())
+                .and_then(|o| o.as_name().ok())
+                .unwrap_or(b"V2");
+            if cfm == b"AESV2" {
+                "AES-128".to_string()
+            } else {
+                "RC4-128".to_string()
+            }
+        }
+        5 | 6 => "AES-256".to_string(),
+        _ => format!("unknown (V={v})"),
+    };
+    // /P is a signed 32-bit permission mask: bit 3 (value 4)
+    // print, bit 4 (8) modify, bit 5 (16) copy, bit 6 (32)
+    // annotate. A set bit allows the action.
+    let p = int(b"P").unwrap_or(0);
+    Some(EncryptionInfo {
+        algorithm,
+        revision: r,
+        print: p & (1 << 2) != 0,
+        modify: p & (1 << 3) != 0,
+        copy: p & (1 << 4) != 0,
+        annotate: p & (1 << 5) != 0,
+    })
 }
 
 /// The operation `process()` runs on one document (Phase 2:
@@ -164,17 +240,62 @@ impl PdfEngine {
         Ok(())
     }
 
-    /// Parse the document and report its metadata. Fails on the
-    /// same inputs `validate` refuses.
+    /// Parse the document and report its metadata. Unlike
+    /// `validate`, an encrypted document is NOT refused: the
+    /// /Encrypt dictionary and the version are readable without
+    /// a password, so `inspect` reports `encrypted: true` with
+    /// the algorithm/permissions and `None` metadata instead of
+    /// erroring. One honest limit, from lopdf itself: an encrypted
+    /// document waiting for its password has no objects loaded,
+    /// so `page_count` is 0 and `page_sizes` is empty — the count
+    /// is unknown, not zero. Only a file that truly cannot be
+    /// read errors.
     pub fn inspect(&self, bytes: &[u8]) -> Result<PdfInfo> {
-        self.validate(bytes)?;
-        let doc = Document::load_mem(bytes)?;
-        let info = doc
-            .trailer
-            .get(b"Info")
-            .ok()
-            .and_then(|o| o.as_reference().ok())
-            .and_then(|id| doc.get_dictionary(id).ok());
+        if bytes.len() as u64 > self.config.max_file_size_bytes {
+            return Err(PdfError::InvalidPdf(format!(
+                "PDF is {} bytes, limit is {} bytes",
+                bytes.len(),
+                self.config.max_file_size_bytes
+            )));
+        }
+        if detect_document_format(bytes) != DocumentFormat::Pdf {
+            return Err(PdfError::InvalidPdf(
+                "not a PDF file (signature did not match %PDF-)".to_string(),
+            ));
+        }
+        let doc = Document::load_mem(bytes)
+            .map_err(|e| PdfError::InvalidPdf(format!("lopdf could not parse the PDF: {e}")))?;
+        let encrypted = doc.is_encrypted();
+        let encryption = if encrypted {
+            encryption_info(&doc)
+        } else {
+            None
+        };
+        let pages = doc.get_pages();
+        if !encrypted {
+            if pages.is_empty() {
+                return Err(PdfError::InvalidPdf("PDF has no pages".to_string()));
+            }
+            if pages.len() as u32 > self.config.max_pages {
+                return Err(PdfError::InvalidPdf(format!(
+                    "PDF has {} pages, limit is {}",
+                    pages.len(),
+                    self.config.max_pages
+                )));
+            }
+        }
+        // /Info strings are encrypted when the document is, so
+        // they are only read for unencrypted documents — reading
+        // them on an encrypted file would report garbage.
+        let info = if encrypted {
+            None
+        } else {
+            doc.trailer
+                .get(b"Info")
+                .ok()
+                .and_then(|o| o.as_reference().ok())
+                .and_then(|id| doc.get_dictionary(id).ok())
+        };
         let get_str = |key: &[u8]| -> Option<String> {
             let dict = info?;
             let obj = dict.get(key).ok()?;
@@ -184,15 +305,15 @@ impl PdfEngine {
             }
         };
         Ok(PdfInfo {
-            page_count: doc.get_pages().len() as u32,
+            page_count: pages.len() as u32,
             version: doc.version.clone(),
             title: get_str(b"Title"),
             author: get_str(b"Author"),
             creator: get_str(b"Creator"),
             producer: get_str(b"Producer"),
-            encrypted: doc.is_encrypted(),
-            page_sizes: doc
-                .get_pages()
+            encrypted,
+            encryption,
+            page_sizes: pages
                 .values()
                 .map(|&id| {
                     let (_, _, w, h) = page_box_rect(&doc, id);
@@ -803,6 +924,45 @@ pub(crate) mod tests {
         assert_eq!(info.title.as_deref(), Some("Meta doc"));
         assert_eq!(info.author.as_deref(), Some("openpixel-test"));
         assert!(!info.encrypted);
+        assert!(info.encryption.is_none());
+    }
+
+    #[test]
+    fn inspect_on_an_encrypted_pdf_reports_encryption_not_an_error() {
+        use crate::security::PdfPermissions;
+        let engine = PdfEngine::default();
+        let locked = engine
+            .protect(
+                &make_pdf(2, "Locked"),
+                "user-pass",
+                "",
+                PdfPermissions {
+                    print: false,
+                    modify: true,
+                    copy: false,
+                },
+            )
+            .unwrap();
+        // validate still refuses it — only inspect is lenient.
+        assert!(engine.validate(&locked).is_err());
+        let info = engine.inspect(&locked).unwrap();
+        assert!(info.encrypted);
+        // lopdf loads no objects for an encrypted document
+        // waiting for its password, so the page count is unknown
+        // (reported as 0) — see `inspect`'s docs. The encryption
+        // details ARE readable: they come from the /Encrypt
+        // dictionary, which is never encrypted itself.
+        assert_eq!(info.page_count, 0);
+        assert!(info.page_sizes.is_empty());
+        let enc = info.encryption.expect("encryption details present");
+        assert_eq!(enc.algorithm, "RC4-128");
+        assert_eq!(enc.revision, Some(3));
+        assert!(!enc.print);
+        assert!(enc.modify);
+        assert!(!enc.copy);
+        // `modify` maps to MODIFIABLE | ANNOTABLE | ASSEMBLABLE in
+        // lopdf, so the annotate bit is set too.
+        assert!(enc.annotate);
     }
 
     #[test]

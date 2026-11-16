@@ -6,6 +6,7 @@ import LightModeIcon from '@mui/icons-material/LightMode'
 import { BatchWorkspace } from './components/BatchWorkspace'
 import { CapabilitiesTable } from './components/CapabilitiesTable'
 import { ConvertWorkspace } from './components/ConvertWorkspace'
+import { OcrWorkspace } from './components/OcrWorkspace'
 import { PdfWorkspace } from './components/PdfWorkspace'
 import { ResizeWorkspace } from './components/ResizeWorkspace'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -16,12 +17,13 @@ import { getTheme } from './theme/theme'
 // paint. The chunk loads only when the setting is on.
 const Background3D = lazy(() => import('./components/Background3D'))
 
-type TabId = 'convert' | 'resize' | 'pdf' | 'batch' | 'formats' | 'settings'
+type TabId = 'convert' | 'resize' | 'pdf' | 'ocr' | 'batch' | 'formats' | 'settings'
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'convert', label: 'Convert' },
   { id: 'resize', label: 'Resize' },
   { id: 'pdf', label: 'PDF' },
+  { id: 'ocr', label: 'OCR' },
   { id: 'batch', label: 'Batch' },
   { id: 'formats', label: 'Formats' },
   { id: 'settings', label: 'Settings' },
@@ -132,6 +134,7 @@ function App() {
               <ResizeWorkspace settings={settings} onSettingsChange={setSettings} />
             )}
             {tab === 'pdf' && <PdfWorkspace />}
+            {tab === 'ocr' && <OcrWorkspace />}
             {tab === 'batch' && <BatchWorkspace settings={settings} />}
             {tab === 'formats' && <CapabilitiesTable />}
             {tab === 'settings' && <SettingsPanel settings={settings} onSettingsChange={setSettings} />}

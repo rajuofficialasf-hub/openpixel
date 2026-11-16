@@ -20,12 +20,14 @@ pub struct WatermarkSpec {
 /// build a [`Pipeline`] from [`Operation`]s directly instead — the
 /// CLI's repeatable `--op` flag does that.
 ///
-/// Canonical order (decode -> resize/crop -> rotate/flip -> colour/
-/// blur/sharpen -> watermark -> flatten -> encode):
+/// Canonical order (decode -> resize/crop -> rotate/flip/deskew ->
+/// colour/blur/sharpen/threshold/denoise -> watermark -> flatten ->
+/// encode):
 /// 1. resize, resize-fit, resize-fill, pad, crop, thumbnail
 /// 2. rotate (90/180/270 exact, otherwise arbitrary with
-///    `rotate_background`), flip horizontal, flip vertical
-/// 3. grayscale, brightness, contrast, saturation, blur, sharpen
+///    `rotate_background`), flip horizontal, flip vertical, deskew
+/// 3. grayscale, brightness, contrast, saturation, blur, sharpen,
+///    threshold, denoise
 /// 4. watermark
 /// 5. flatten (alpha onto a colour)
 #[derive(Debug, Clone, Default)]
@@ -42,6 +44,8 @@ pub struct PipelineSpec {
     pub rotate_background: [u8; 3],
     pub flip_horizontal: bool,
     pub flip_vertical: bool,
+    /// Max skew angle in degrees for auto-deskew (Phase 4).
+    pub deskew: Option<f32>,
     pub grayscale: bool,
     pub brightness: Option<f32>,
     pub contrast: Option<f32>,
@@ -49,6 +53,10 @@ pub struct PipelineSpec {
     pub blur: Option<f32>,
     /// (sigma, threshold)
     pub sharpen: Option<(f32, i32)>,
+    /// Binarisation threshold 0..=255 (Phase 4).
+    pub threshold: Option<u8>,
+    /// 3x3 median denoise (Phase 4).
+    pub denoise: bool,
     pub watermark: Option<WatermarkSpec>,
     pub flatten: Option<[u8; 3]>,
 }
@@ -125,6 +133,9 @@ impl PipelineSpec {
         if self.flip_vertical {
             ops.push(Operation::FlipVertical);
         }
+        if let Some(max_angle) = self.deskew {
+            ops.push(Operation::Deskew { max_angle });
+        }
         if self.grayscale {
             ops.push(Operation::Grayscale);
         }
@@ -142,6 +153,12 @@ impl PipelineSpec {
         }
         if let Some((sigma, threshold)) = self.sharpen {
             ops.push(Operation::Sharpen { sigma, threshold });
+        }
+        if let Some(t) = self.threshold {
+            ops.push(Operation::Threshold { threshold: t });
+        }
+        if self.denoise {
+            ops.push(Operation::Denoise);
         }
         if let Some(wm) = self.watermark {
             ops.push(Operation::Watermark {

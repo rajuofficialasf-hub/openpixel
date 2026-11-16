@@ -168,8 +168,11 @@ function freshCopy(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
 
 /**
  * PDF info via the WASM engine. `null` when the module is absent
- * or the engine rejects the bytes (not a PDF, encrypted, no
- * pages) — the caller falls back to pdf.js for the page count.
+ * or the engine rejects the bytes (not a PDF, no pages) — the
+ * caller falls back to pdf.js for the page count. An encrypted
+ * PDF is NOT null: the engine reports `encrypted: true` with the
+ * algorithm, and the caller must refuse it (the browser cannot
+ * open encrypted PDFs — every WASM op and pdf.js refuse them).
  */
 export async function getPdfInfo(bytes: Uint8Array): Promise<PdfInfo | null> {
   const mod = await loadWasmEngine()
@@ -185,6 +188,7 @@ export async function getPdfInfo(bytes: Uint8Array): Promise<PdfInfo | null> {
       author: info.author ?? null,
       creator: info.creator ?? null,
       producer: info.producer ?? null,
+      encryption: info.encryption ?? null,
     }
   } catch {
     return null

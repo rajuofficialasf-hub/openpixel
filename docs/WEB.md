@@ -256,6 +256,50 @@ PDF from images — no upload, no server.
   compress modes); e2e in
   `apps/web/e2e/pdf-e2e.mjs` (see docs/E2E.md §2.20).
 
+## OCR — OCR tab (Studio Phase 4, 17 Nov 2026)
+
+A seventh tab after PDF: read the text out of a photo or scan,
+entirely in the browser. Upload one image; the tab recognises
+printed text with **tesseract.js 7.0.0** (Tesseract compiled to
+WebAssembly) — never presented as the native CLI engine.
+
+- **Self-hosted, on demand.** The worker
+  (`public/tesseract/worker.min.js`), the LSTM-only core
+  (`public/tesseract/tesseract-core-lstm.wasm.js` — the WASM
+  binary is embedded as base64 inside it) and the language data
+  (`public/tessdata/eng.traineddata`, `ben.traineddata`,
+  tessdata_fast) are committed to the repo and served from the
+  site itself; all three tesseract.js default CDN paths are
+  overridden, `gzip: false`, `cacheMethod: 'none'`,
+  `workerBlobURL: false`. Nothing OCR-related is fetched before
+  the user runs OCR — the library itself is a lazy chunk (17 KB)
+  loaded only on Run. Measured: `dist` 11 MB → 20 MB; initial
+  bundle +15 KB; on-demand files 8.6 MiB (worker + core + eng +
+  ben). `apps/web/e2e/ocr-e2e.mjs` fails the run if any request
+  leaves the local origin.
+- **Controls:** language picker (English default — the copy
+  explains to add Bengali only when the image has Bengali text;
+  each language loads its own file on first use), page-layout
+  select (Auto / Single block / Single line → PSM 3/6/7),
+  "Enhance image" checkbox (grayscale + contrast via a canvas
+  pixel loop; the copy warns it can hurt clean images). The
+  result shows the text, mean confidence, word count, duration,
+  language and the engine label "tesseract.js (browser)", with
+  Copy text and Download .txt.
+- **Honest limits, stated in the tab:** browser OCR is slower
+  than the native CLI, its accuracy can differ, and it has no
+  pipeline preprocessing — for large batches or the best
+  accuracy use the native CLI (`openpixel ocr`). Handwriting is
+  out of scope — printed text only. Browser OCR returns text
+  only; searchable PDFs are CLI/desktop-only (`openpixel pdf
+  ocr`). Measured on the same fixtures as the native engine:
+  eng-clean exact (94.0%, 30 words); ben-clean line 1 exact
+  (85.0%, 16 words) but lines 2–3 have errors with tessdata_fast
+  — see docs/OCR.md.
+- **Tests:** `apps/web/src/lib/ocr.test.ts` (12 unit tests:
+  language/PSM parsing, result shaping); e2e in
+  `apps/web/e2e/ocr-e2e.mjs` (14/14 — see docs/E2E.md §2.21).
+
 ## WASM status — shipped (follow-up item 2, 16 Nov 2026)
 
 The real Rust engine runs in this browser. What changed since

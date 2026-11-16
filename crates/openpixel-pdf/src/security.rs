@@ -88,8 +88,11 @@ impl PdfEngine {
     /// module docs for why not AES-256). `user_password` opens
     /// the document; `owner_password` (empty = same as user)
     /// unlocks full permissions. Both empty is an error.
-    /// The output is encrypted: `inspect`/`validate` refuse it
-    /// until it is unlocked with [`PdfEngine::unlock`].
+    /// The output is encrypted: `validate` and every content
+    /// operation refuse it until it is unlocked with
+    /// [`PdfEngine::unlock`]. `inspect` still reports it
+    /// (encrypted: yes, with algorithm/permissions) — see
+    /// [`PdfEngine::inspect`].
     pub fn protect(
         &self,
         bytes: &[u8],
@@ -406,11 +409,16 @@ mod tests {
         let protected = engine
             .protect(&pdf, "userpw", "ownerpw", PdfPermissions::default())
             .unwrap();
-        // Encrypted output: inspect refuses, validate refuses.
-        assert!(matches!(
-            engine.inspect(&protected).unwrap_err(),
-            PdfError::Encrypted
-        ));
+        // Encrypted output: validate refuses, but inspect reports
+        // the encryption status (page count unknown without the
+        // password — see `inspect`'s docs).
+        let info = engine.inspect(&protected).unwrap();
+        assert!(info.encrypted);
+        assert_eq!(info.page_count, 0);
+        assert_eq!(
+            info.encryption.as_ref().map(|e| e.algorithm.as_str()),
+            Some("RC4-128")
+        );
         assert!(matches!(
             engine.validate(&protected).unwrap_err(),
             PdfError::Encrypted

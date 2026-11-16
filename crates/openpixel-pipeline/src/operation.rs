@@ -147,6 +147,20 @@ pub enum Operation {
     /// (the same flattening the engine applies for formats without
     /// alpha, exposed here as an explicit step).
     Flatten { background: [u8; 3] },
+    /// Binarise to pure black/white at `threshold` (0..=255):
+    /// pixels below the threshold become black, the rest white.
+    /// The output is Luma8. OCR preprocessing (Phase 4) computes
+    /// the threshold with Otsu's method and passes it in.
+    Threshold { threshold: u8 },
+    /// 3x3 median filter on greyscale (salt-and-pepper denoise).
+    /// The output is Luma8. OCR preprocessing (Phase 4).
+    Denoise,
+    /// Auto-deskew: estimate the text skew angle (up to
+    /// `max_angle` degrees either way) from the horizontal
+    /// projection profile and rotate the image back. No rotation
+    /// happens when no clear angle is found. OCR preprocessing
+    /// (Phase 4).
+    Deskew { max_angle: f32 },
 }
 
 impl Operation {
@@ -173,6 +187,9 @@ impl Operation {
             Self::Sharpen { .. } => "sharpen",
             Self::Watermark { .. } => "watermark",
             Self::Flatten { .. } => "flatten",
+            Self::Threshold { .. } => "threshold",
+            Self::Denoise => "denoise",
+            Self::Deskew { .. } => "deskew",
         }
     }
 
@@ -307,6 +324,15 @@ impl Operation {
                 if *threshold < 0 || *threshold > 255 {
                     return Err(PipelineError::invalid(format!(
                         "sharpen threshold {threshold} is out of range 0..=255"
+                    )));
+                }
+                Ok(())
+            }
+            Self::Threshold { .. } | Self::Denoise => Ok(()),
+            Self::Deskew { max_angle } => {
+                if !max_angle.is_finite() || *max_angle < 0.0 || *max_angle > 45.0 {
+                    return Err(PipelineError::invalid(format!(
+                        "deskew max angle {max_angle} is out of range 0.0..=45.0"
                     )));
                 }
                 Ok(())

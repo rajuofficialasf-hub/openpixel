@@ -381,6 +381,8 @@ openpixel pdf watermark <input> <output> --text <text> [--font-size 48] [--opaci
 openpixel pdf extract-text <input> [-o <out>] [--pages 1,3] [--format txt|html|epub|docx]
 openpixel doc convert <input> --to <fmt> [-o <out>] [--timeout-secs 120]
 openpixel doc formats [--json]
+openpixel ocr <image> [-o <out.txt>] [--lang eng|ben|eng+ben] [--psm 0..=13] [--preprocess none|light|full] [--format txt|html|json]
+openpixel pdf ocr <input.pdf|image> <output.pdf> [--lang eng|ben|eng+ben] [--psm 0..=13] [--pages 1,3] [--scale 3.0]
 openpixel --json <any command>     # JSON output
 openpixel --quiet / --verbose      # log level
 ```
@@ -396,7 +398,10 @@ ranges are inclusive. Full semantics and limits: `docs/PDF.md`.
 ```rust
 // Inspect
 engine.validate(bytes) -> Result<()>                       // %PDF- signature + parseable
-engine.inspect(bytes) -> Result<PdfInfo>                   // page_count, version, title/author/creator/producer, encrypted, page_sizes (pt)
+engine.inspect(bytes) -> Result<PdfInfo>                   // page_count, version, title/author/creator/producer, encrypted, encryption, page_sizes (pt)
+                                                          // Phase 4: on an encrypted PDF inspect no longer errors — it reports
+                                                          // encrypted: true + encryption { algorithm, revision, print, modify, copy, annotate }
+                                                          // and page_count 0 / page_sizes [] (the count is unknown without the password — see docs/PDF.md)
 // Page operations — each returns a new PDF as bytes
 engine.merge(documents: &[Vec<u8>]) -> Result<Vec<u8>>
 engine.split(bytes, ranges: &[(u32, u32)]) -> Result<Vec<Vec<u8>>>
@@ -448,7 +453,8 @@ fail cleanly — never a crash.
 ### WASM exports (`openpixel-wasm`, `pdfium` off — pure Rust lopdf)
 
 ```js
-pdf_info(bytes) -> PdfInfo                          // { page_count, version, title, author, creator, producer, encrypted, page_sizes }
+pdf_info(bytes) -> PdfInfo                          // { page_count, version, title, author, creator, producer, encrypted, encryption, page_sizes }
+                                                    // encryption: null | { algorithm, revision, print, modify, copy, annotate } (Phase 4)
 pdf_process(bytes, ops_json) -> Uint8Array[]        // ops: {"kind":"split","ranges":[[1,3],[5,7]]}
                                                     //   | {"kind":"rotate","pages":[1,3],"degrees":90} (pages optional = all, degrees default 90)
                                                     //   | {"kind":"extract"|"remove"|"duplicate","pages":[...]}
@@ -515,6 +521,52 @@ PDFium) through the same shared encode tail as `convert_bytes`
 (ICO 256×256 auto-resize, quality defaults, output validation).
 No source metadata is carried; `ConvertResult::source_format`
 is `Unknown` (a rendered page has no image format).
+
+## Studio Phase 4 — OCR API (`openpixel-ocr`)
+
+Tesseract via `tesseract-sys =0.6.3` (MIT binding; Tesseract
+Apache-2.0, Leptonica BSD-2-Clause — see `LICENSE_AUDIT.md`),
+behind the `native-ocr` cargo feature (off by default, same
+pattern as the `pdfium` feature). Without the feature, every
+OCR call returns a clear `Unavailable` error — never a fake
+result. Full semantics, accuracy table and provisioning:
+`docs/OCR.md`.
+
+```rust
+// Engine trait — a second engine can plug in later; Tesseract is the only implementation now
+trait OcrEngine {
+    fn name(&self) -> &'static str;                 // "Tesseract"
+    fn version(&self) -> Result<String>;            // "5.3.4"
+    fn available_languages(&self) -> Result<Vec<String>>;  // from the tessdata dir listing
+    fn recognize(&self, image: &[u8], options: &OcrOptions) -> Result<OcrResult>;
+    fn searchable_pdf(&self, pages: &[SearchablePage], title: &str, options: &OcrOptions)
+        -> Result<(Vec<u8>, Vec<OcrResult>)>;
+    fn health_check(&self) -> Result<String>;
+}
+struct TesseractEngine { tessdata_dir: Option<PathBuf> }
+TesseractEngine::new() -> Result<Self>              // resolves tessdata via TESSDATA_PREFIX, then
+                                                    // /usr/share/tesseract-ocr/{5,4}/tessdata, /usr/local/share/tessdata, Homebrew paths
+TesseractEngine::with_tessdata(dir) -> Result<Self>
+// OcrOptions { languages: Vec<String> (default ["eng"]), psm: u8 0..=13 (default 3),
+//   dpi: u32 (default 300), preprocess: PreprocessMode } — validate() errors on bad psm / empty languages
+// PreprocessMode::None (grayscale only) | Light (default: grayscale + denoise) | Full (grayscale + deskew + Otsu threshold + denoise)
+// OcrResult { text: String, words: Vec<OcrWord>, mean_confidence: f32, language: String, engine: String,
+//   width: u32, height: u32, duration_ms: u64, preprocessed: PreprocessMode }
+// OcrWord { text, confidence: f32 0..=100, x, y, width, height } — pixel bbox, top-left origin
+// OcrResult::lines() groups words by vertical centre (within half the median word height); lines_text() joins them.
+// SearchablePage { image_bytes: &[u8], filename: &str }
+// searchable_pdf uses Tesseract's own PDF renderer (image + text layer with a proper ToUnicode map),
+// so the output is findable with `pdftotext` — including Bengali. It OCRs the image AS GIVEN
+// (no pipeline preprocessing on this path — the renderer embeds the very image it OCRs).
+// OcrError: Unavailable (feature off / library missing) | LanguageDataMissing (with install hint)
+//   | Engine(String) | UnsupportedImage | Io
+```
+
+Preprocessing ops (Phase 4, `openpixel-pipeline`): `Operation::Threshold
+{ threshold: u8 }`, `Operation::Denoise` (3×3 median), `Operation::Deskew
+{ max_angle: f32 }` (projection-profile search in 0.25° steps, smallest
+correction wins ties). Exposed to the CLI as `openpixel process … --op
+threshold:128 | --op denoise | --op deskew[:5]` (default max angle 5°).
 
 ## Stability note
 

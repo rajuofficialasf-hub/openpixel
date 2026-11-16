@@ -10,6 +10,18 @@
 #   wasm32 build check (openpixel-wasm + openpixel-pdf) and a
 #   `cargo deny check licenses` run (deny.toml — AGPL/GPL/LGPL
 #   are a hard no).
+# - Studio Phase 4 added Tesseract OCR (openpixel-ocr, feature
+#   `native-ocr`): the CLI job installs tesseract + leptonica on
+#   all three OSes — Linux apt (tesseract-ocr libtesseract-dev
+#   libleptonica-dev tesseract-ocr-eng tesseract-ocr-ben
+#   libclang-dev), macOS brew (tesseract tesseract-lang), Windows
+#   vcpkg (tesseract:x64-windows) + choco llvm for libclang +
+#   eng/ben traineddata into C:\openpixel-tessdata. Choco's own
+#   tesseract package is NOT used: it ships runtime DLLs only
+#   (no headers, no import library, no traineddata — verified
+#   17 Nov 2026 by extracting the 5.5.3 installer), so
+#   tesseract-sys cannot link against it. The wasm-and-licenses
+#   job deliberately does NOT install it (wasm32 stays clean).
 # - This workflow first ran 16 Nov 2026 (run 43832448184): Linux and
 #   macOS jobs all passed; both Windows jobs failed on missing
 #   pkg-config for dav1d-sys — fixed by installing pkgconfiglite
@@ -98,11 +110,17 @@ jobs:
       # code.videolan.org/videolan/dav1d.git). nasm >= 2.14 is
       # required for the x86_64 assembly; Ubuntu 24.04 ships
       # meson 1.5.1, ninja 1.11.1, nasm 2.16.01.
+      # Studio Phase 4: Tesseract + Leptonica (native OCR — the
+      # CLI links libtesseract dynamically) + libclang-dev
+      # (tesseract-sys runs bindgen at build time) + eng/ben
+      # traineddata (tessdata_fast).
       - name: Install system deps (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y meson ninja-build nasm pkg-config
+          sudo apt-get install -y meson ninja-build nasm pkg-config \
+            tesseract-ocr libtesseract-dev libleptonica-dev \
+            tesseract-ocr-eng tesseract-ocr-ben libclang-dev
 
       # --- Windows: dav1d is built from source and linked statically,
       # so NO vcpkg dav1d, NO pkg-config and NO DLL-on-PATH are needed
@@ -150,9 +168,46 @@ jobs:
       # dav1d's meson build needs it only for MSVC/ARM64, not clang.
       # Xcode Command Line Tools (C compiler) are preinstalled on
       # macos-latest.
+      # Studio Phase 4: Tesseract + Leptonica (native OCR). `brew
+      # install tesseract` ships eng only; tesseract-lang adds
+      # every language including ben. libclang comes from the
+      # Xcode CLT (bindgen finds it without extra steps).
       - name: Install dav1d build tools (macOS)
         if: runner.os == 'macOS'
-        run: brew install meson ninja nasm pkg-config
+        run: brew install meson ninja nasm pkg-config tesseract tesseract-lang
+
+      # --- Windows: Tesseract (Studio Phase 4, native OCR).
+      # tesseract-sys's build.rs tries vcpkg FIRST on Windows, so
+      # vcpkg is the route — NOT choco: the choco package (UB
+      # Mannheim installer) ships only the runtime DLLs, no
+      # headers and no import library, and no traineddata at all
+      # (verified 17 Nov 2026 by extracting
+      # tesseract-ocr-w64-setup-5.5.3.20260724.exe: libtesseract-5.dll
+      # present, no .lib, no include/, no *.traineddata).
+      # vcpkg builds tesseract + leptonica from source with headers
+      # and libs (~10-20 min — the slowest step in this job).
+      # VCPKG_ROOT must be set explicitly: the vcpkg crate reads
+      # VCPKG_ROOT, but the runner only sets VCPKG_INSTALLATION_ROOT.
+      # Language data: vcpkg's tesseract ships eng only, so eng+ben
+      # (tessdata_fast) are downloaded into C:\openpixel-tessdata
+      # and TESSDATA_PREFIX points the engine at it. The vcpkg bin
+      # dir goes on PATH so the test binaries can load the DLLs.
+      # libclang comes from choco's llvm (bindgen needs it).
+      - name: Install Tesseract via vcpkg (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install llvm -y
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin\libclang.dll" >> $env:GITHUB_ENV
+          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          vcpkg install tesseract:x64-windows --clean-after-build
+          echo "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin" >> $env:GITHUB_PATH
+          New-Item -ItemType Directory -Force -Path C:\openpixel-tessdata | Out-Null
+          Invoke-WebRequest -Uri https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata -OutFile C:\openpixel-tessdata\eng.traineddata
+          Invoke-WebRequest -Uri https://github.com/tesseract-ocr/tessdata_fast/raw/main/ben.traineddata -OutFile C:\openpixel-tessdata\ben.traineddata
+          echo "TESSDATA_PREFIX=C:\openpixel-tessdata" >> $env:GITHUB_ENV
+          Get-ChildItem $env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib\tesseract* -ErrorAction Stop
+          Get-ChildItem $env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\include\tesseract\capi.h -ErrorAction Stop
+          Get-ChildItem C:\openpixel-tessdata
 
       - name: Check formatting (Linux only)
         if: runner.os == 'Linux'

@@ -19,6 +19,11 @@ openpixel-pdf = { path = "../../crates/openpixel-pdf", features = ["pdfium"] }
 # Studio Phase 3: document conversion (LibreOffice headless +
 # PDF text exports).
 openpixel-documents = { path = "../../crates/openpixel-documents" }
+# Studio Phase 4: native OCR (Tesseract). The binary links
+# libtesseract + liblept dynamically — see docs/OCR.md for the
+# runtime requirement (same honesty rule as libpdfium: the `ocr`
+# commands fail with install instructions when it is missing).
+openpixel-ocr = { path = "../../crates/openpixel-ocr", features = ["native-ocr"] }
 openpixel-formats = { path = "../../crates/openpixel-formats" }
 openpixel-api = { path = "../../crates/openpixel-api" }
 clap.workspace = true

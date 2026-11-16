@@ -1,0 +1,3 @@
+The quick brown fox jumps over the lazy dog.
+OpenPixel Studio reads scanned documents and turns them into searchable text.
+Monitoring and evaluation reports must be accurate, timely and complete.

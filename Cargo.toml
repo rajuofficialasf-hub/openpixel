@@ -10,6 +10,7 @@ members = [
     "crates/openpixel-api",
     "crates/openpixel-pdf",
     "crates/openpixel-documents",
+    "crates/openpixel-ocr",
     "crates/openpixel-wasm",
     "apps/cli",
 ]
@@ -57,6 +58,14 @@ jpeg2k = { version = "=0.11.0", default-features = false, features = ["image"] }
 # 1.23.3-1 has no matching -dev package and the system heif-enc ships
 # no HEVC/AV1 encoder at all.
 heifer = "=0.5.1"
+# Phase 4 native OCR (pinned exact — see docs/OCR.md):
+# tesseract-sys =0.6.3 is the MIT binding; Tesseract itself is
+# Apache-2.0, Leptonica BSD-2-Clause. Native only, never WASM.
+tesseract-sys = "=0.6.3"
+# Phase 4: Leptonica C bindings (tesseract-sys re-exports nothing;
+# the OCR crate calls pixReadMem/pixDestroy directly for the
+# searchable-PDF path). BSD-2-Clause.
+leptonica-sys = "=0.4.9"
 # WASM bindings (follow-up item 2, 16 Nov 2026, pinned exact).
 # wasm-pack reads the crate's wasm-bindgen version from the lockfile
 # and fetches the matching wasm-bindgen CLI itself, so these pins

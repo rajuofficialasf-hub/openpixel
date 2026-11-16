@@ -277,5 +277,104 @@ grep -q "OpenPixel Test Document" "$OUT/doc-via-doc.txt" || { echo "FAIL: doc co
 [ $? -eq 1 ] || { echo "FAIL: pdf->xlsx should exit 1"; exit 1; }
 "$BIN" doc convert "$IN/test.pptx" --to txt -o "$OUT/x.txt" > /dev/null 2>&1
 [ $? -eq 1 ] || { echo "FAIL: pptx->txt should exit 1"; exit 1; }
+echo "=== 12. OCR (Studio Phase 4): native Tesseract ==="
+# Fixtures are the committed Rust accuracy fixtures
+# (crates/openpixel-ocr/tests/fixtures/) — known text, so the
+# error rates below are measured against ground truth, not vibes.
+OCR_FIX="$HOME/workspace/openpixel-engine/crates/openpixel-ocr/tests/fixtures"
+cp "$OCR_FIX/eng-clean.png" "$OCR_FIX/ben-clean.png" "$OCR_FIX/eng-skewed.png" "$OCR_FIX/eng-noisy.png" "$IN/"
+cp "$OCR_FIX/eng-clean.txt" "$OCR_FIX/ben-clean.txt" "$IN/"
+# CER/WER helper: python3 reads <got> + <truth> and prints the
+# rates; exits 1 when over the given ceilings.
+cer() { python3 - "$1" "$2" "$3" "$4" <<'PYEOF'
+import sys
+def lev(a, b):
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i] + [0] * len(b)
+        for j, cb in enumerate(b, 1):
+            cur[j] = min(prev[j] + 1, cur[j-1] + 1, prev[j-1] + (ca != cb))
+        prev = cur
+    return prev[len(b)]
+got = open(sys.argv[1], encoding='utf-8').read().strip()
+truth = open(sys.argv[2], encoding='utf-8').read().strip()
+c = lev(list(truth), list(got)) / max(len(truth), 1)
+w = lev(truth.split(), got.split()) / max(len(truth.split()), 1)
+print(f"CER={c:.3f} WER={w:.3f} (ceilings CER<{sys.argv[3]} WER<{sys.argv[4]})")
+sys.exit(0 if c < float(sys.argv[3]) and w < float(sys.argv[4]) else 1)
+PYEOF
+}
+# --- 12a. ocr txt: clean English is exact, confidence printed ---
+run "$BIN" ocr "$IN/eng-clean.png" -o "$OUT/eng.txt"
+grep -q "The quick brown fox jumps over the lazy dog." "$OUT/eng.txt" || { echo "FAIL: ocr eng line 1"; exit 1; }
+grep -q "OpenPixel Studio reads scanned documents" "$OUT/eng.txt" || { echo "FAIL: ocr eng line 2"; exit 1; }
+cer "$OUT/eng.txt" "$IN/eng-clean.txt" 0.01 0.01 || { echo "FAIL: ocr eng-clean accuracy"; exit 1; }
+# --- 12b. ocr txt: Bengali (conjunct words are the hard part — see docs/OCR.md) ---
+run "$BIN" ocr "$IN/ben-clean.png" --lang ben -o "$OUT/ben.txt"
+grep -q "ঢাকায়" "$OUT/ben.txt" || { echo "FAIL: ocr ben line 1"; exit 1; }
+grep -q "স্বচ্ছতা" "$OUT/ben.txt" || { echo "FAIL: ocr ben line 3"; exit 1; }
+cer "$OUT/ben.txt" "$IN/ben-clean.txt" 0.20 0.25 || { echo "FAIL: ocr ben-clean accuracy"; exit 1; }
+# --- 12c. ocr --format json: words + boxes + confidence ---
+run "$BIN" ocr "$IN/eng-clean.png" --format json -o "$OUT/eng.json"
+python3 - "$OUT/eng.json" <<'PYEOF'
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d['language'] == 'eng', d['language']
+assert len(d['words']) == 30, len(d['words'])
+assert d['mean_confidence'] > 90, d['mean_confidence']
+assert 'OpenPixel Studio' in d['text'], d['text'][:80]
+assert all(set(w) >= {'text', 'confidence', 'x', 'y', 'width', 'height'} for w in d['words'])
+print(f"ocr json: {len(d['words'])} words, mean confidence {d['mean_confidence']:.1f}%, engine {d['engine']}")
+PYEOF
+# --- 12d. ocr --format html: word spans with bboxes ---
+run "$BIN" ocr "$IN/eng-clean.png" --format html -o "$OUT/eng.html"
+grep -q '<span class="ocr_word" title="bbox' "$OUT/eng.html" || { echo "FAIL: ocr html word spans"; exit 1; }
+# Words are separate spans, so "OpenPixel Studio" never appears as
+# one literal string — check the two words individually.
+grep -q '>OpenPixel</span>' "$OUT/eng.html" || { echo "FAIL: ocr html text (OpenPixel)"; exit 1; }
+grep -q '>Studio</span>' "$OUT/eng.html" || { echo "FAIL: ocr html text (Studio)"; exit 1; }
+# --- 12e. ocr --preprocess full recovers a +3 degree skew ---
+run "$BIN" ocr "$IN/eng-skewed.png" --preprocess none -o "$OUT/skew-none.txt"
+run "$BIN" ocr "$IN/eng-skewed.png" --preprocess full -o "$OUT/skew-full.txt"
+echo "skewed page baseline (no preprocessing — the uncorrected error):"
+cer "$OUT/skew-none.txt" "$IN/eng-clean.txt" 0.99 0.99
+echo "skewed page with --preprocess full (deskew must recover it):"
+cer "$OUT/skew-full.txt" "$IN/eng-clean.txt" 0.01 0.01 || { echo "FAIL: ocr deskew should recover the skewed page"; exit 1; }
+# --- 12f. pdf ocr: scanned PDF -> searchable PDF, text findable with pdftotext ---
+run "$BIN" pdf from-images "$IN/eng-clean.png" "$IN/ben-clean.png" -o "$OUT/ocr-scan.pdf"
+run "$BIN" pdf ocr "$OUT/ocr-scan.pdf" "$OUT/ocr-searchable.pdf" --lang eng+ben
+pdfinfo "$OUT/ocr-searchable.pdf" | grep -Eq "Pages:\s+2" || { echo "FAIL: searchable PDF page count"; exit 1; }
+pdftotext "$OUT/ocr-searchable.pdf" - | grep -q "OpenPixel Studio reads scanned documents" || { echo "FAIL: searchable PDF English text layer"; exit 1; }
+pdftotext "$OUT/ocr-searchable.pdf" - | grep -q "ঢাকায়" || { echo "FAIL: searchable PDF Bengali text layer"; exit 1; }
+pdfinfo "$OUT/ocr-searchable.pdf" | grep -q "Producer:.*Tesseract" || { echo "FAIL: searchable PDF producer should be Tesseract"; exit 1; }
+# --- 12g. pdf ocr on a single image ---
+run "$BIN" pdf ocr "$IN/eng-clean.png" "$OUT/ocr-one.pdf"
+pdfinfo "$OUT/ocr-one.pdf" | grep -Eq "Pages:\s+1" || { echo "FAIL: single-image searchable PDF page count"; exit 1; }
+pdftotext "$OUT/ocr-one.pdf" - | grep -q "quick brown fox" || { echo "FAIL: single-image text layer"; exit 1; }
+# --- 12h. pdf info on an encrypted PDF reports encryption (Phase 4 fix) ---
+run "$BIN" pdf protect "$IN/doc3.pdf" "$OUT/ocr-locked.pdf" --user-password user123 --no-print --no-copy
+run "$BIN" pdf info "$OUT/ocr-locked.pdf"
+"$BIN" pdf info "$OUT/ocr-locked.pdf" | grep -q "encrypted: yes" || { echo "FAIL: pdf info should report encrypted: yes"; exit 1; }
+"$BIN" pdf info "$OUT/ocr-locked.pdf" | grep -q "algorithm: RC4-128" || { echo "FAIL: pdf info should report RC4-128"; exit 1; }
+"$BIN" pdf info "$OUT/ocr-locked.pdf" | grep -q "pages:.*unknown (encrypted)" || { echo "FAIL: pdf info should say the page count is unknown"; exit 1; }
+"$BIN" pdf info "$OUT/ocr-locked.pdf" | grep -q "print:no" || { echo "FAIL: pdf info should report print forbidden"; exit 1; }
+"$BIN" --json pdf info "$OUT/ocr-locked.pdf" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['encrypted'] and d['encryption']['algorithm']=='RC4-128' and d['page_count']==0, d" || { echo "FAIL: pdf info --json encryption object"; exit 1; }
+# --- 12i. ocr error cases (exit 1, clean error, no crash) ---
+"$BIN" ocr "$OUT/ocr-scan.pdf" > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: ocr on a PDF input should exit 1"; exit 1; }
+"$BIN" ocr "$IN/eng-clean.png" --lang xx > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: ocr with an unknown language should exit 1"; exit 1; }
+"$BIN" ocr "$IN/eng-clean.png" --psm 14 > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: ocr --psm 14 should exit 1"; exit 1; }
+"$BIN" ocr "$IN/eng-clean.png" --preprocess bogus > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: ocr --preprocess bogus should exit 1"; exit 1; }
+# --- 12j. process --op deskew/denoise cleans a scan before pdf ocr (Phase 4 ops) ---
+run "$BIN" process "$IN/eng-skewed.png" "$OUT/skew-cleaned.png" --op deskew --op denoise
+run "$BIN" ocr "$OUT/skew-cleaned.png" --preprocess none -o "$OUT/skew-cleaned.txt"
+echo "skewed page cleaned with --op deskew --op denoise, then ocr with no preprocessing:"
+cer "$OUT/skew-cleaned.txt" "$IN/eng-clean.txt" 0.02 0.10 || { echo "FAIL: --op deskew should recover the skewed page"; exit 1; }
+"$BIN" process "$IN/eng-clean.png" "$OUT/threshold.png" --op threshold:128 > /dev/null 2>&1 || { echo "FAIL: --op threshold:128 should work"; exit 1; }
+"$BIN" process "$IN/eng-clean.png" "$OUT/bad.png" --op bogus > /dev/null 2>&1
+[ $? -eq 1 ] || { echo "FAIL: --op bogus should exit 1"; exit 1; }
 echo "=== DONE ==="
 ls -la "$OUT" | head -50
