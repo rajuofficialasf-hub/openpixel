@@ -167,8 +167,9 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
           <code className="rounded bg-slate-100 px-1 font-mono text-xs dark:bg-slate-700">
             npm run build:wasm
           </code>
-          ; conversion uses the browser canvas in a Web Worker for PNG / JPEG / WebP / BMP and
-          the WASM engine for the formats the canvas cannot handle. AVIF is not available in
+          ; conversion uses the browser canvas in a Web Worker for PNG / JPEG / WebP and
+          the WASM engine for the formats the canvas cannot handle (including BMP, which
+          the canvas cannot encode at all). AVIF is not available in
           WASM (it needs the native libdav1d library).
         </p>
       </div>

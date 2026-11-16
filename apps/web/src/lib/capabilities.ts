@@ -52,8 +52,17 @@ export const BROWSER_DECODABLE: readonly string[] = [
   'avif', // best effort: Chrome/Edge/Firefox decode it; Safari 16+ does; older browsers fail honestly
 ]
 
-/** Formats the browser can encode via canvas.toBlob / OffscreenCanvas. */
-export const BROWSER_ENCODABLE: readonly string[] = ['png', 'jpeg', 'webp', 'bmp']
+/**
+ * Formats the browser can encode via canvas.toBlob / OffscreenCanvas.
+ *
+ * BMP is deliberately NOT here: `canvas.toBlob(blob, 'image/bmp')`
+ * does not encode BMP in any browser — the spec says an unsupported
+ * type silently falls back to PNG, so a "BMP" download used to be a
+ * PNG file named `.bmp`. BMP is still decodable in the browser (see
+ * `BROWSER_DECODABLE`) and encodable through the WASM engine, which
+ * is why `wasmCoversConversion` routes BMP targets to WASM.
+ */
+export const BROWSER_ENCODABLE: readonly string[] = ['png', 'jpeg', 'webp']
 
 /** Canvas MIME type for an encodable target (undefined = not encodable). */
 export function canvasMimeType(formatId: string): string | undefined {
@@ -64,8 +73,8 @@ export function canvasMimeType(formatId: string): string | undefined {
       return 'image/jpeg'
     case 'webp':
       return 'image/webp'
-    case 'bmp':
-      return 'image/bmp'
+    // No 'bmp' case: canvas.toBlob cannot encode BMP (it silently
+    // returns PNG instead) — see BROWSER_ENCODABLE above.
     default:
       return undefined
   }

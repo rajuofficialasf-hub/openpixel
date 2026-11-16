@@ -7,7 +7,8 @@ import {
   formatLabel,
   outputFileName,
 } from '../lib/capabilities'
-import { convertImage, probeImage, type ProbedImage } from '../lib/convert'
+import { convertImage, probeImage, ProbeError, type ProbedImage } from '../lib/convert'
+import type { DetectedFormat } from '../lib/detect'
 import type { Settings } from '../lib/settings'
 import { WASM_STATUS } from '../lib/wasm'
 import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
@@ -35,6 +36,10 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [probed, setProbed] = useState<ProbedImage | null>(null)
+  // Format sniffed from the magic bytes when probing failed (e.g. a
+  // TIFF with no WASM engine): shown as the detected format instead
+  // of "Unknown". Dimensions stay unknown — never rendered as 0×0.
+  const [detectedFormat, setDetectedFormat] = useState<DetectedFormat | null>(null)
   const [targetFormat, setTargetFormat] = useState(settings.defaultFormat)
   const [quality, setQuality] = useState(settings.defaultQuality)
   const [background, setBackground] = useState(settings.defaultBackground)
@@ -68,6 +73,7 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
       setResult(null)
       setError(null)
       setWarnings([])
+      setDetectedFormat(null)
       setFile(next)
       setStatus('probing')
       const url = URL.createObjectURL(next)
@@ -102,6 +108,11 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
         setStatus('ready')
       } catch (err) {
         setProbed(null)
+        // The format was sniffed even though the file cannot be
+        // decoded here — keep it visible instead of "Unknown".
+        if (err instanceof ProbeError && err.format !== 'unknown') {
+          setDetectedFormat(err.format)
+        }
         setError(err instanceof Error ? err.message : 'Could not read this image.')
         setStatus('error')
       }
@@ -149,7 +160,12 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
       }
       setStatus('done')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Conversion failed.')
+      // "Conversion failed:" belongs here — a real conversion was
+      // attempted. Probe failures set their own message in
+      // handleFiles and must never wear this label.
+      setError(
+        err instanceof Error ? `Conversion failed: ${err.message}` : 'Conversion failed.',
+      )
       setStatus('error')
     }
   }, [file, probed, targetFormat, quality, background, pngCompression, settings.metadataPolicy])
@@ -157,6 +173,7 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
   const clearFile = useCallback(() => {
     setFile(null)
     setProbed(null)
+    setDetectedFormat(null)
     setResult(null)
     setError(null)
     setWarnings([])
@@ -170,9 +187,11 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
   }, [previewUrl])
 
   // Output targets: the canvas targets first, then whatever the
-  // WASM engine adds (TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM,
-  // TGA, GIF) when its module is present. Without the module the
-  // list is exactly the old canvas-only list.
+  // WASM engine adds (BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO,
+  // PNM, TGA, GIF) when its module is present. Without the module
+  // the list is exactly the old canvas-only list. BMP is a WASM
+  // target, not a canvas one: canvas.toBlob silently returns PNG
+  // for BMP (see capabilities.ts).
   const targets = mergeFormatLists(BROWSER_ENCODABLE, wasmSupport?.encode)
     .map((id) => formatById(id))
     .filter((c): c is NonNullable<typeof c> => c !== undefined && c.can_encode)
@@ -184,10 +203,10 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
       </h2>
       <p className="text-sm text-slate-600 dark:text-slate-400">
         Files never leave your device — conversion runs locally in your browser. In-browser
-        conversion handles <strong>PNG, JPEG, WebP and BMP</strong> output from PNG, JPEG, WebP,
-        GIF (first frame), BMP, SVG and AVIF (browser-dependent) sources
+        conversion handles <strong>PNG, JPEG and WebP</strong> output via the canvas from PNG,
+        JPEG, WebP, GIF (first frame), BMP, SVG and AVIF (browser-dependent) sources
         {wasmSupport
-          ? ', plus the built-in WASM engine’s TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF targets (and sources) — AVIF still needs the native CLI'
+          ? ', plus the built-in WASM engine’s BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF targets (and sources) — AVIF still needs the native CLI'
           : ', plus the WASM engine’s extra formats when its module is built (see Settings, About)'}
         . Everything else needs the native CLI. {WASM_STATUS.detail}
       </p>
@@ -229,7 +248,13 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
                 <dd className="text-slate-900 dark:text-slate-100">{formatBytes(file.size)}</dd>
                 <dt className="text-slate-500 dark:text-slate-400">Detected format</dt>
                 <dd className="text-slate-900 dark:text-slate-100">
-                  {probed ? formatLabel(probed.format) : status === 'probing' ? 'Reading…' : 'Unknown'}
+                  {probed
+                    ? formatLabel(probed.format)
+                    : detectedFormat
+                      ? formatLabel(detectedFormat)
+                      : status === 'probing'
+                        ? 'Reading…'
+                        : 'Unknown'}
                   <span className="block text-xs text-slate-500 dark:text-slate-400">
                     Detected from magic bytes, not the extension.
                   </span>
@@ -277,8 +302,8 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
               </select>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
                 {wasmSupport
-                  ? 'Canvas targets plus the WASM engine’s TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF. AVIF still needs the native CLI — see the Formats tab.'
-                  : 'Only formats this browser can encode. TIFF, AVIF, JXL, QOI and the rest need the native CLI — see the Formats tab.'}
+                  ? 'Canvas targets plus the WASM engine’s BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF. AVIF still needs the native CLI — see the Formats tab.'
+                  : 'Only formats this browser can encode. BMP, TIFF, AVIF, JXL, QOI and the rest need the WASM engine or the native CLI — see the Formats tab.'}
               </p>
             </div>
 
@@ -406,7 +431,7 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
 
       {status === 'error' && error && (
         <div role="alert" className="rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
-          Conversion failed: {error}
+          {error}
         </div>
       )}
 

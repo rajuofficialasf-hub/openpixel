@@ -26,8 +26,8 @@ real PNG/JPEG/TIFF/HEIC/GIF into that directory with the same names.
 ## Run
 
 ```bash
-node apps/web/e2e/web-e2e.mjs        # 23 checks, Chromium vs :8321
-node apps/web/e2e/web-nowasm.mjs     # WASM-absent fallback vs :8322
+node apps/web/e2e/web-e2e.mjs        # 30 checks, Chromium vs :8321
+node apps/web/e2e/web-nowasm.mjs     # 7 checks, WASM-absent fallback vs :8322
 ```
 
 For the fallback run, serve a copy of `dist/` with `public/wasm/`
@@ -46,21 +46,25 @@ WASM module served over plain HTTP and detected by the UI; PNG→JPEG
 via canvas with the downloaded bytes re-detected as JPEG; a PNG
 named `.jpg` detected as PNG (signature wins); TIFF→PNG and
 HEIC→PNG via the WASM engine with the "Converted with the built-in
-WASM engine" note; PNG→HEIC via WASM re-detected as HEIC; GIF
-first-frame note + GIF→WebP; batch of 3 files incl. an unsupported
-`.txt` (skipped with a reason) with the downloaded zip verified to
-contain 2 real WebP files; Formats tab lists 21 formats; theme
-toggle light/dark persists across reload; keyboard-only Tab to the
-drop zone + Enter opens the file picker. Screenshots land in
-`screenshots/` (`01-home.png` … `09-settings-dark.png`).
+WASM engine" note; PNG→HEIC via WASM re-detected as HEIC;
+PNG→BMP via the WASM engine re-detected as a real BMP (the canvas
+cannot encode BMP — see below); QOI source → PNG via WASM;
+PNG→TIFF/QOI/JXL via WASM, each re-detected; GIF first-frame note
++ GIF→WebP; batch of 3 files incl. an unsupported `.txt` (skipped
+with a reason) with the downloaded zip verified to contain 2 real
+WebP files; Formats tab lists 21 formats; theme toggle light/dark
+persists across reload; keyboard-only Tab to the drop zone + Enter
+opens the file picker. Screenshots land in `screenshots/`
+(`01-home.png` … `09-settings-dark.png`, `14-polish-qoi.png`).
 
 `web-nowasm.mjs` — with `public/wasm/` removed: the app loads and
 the intro no longer claims WASM targets; PNG→JPEG still converts
 via canvas; a TIFF upload fails honestly ("This browser cannot
-decode this image. Try the native CLI instead.") with Convert
-disabled and no crash. The missing `openpixel_wasm.js` logs one
-expected 404 in the console. Screenshots `10-nowasm-home.png`,
-`11-nowasm-tiff.png`.
+decode this image. Try the native CLI instead.") with the sniffed
+format still shown ("Detected format: TIFF"), no misleading
+"Conversion failed" label, and Convert disabled — no crash. The
+missing `openpixel_wasm.js` logs one expected 404 in the console.
+Screenshots `10-nowasm-home.png`, `11-nowasm-tiff.png`.
 
 ## Known notes (see docs/E2E.md)
 
@@ -68,8 +72,12 @@ expected 404 in the console. Screenshots `10-nowasm-home.png`,
   once during the main run — a navigation abort while the page was
   reloaded for the theme-persistence check, not an app failure
   (every WASM conversion in the run passed).
-- Without WASM, a TIFF upload shows "Detected format: Unknown"
-  (the sniffed format is discarded when the probe throws) and a
-  red "Conversion failed" alert, although no conversion was
-  attempted. Honest, but the label is misleading — a polish item,
-  not a blocker.
+- BMP is a WASM target, not a canvas target: `canvas.toBlob` with
+  `image/bmp` silently returns PNG, so a "BMP" download used to be
+  PNG bytes named `.bmp` (caught by the polish run on 16 Nov 2026
+  and fixed by routing BMP to the WASM engine). Without the WASM
+  module BMP is not offered as a target at all.
+- The no-WASM TIFF label/format issue ("Detected format: Unknown"
+  + misleading "Conversion failed") was fixed in the same polish
+  run: `probeImage` now throws a `ProbeError` carrying the sniffed
+  format.

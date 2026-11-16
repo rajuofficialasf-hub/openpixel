@@ -1,6 +1,5 @@
 // WASM-absent fallback check — item 4. Serves a copy of dist/ with public/wasm removed.
 import { chromium } from 'playwright-core';
-import fs from 'node:fs';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 
@@ -9,7 +8,6 @@ const IN = '/tmp/op-e2e/cli/in';
 const DL = '/tmp/op-e2e/web-dl';
 const SHOT = '/home/hatch/workspace/openpixel-engine/apps/web/e2e/screenshots';
 const CHROME = '/home/hatch/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome';
-const CLI = '/home/hatch/workspace/openpixel-engine/target/release/openpixel';
 const results = [];
 function check(name, ok, detail = '') {
   results.push({ name, ok });
@@ -47,9 +45,17 @@ check('no-WASM build: PNG->JPEG still converts (canvas)', f.startsWith('JPEG ima
 // TIFF without WASM: honest "cannot decode" note, convert disabled
 await page.locator('button', { hasText: 'Choose a different file' }).click();
 await page.setInputFiles('#convert-file', path.join(IN, 'multi.tiff'));
-await page.waitForFunction(() => document.body.innerText.includes('Detected format'), { timeout: 15000 });
+// Wait for the probe to FINISH, not just for the panel to appear:
+// "Detected format" renders while status is still 'probing' (as
+// "Reading…"), so waiting only for that label races the probe and
+// reads the page before the error/format land (flaky pre-fix).
+await page.waitForFunction(() => document.body.innerText.includes('cannot decode this image'), { timeout: 15000 });
 const bodyText = await page.locator('section').first().innerText();
-check('no-WASM build: TIFF shows cannot-decode note', /cannot be decoded in this browser/i.test(bodyText), bodyText.slice(0, 300).replace(/\n/g, ' | '));
+check('no-WASM build: TIFF shows cannot-decode note', /cannot decode this image/i.test(bodyText), bodyText.slice(0, 300).replace(/\n/g, ' | '));
+// Polish (16 Nov 2026): the sniffed format must still be shown and
+// the alert must not claim a conversion failed — none was attempted.
+check('no-WASM build: TIFF detected format shown, not "Unknown"', /Detected format\nTIFF/.test(bodyText), bodyText.slice(0, 300).replace(/\n/g, ' | '));
+check('no-WASM build: no misleading "Conversion failed" label', !bodyText.includes('Conversion failed'), bodyText.slice(0, 300).replace(/\n/g, ' | '));
 const convertDisabled = await page.locator('button', { hasText: /^Convert to / }).isDisabled();
 check('no-WASM build: Convert button disabled for TIFF', convertDisabled);
 await page.screenshot({ path: path.join(SHOT, '11-nowasm-tiff.png') });

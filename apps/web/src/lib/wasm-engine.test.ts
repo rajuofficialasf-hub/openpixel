@@ -76,6 +76,13 @@ describe('wasmCoversConversion', () => {
     expect(wasmCoversConversion('gif', 'png', WASM_SUPPORT)).toBe(false)
   })
 
+  it('routes BMP targets to WASM — the canvas cannot encode BMP', () => {
+    // Regression: canvas.toBlob('image/bmp') silently returns PNG,
+    // so a "BMP" download was PNG bytes named .bmp. The engine
+    // encodes real BMP, so WASM must claim this conversion.
+    expect(wasmCoversConversion('png', 'bmp', WASM_SUPPORT)).toBe(true)
+  })
+
   it('never claims AVIF — it is not in the wasm build', () => {
     expect(wasmCoversConversion('png', 'avif', WASM_SUPPORT)).toBe(false)
     expect(wasmCoversConversion('avif', 'png', WASM_SUPPORT)).toBe(false)

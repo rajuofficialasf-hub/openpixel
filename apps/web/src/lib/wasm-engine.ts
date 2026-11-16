@@ -32,8 +32,9 @@
  * The WASM conversion runs synchronously on the calling thread, so
  * `convertImage` only uses it for conversions the canvas path
  * cannot do at all — the worker-based canvas path stays the default
- * for PNG / JPEG / WebP / BMP, where it is already correct and
- * non-blocking.
+ * for PNG / JPEG / WebP, where it is already correct and
+ * non-blocking. BMP targets also go through WASM: the canvas
+ * cannot encode BMP (`toBlob` silently returns PNG for it).
  */
 import { useEffect, useState } from 'react'
 import { BROWSER_DECODABLE, BROWSER_ENCODABLE, formatById } from './capabilities'

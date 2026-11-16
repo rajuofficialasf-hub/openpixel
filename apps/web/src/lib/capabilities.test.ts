@@ -95,11 +95,20 @@ describe('browser conversion options — generated from the capability data', ()
 
   it('browser-encodable targets are a subset of engine-encodable ones', () => {
     const browser = browserEncodableFormats().map((c) => c.format_id)
-    expect([...browser].sort()).toEqual(['bmp', 'jpeg', 'png', 'webp'])
+    expect([...browser].sort()).toEqual(['jpeg', 'png', 'webp'])
     for (const id of browser) {
       expect(BROWSER_ENCODABLE).toContain(id)
       expect(canvasMimeType(id)).toBeDefined()
     }
+  })
+
+  it('BMP is NOT canvas-encodable — toBlob silently returns PNG for it', () => {
+    // Regression: a "BMP" download used to be PNG bytes named .bmp.
+    // BMP stays decodable in the browser and encodable via the WASM
+    // engine; it must never be offered as a canvas target.
+    expect(BROWSER_ENCODABLE).not.toContain('bmp')
+    expect(canvasMimeType('bmp')).toBeUndefined()
+    expect(BROWSER_DECODABLE).toContain('bmp')
   })
 
   it('CLI-only encodable formats are exactly the ones the browser cannot encode', () => {

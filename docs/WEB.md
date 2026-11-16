@@ -47,8 +47,8 @@ User drops a file
 
 | Path | Sources | Targets |
 |---|---|---|
-| Browser canvas (this app) | PNG, JPEG, WebP, GIF (first frame only), BMP, SVG (rasterised), AVIF (only if the browser decodes it) | PNG, JPEG, WebP, BMP |
-| WASM engine (this app, when built — see below) | Everything the canvas path handles, plus TIFF, QOI, HEIC, HEIF, JXL, JPEG 2000, ICO, PNM, TGA, EXR, HDR | Everything the canvas path handles, plus TIFF, QOI, HEIC, HEIF, JXL, JPEG 2000, ICO, PNM, TGA, GIF |
+| Browser canvas (this app) | PNG, JPEG, WebP, GIF (first frame only), BMP, SVG (rasterised), AVIF (only if the browser decodes it) | PNG, JPEG, WebP |
+| WASM engine (this app, when built — see below) | Everything the canvas path handles, plus TIFF, QOI, HEIC, HEIF, JXL, JPEG 2000, ICO, PNM, TGA, EXR, HDR | Everything the canvas path handles, plus BMP, TIFF, QOI, HEIC, HEIF, JXL, JPEG 2000, ICO, PNM, TGA, GIF |
 | Native CLI / desktop app | All 16 engine formats (incl. TIFF, TGA, ICO, PNM, QOI, AVIF, JXL, HDR, EXR, JPEG 2000, SVG) | All 15 engine-encodable formats |
 
 Not convertible anywhere yet: APNG, RAW, PSD (planned in the
@@ -66,6 +66,12 @@ Honest limits of the canvas path, all stated in the UI:
   the in-browser output. The CLI honours it.
 - JPEG quality applies to JPEG and WebP targets only; PNG/BMP ignore
   it (same rule as the engine).
+- BMP is decodable by the canvas but NOT encodable by it:
+  `canvas.toBlob(blob, 'image/bmp')` silently returns PNG, so a
+  "BMP" download used to be PNG bytes named `.bmp` (caught by the
+  web e2e on 16 Nov 2026). BMP targets are routed to the WASM
+  engine instead; without the WASM module BMP is not offered as a
+  target at all.
 - Animated GIF / animated WebP / multi-page TIFF: only the first
   frame/page converts in the browser (same as the engine's plain
   decode). Frame extraction needs the CLI (`openpixel extract-frame`).

@@ -8,7 +8,7 @@ import {
   formatLabel,
   outputFileName,
 } from '../lib/capabilities'
-import { convertImage, probeImage } from '../lib/convert'
+import { convertImage, probeImage, ProbeError } from '../lib/convert'
 import type { Settings } from '../lib/settings'
 import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
 import { DropZone } from './DropZone'
@@ -107,11 +107,26 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
         )
       } catch (err) {
         setItems((prev) =>
-          prev.map((p) =>
-            p.id === item.id
-              ? { ...p, status: 'failed', error: err instanceof Error ? err.message : 'Could not read this image.' }
-              : p,
-          ),
+          prev.map((p) => {
+            if (p.id !== item.id) return p
+            // The format was sniffed even though the file cannot be
+            // decoded here: skip it with its real format and reason,
+            // like the known-undecodable path above — not "failed",
+            // since no conversion was attempted.
+            if (err instanceof ProbeError && err.format !== 'unknown') {
+              return {
+                ...p,
+                sourceFormat: err.format,
+                status: 'skipped',
+                error: `${formatLabel(err.format)} cannot be decoded in this browser — use the native CLI.`,
+              }
+            }
+            return {
+              ...p,
+              status: 'failed',
+              error: err instanceof Error ? err.message : 'Could not read this image.',
+            }
+          }),
         )
       }
     }

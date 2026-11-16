@@ -10,8 +10,10 @@
  *
  * Decoding is `createImageBitmap` (browser-native: PNG/JPEG/WebP/GIF
  * first frame/BMP/SVG/AVIF where the browser supports it). Encoding
- * is `OffscreenCanvas.convertToBlob` (PNG/JPEG/WebP/BMP). Metadata is
- * always stripped by a canvas round-trip — the UI says so.
+ * is `OffscreenCanvas.convertToBlob` (PNG/JPEG/WebP only — BMP is
+ * not encodable by canvas: `toBlob` silently returns PNG for it,
+ * so BMP targets are routed to the WASM engine instead).
+ * Metadata is always stripped by a canvas round-trip — the UI says so.
  */
 
 export interface WorkerConvertRequest {

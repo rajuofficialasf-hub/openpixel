@@ -9,7 +9,9 @@
  * What converts here (honest list — see also `capabilities.ts`):
  *   sources: PNG, JPEG, WebP, GIF (first frame only), BMP, SVG
  *            (rasterised), AVIF (only if this browser decodes it)
- *   targets: PNG, JPEG, WebP, BMP (whatever `canvas.toBlob` supports)
+ *   targets: PNG, JPEG, WebP (whatever `canvas.toBlob` supports);
+ *            BMP goes through the WASM engine, never the canvas —
+ *            `canvas.toBlob` silently returns PNG for `image/bmp`.
  * Everything else the engine supports (TIFF, TGA, ICO, PNM, QOI,
  * AVIF/JXL/HDR/EXR/JPEG 2000 encode, HEIC/HEIF, RAW, PSD) needs the
  * native CLI (`openpixel convert`) or the desktop app — the UI says
@@ -65,6 +67,26 @@ export interface ProbedImage {
   height: number
 }
 
+/**
+ * Thrown by {@link probeImage} when the file cannot be decoded in
+ * this browser (and the WASM engine is absent or also cannot read
+ * it). It carries the format sniffed from the magic bytes, so the
+ * UI can still show the real detected format instead of "Unknown":
+ * a failed probe is not a failed conversion, and the format was
+ * genuinely detected — discarding it made the UI lie twice (wrong
+ * format, wrong "Conversion failed" label for something that was
+ * never attempted).
+ */
+export class ProbeError extends Error {
+  readonly format: DetectedFormat
+
+  constructor(format: DetectedFormat) {
+    super('This browser cannot decode this image. Try the native CLI instead.')
+    this.name = 'ProbeError'
+    this.format = format
+  }
+}
+
 /** Read dimensions + detected format without converting. */
 export async function probeImage(file: Blob): Promise<ProbedImage> {
   const format = await detectFileFormat(file)
@@ -87,7 +109,7 @@ export async function probeImage(file: Blob): Promise<ProbedImage> {
         height: wasm.height,
       }
     }
-    throw new Error('This browser cannot decode this image. Try the native CLI instead.')
+    throw new ProbeError(format)
   }
 }
 
@@ -149,8 +171,8 @@ export async function convertImage(file: Blob, options: ConvertOptions): Promise
   if (!targetMime) {
     throw new Error(
       `The browser cannot encode ${options.targetFormat.toUpperCase()} — use the native CLI (` +
-        `openpixel convert) for that format. In-browser targets are PNG, JPEG, WebP and BMP` +
-        ` (plus the WASM engine's TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF when` +
+        `openpixel convert) for that format. In-browser targets are PNG, JPEG and WebP` +
+        ` (plus the WASM engine's TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA, BMP and GIF when` +
         ` the WASM module is built — see Settings, About).`,
     )
   }
