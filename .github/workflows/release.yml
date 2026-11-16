@@ -73,21 +73,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libdav1d-dev
 
-      # --- Windows: vcpkg is preinstalled on windows-latest runners
-      # (VCPKG_INSTALLATION_ROOT). dav1d-sys finds libdav1d through
-      # pkg-config, so PKG_CONFIG_PATH points at vcpkg's pkgconfig
-      # dir — AND pkg-config itself must be installed: vcpkg does NOT
-      # provide the pkg-config executable. First CI run (16 Nov 2026,
-      # run 43832448184) failed on both Windows jobs exactly here:
-      # dav1d-sys build.rs panicked "The pkg-config command could not
-      # be found." pkgconfiglite (Chocolatey, preinstalled on the
-      # runner) puts pkg-config.exe on PATH. The MSVC C++ workload
-      # (linker) is preinstalled on the runner.
+      # --- Windows: vcpkg is preinstalled on windows-latest runners.
+      # dav1d-sys finds libdav1d through pkg-config, so PKG_CONFIG_PATH
+      # must point at vcpkg's pkgconfig dir. Two traps, both learned
+      # from real CI failures (Nov 2026):
+      #  1. vcpkg provides NO pkg-config binary — install pkgconfiglite
+      #     via Chocolatey (run 43832448184 failed on this).
+      #  2. VCPKG_INSTALLATION_ROOT is a *shell* variable on the
+      #     runner, NOT a workflow `env` context variable: the
+      #     expression ${{ env.VCPKG_INSTALLATION_ROOT }} renders
+      #     EMPTY, so PKG_CONFIG_PATH became "/installed/..." and
+      #     pkg-config could not find dav1d.pc (run 43835712580).
+      #     So the path is written to $GITHUB_ENV from the shell,
+      #     where the variable exists, and the cargo steps below do
+      #     NOT set PKG_CONFIG_PATH themselves.
       - name: Install dav1d via vcpkg (Windows)
         if: runner.os == 'Windows'
         run: |
           choco install pkgconfiglite -y
           vcpkg install dav1d:x64-windows
+          "PKG_CONFIG_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Append
         env:
           VCPKG_DEFAULT_TRIPLET: x64-windows
 
@@ -109,13 +114,9 @@ jobs:
 
       - name: Test workspace
         run: cargo test --workspace
-        env:
-          PKG_CONFIG_PATH: ${{ runner.os == 'Windows' && format('{0}/installed/x64-windows/lib/pkgconfig', env.VCPKG_INSTALLATION_ROOT) || '' }}
 
       - name: Build release CLI
         run: cargo build --release
-        env:
-          PKG_CONFIG_PATH: ${{ runner.os == 'Windows' && format('{0}/installed/x64-windows/lib/pkgconfig', env.VCPKG_INSTALLATION_ROOT) || '' }}
 
       - name: Upload CLI binary
         uses: actions/upload-artifact@v4
@@ -182,6 +183,7 @@ jobs:
         run: |
           choco install pkgconfiglite -y
           vcpkg install dav1d:x64-windows
+          "PKG_CONFIG_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Append
         env:
           VCPKG_DEFAULT_TRIPLET: x64-windows
 
@@ -205,8 +207,6 @@ jobs:
       - name: Build desktop installers
         working-directory: apps/desktop
         run: npm run tauri build
-        env:
-          PKG_CONFIG_PATH: ${{ runner.os == 'Windows' && format('{0}/installed/x64-windows/lib/pkgconfig', env.VCPKG_INSTALLATION_ROOT) || '' }}
 
       # warn (not error) if a bundle is missing: the build step above
       # is the real gate; a missing AppImage on a FUSE-less runner

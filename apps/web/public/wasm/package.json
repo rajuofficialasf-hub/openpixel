@@ -1,0 +1,17 @@
+{
+  "name": "openpixel-wasm",
+  "type": "module",
+  "description": "OpenPixel WASM bindings — detect / info / convert over the dav1d-free engine build for wasm32-unknown-unknown (follow-up item 2)",
+  "version": "0.1.0",
+  "license": "MIT OR Apache-2.0",
+  "files": [
+    "openpixel_wasm_bg.wasm",
+    "openpixel_wasm.js",
+    "openpixel_wasm.d.ts"
+  ],
+  "main": "openpixel_wasm.js",
+  "types": "openpixel_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
