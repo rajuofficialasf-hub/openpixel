@@ -87,12 +87,23 @@ jobs:
       #     So the path is written to $GITHUB_ENV from the shell,
       #     where the variable exists, and the cargo steps below do
       #     NOT set PKG_CONFIG_PATH themselves.
+      #  3. dav1d is linked DYNAMICALLY (ldd on the local binary:
+      #     libdav1d.so.7). vcpkg puts dav1d.dll in
+      #     installed\x64-windows\bin, which is NOT on the runner's
+      #     PATH — so the built openpixel.exe cannot START: it dies
+      #     instantly (0xC0000135, no stdout/stderr). That is why
+      #     all 4 batch_cli integration tests failed in 0.04 s in
+      #     run 43837637514 while the Desktop job passed (it only
+      #     builds/bundles, never runs the binary). The bin dir is
+      #     therefore also appended to $GITHUB_PATH here, so every
+      #     later step — including `cargo test` — can load the DLL.
       - name: Install dav1d via vcpkg (Windows)
         if: runner.os == 'Windows'
         run: |
           choco install pkgconfiglite -y
           vcpkg install dav1d:x64-windows
           "PKG_CONFIG_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
         env:
           VCPKG_DEFAULT_TRIPLET: x64-windows
 
@@ -184,6 +195,7 @@ jobs:
           choco install pkgconfiglite -y
           vcpkg install dav1d:x64-windows
           "PKG_CONFIG_PATH=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
         env:
           VCPKG_DEFAULT_TRIPLET: x64-windows
 
