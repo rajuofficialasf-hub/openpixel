@@ -8,9 +8,10 @@
  * no conversion logic lives in the frontend.
  *
  * Honest limits shown in the UI, not hidden:
- * - Text extraction and PDF → image need libpdfium, which this
- *   build does not ship (Phase 8). Those tools show the warning
- *   and the backend returns the same error if run anyway.
+ * - Text extraction and PDF → image need libpdfium, shipped in
+ *   the bundle (Phase 8). Those tools show a warning only when
+ *   the library is not found on this machine, and the backend
+ *   returns the same error if run anyway.
  * - `pdf ocr` (searchable PDF) takes image pages only — a PDF
  *   input needs PDFium rendering first.
  * - The 3-panel visual editor from the web app is NOT built here:
@@ -91,7 +92,7 @@ const DOC_FILTER = [
 ]
 
 const PDFIUM_WARNING =
-  'Rendering and text extraction need libpdfium, which this build does not ship yet (Phase 8). Running this tool will fail with that explanation — it never returns a fake result.'
+  'Rendering and text extraction need libpdfium, which was not found on this machine (the desktop bundle normally ships it — see docs/PDF.md). Running this tool will fail with that explanation — it never returns a fake result.'
 
 export const PDFIUM_NOTE = PDFIUM_WARNING
 
@@ -1033,7 +1034,7 @@ function SearchablePdfTool({ tool, onBack, caps, droppedPaths, onDroppedConsumed
       warning={
         caps && !caps.tesseract_present
           ? 'Tesseract was not found on this device — install tesseract-ocr plus eng/ben language data (see docs/OCR.md).'
-          : 'Image pages only — a PDF input needs PDFium rendering first, which this build does not ship.'
+          : 'Image pages only — a PDF input needs PDFium rendering first, which this tool does not do.'
       }
       result={r.result && (
         <ResultCard title={`Searchable PDF — ${r.result.page_count} pages`}>
@@ -1099,7 +1100,7 @@ function DocConvertTool({ tool, onBack, caps, droppedPaths, onDroppedConsumed }:
   }
   return (
     <ToolShell tool={tool} onBack={onBack} actionLabel={`Convert to ${target.toUpperCase()}`} onRun={runConvert} busy={r.busy} error={r.error}
-      warning={caps && !caps.libreoffice_present ? 'LibreOffice was not found on this device — install it to convert Office documents. PDF → text exports also need libpdfium (not shipped yet).' : null}
+      warning={caps && !caps.libreoffice_present ? 'LibreOffice was not found on this device — install it to convert Office documents. PDF → text exports need libpdfium too (shipped in the bundle).' : null}
       result={r.result && (
         <ResultCard title={`${r.result.source} → ${r.result.target} (${r.result.engine})`}>
           <Typography variant="body2">

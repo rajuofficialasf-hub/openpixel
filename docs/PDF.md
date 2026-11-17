@@ -523,16 +523,23 @@ path reuses this worker — it does not need a second binding.
 ### Provisioning libpdfium — dev, CI, distribution
 
 The binary is **never compiled in and never committed**. It is
-loaded at runtime, in this order:
+loaded at runtime, in this order
+(`crates/openpixel-pdf/src/render.rs`, `resolve_pdfium_library`):
 
 1. `OPENPIXEL_PDFIUM_PATH` (a file),
 2. `OPENPIXEL_PDFIUM_DIR` (a directory holding the library),
 3. next to the current executable (so a release tarball can ship
    `libpdfium.so` beside the `openpixel` binary),
-4. the system library,
-5. `./target/pdfium` (dev cache),
-6. the workspace `target/pdfium` (compile-time path, so
+4. the Tauri resource directory (desktop bundle only — see
+   "Distribution" below),
+5. the system library,
+6. `./target/pdfium` (dev cache),
+7. the workspace `target/pdfium` (compile-time path, so
    `cargo test` finds it whatever the test binary's CWD is).
+
+Env vars still win over everything else: setting
+`OPENPIXEL_PDFIUM_PATH` on a machine with a bundled library makes
+the resolver use that file instead.
 
 Fetch it with the pinned script (never "latest"):
 
@@ -556,12 +563,96 @@ never a fake image. Without the `pdfium` cargo feature the
 same error is returned (the crate builds without any PDFium
 dependency at all).
 
-**Distribution (not solved in this phase, stated plainly):**
-there is no installer step that ships libpdfium yet. The CLI
-`pdf render` command works wherever the operator places the
-library (see the resolution order above); a desktop release
-that bundles it is Phase 7/8 work. The web app never ships it
-— the browser has no use for a native binary (see below).
+### Distribution (Phase 8 — solved)
+
+**CLI tarball.** `scripts/release/package-cli.sh` fetches the
+pinned library (a no-op when `target/pdfium/` is already cached)
+and copies it into the tarball **beside the `openpixel` binary**,
+so a fresh extraction renders PDFs and extracts text with no
+manual fetching and no `target/pdfium` present (resolution step
+3). The tarball contents:
+
+```
+openpixel-0.1.0-linux-x86_64/
+  openpixel          # CLI
+  libpdfium.so       # beside the binary
+  VERSION.txt        # notes the bundled library + its provenance
+  README.md LICENSE docs/... sbom.json native-licenses/
+```
+
+CI packages the same tarball in the `cli` job
+(`.github/workflows/release.yml`, Linux only) and uploads it as
+the `openpixel-cli-tarball-*` artifact alongside the bare binary.
+
+**Desktop bundle.** The Tauri app ships the library as a
+`bundle.resources` entry (`apps/desktop/src-tauri/tauri.conf.json`,
+`"resources": ["resources/*"]`). Before the build,
+`scripts/pdfium/stage-for-tauri.sh` fetches the pinned library
+and copies the platform file into
+`apps/desktop/src-tauri/resources/` (`libpdfium.so` /
+`libpdfium.dylib` / `pdfium.dll` — gitignored, never committed);
+CI runs that script before `npm run tauri build` on every OS.
+Tauri places resources in the app's resource dir, which on Linux
+is **not** beside the binary — the resolver's step 4 covers it:
+
+| Bundle | Binary | Bundled library |
+|---|---|---|
+| Linux `.deb` | `/usr/bin/openpixel-desktop` | `/usr/lib/openpixel-desktop/libpdfium.so` |
+| Linux `.AppImage` | `$APPDIR/usr/bin/openpixel-desktop` | `$APPDIR/usr/lib/openpixel-desktop/libpdfium.so` |
+| Windows `.msi` / NSIS | `openpixel-desktop.exe` | beside the exe (the Windows resource dir *is* the exe dir) |
+| macOS `.dmg` / `.app` | `Contents/MacOS/OpenPixel` | `Contents/Resources/libpdfium.dylib` |
+
+The desktop backend builds `openpixel-pdf` **with** the `pdfium`
+feature (`apps/desktop/src-tauri/Cargo.toml`), so
+`pdf_extract_text`, `pdf_to_images` and PDF-input
+`pdf_ocr_searchable` work out of the box in the installed app;
+`get_desktop_capabilities` reports `pdfium_present: true` when
+the bundled library resolves. If the resource is missing anyway
+(a build that skipped the staging step), those commands fail
+with the honest "needs libpdfium" error — never an empty result.
+
+**Web app.** Never ships it — the browser has no use for a
+native binary (see below).
+
+### Verifying a fresh install
+
+Simulate a machine that never had the library: move the dev
+cache aside and unset the env vars, then run the installed /
+extracted binary — never from the repo root with the cache in
+place, or the dev-cache steps (6–7) will mask a missing bundle.
+
+```bash
+# CLI tarball (Linux):
+mv target/pdfium target/pdfium.hidden   # restore it afterwards!
+env -u OPENPIXEL_PDFIUM_PATH -u OPENPIXEL_PDFIUM_DIR \
+  /tmp/openpixel-0.1.0-linux-x86_64/openpixel pdf info fixture.pdf
+env -u OPENPIXEL_PDFIUM_PATH -u OPENPIXEL_PDFIUM_DIR \
+  /tmp/openpixel-0.1.0-linux-x86_64/openpixel pdf render fixture.pdf --out-dir /tmp/render/
+env -u OPENPIXEL_PDFIUM_PATH -u OPENPIXEL_PDFIUM_DIR \
+  /tmp/openpixel-0.1.0-linux-x86_64/openpixel pdf extract-text fixture.pdf
+mv target/pdfium.hidden target/pdfium   # restore!
+```
+
+All three must succeed with no manual fetching. The negative
+check: remove the bundled library (`rm
+/tmp/openpixel-0.1.0-linux-x86_64/libpdfium.so`) and re-run
+`pdf render` — it must fail with the `NotImplemented` error
+naming libpdfium, exit non-zero, no crash, no silent wrong
+result. For the desktop, the same check is `dpkg-deb -c` on the
+`.deb` (the library must be at
+`usr/lib/openpixel-desktop/libpdfium.so`) plus installing it and
+confirming the app launches under Xvfb; the resolver's
+resource-dir candidates are unit-tested in
+`crates/openpixel-pdf/src/render.rs`
+(`tauri_resource_candidates_cover_deb_appimage_and_macos_layouts`).
+
+Honest limits of this phase: the Windows (`.msi`/NSIS) and
+macOS (`.dmg`/`.app`) bundles are configured by the same
+mechanism but were **not** built or tested here (Linux VM only)
+— the resource-dir layout for those platforms comes from the
+Tauri 2.12 docs and the resolver's unit tests, not from a real
+bundle. The macOS/Windows archive shas are still unrecorded in
+`LICENSE_AUDIT.md` (see "Provisioning" above).
 
 ### Render verification
 

@@ -581,7 +581,7 @@ pub fn do_pdf_ocr_searchable(
             .to_ascii_lowercase();
         if ext == "pdf" {
             return Err(
-                "a PDF input needs PDFium rendering first, which this build does not ship — pick image pages instead (see docs/DESKTOP.md)"
+                "a PDF input needs PDFium rendering first, which this tool does not do — pick image pages instead (see docs/DESKTOP.md)"
                     .to_string(),
             );
         }

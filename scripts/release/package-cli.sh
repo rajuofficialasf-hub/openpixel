@@ -9,6 +9,13 @@
 #         dist/openpixel-<version>-linux-x86_64.tar.gz.sha256
 #         dist/SHA256SUMS
 #
+# The tarball ships libpdfium.so BESIDE the `openpixel` binary, so
+# a fresh extraction renders PDFs and extracts text with no manual
+# fetching (the resolver's beside-the-binary step — see
+# docs/PDF.md). The library itself is never committed: this script
+# fetches it with the pinned scripts/pdfium/fetch-pdfium.sh
+# (sha256-verified on Linux) when it is not already in
+# target/pdfium/, then copies it into the staging dir.
 # The desktop .deb / .AppImage are built by the Tauri bundle step
 # (see docs/DESKTOP.md); this script packages the CLI only and does
 # not rebuild them.
@@ -32,6 +39,18 @@ echo "== stage $STAGE =="
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
 cp target/release/openpixel "$STAGE/openpixel"
+# Phase 8: ship libpdfium beside the binary. Fetch the pinned
+# library first when the dev cache is empty (a no-op when it is
+# already cached); the binary itself is never committed.
+bash scripts/pdfium/fetch-pdfium.sh
+LIB="libpdfium.so"
+case "$(uname -s)" in
+    Darwin) LIB="libpdfium.dylib" ;;
+    MINGW64_NT-*|MSYS_NT-*|CYGWIN_NT-*) LIB="pdfium.dll" ;;
+esac
+test -f "target/pdfium/$LIB" || { echo "error: target/pdfium/$LIB missing after fetch" >&2; exit 1; }
+cp "target/pdfium/$LIB" "$STAGE/$LIB"
+echo "bundled $LIB beside the binary ($(stat -c%s "$STAGE/$LIB" 2>/dev/null || stat -f%z "$STAGE/$LIB") bytes)"
 cp README.md LICENSE "$STAGE/"
 cp docs/ARCHITECTURE.md docs/API.md docs/CODECS.md docs/SECURITY.md \
    docs/SECURITY-AUDIT.md docs/TESTING.md docs/BENCHMARKS.md \
@@ -43,6 +62,9 @@ OpenPixel Engine $VERSION ($TRIPLE)
 Built: $(date -u +%Y-%m-%dT%H:%M:%SZ)
 Rust: $(rustc --version)
 Binary: openpixel (CLI)
+Bundled: $LIB beside the binary (libpdfium, bblanchon/pdfium-binaries
+chromium/8152 — see docs/PDF.md; no manual fetching needed for
+`pdf render` / `pdf extract-text`).
 EOF
 
 echo "== tarball + checksums =="

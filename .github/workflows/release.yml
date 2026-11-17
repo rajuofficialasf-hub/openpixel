@@ -259,6 +259,28 @@ jobs:
       - name: Build release CLI
         run: cargo build --release
 
+      # Phase 8: the release tarball ships libpdfium beside the
+      # binary (scripts/release/package-cli.sh fetches the pinned
+      # library when the cache is empty and copies it into the
+      # staging dir). Linux only: the script names the tarball
+      # linux-x86_64 and has no macOS/Windows packaging yet.
+      - name: Package CLI tarball (with libpdfium)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: bash scripts/release/package-cli.sh
+
+      - name: Upload CLI tarball
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openpixel-cli-tarball-${{ runner.os }}-${{ runner.arch }}
+          path: |
+            dist/openpixel-*.tar.gz
+            dist/openpixel-*.tar.gz.sha256
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload CLI binary
         uses: actions/upload-artifact@v4
         with:
@@ -373,6 +395,18 @@ jobs:
       - name: Test frontend
         working-directory: apps/desktop
         run: npm test
+
+      # Phase 8: stage the pinned libpdfium into the Tauri bundle
+      # resources dir BEFORE the build — tauri.conf.json bundles
+      # `resources/*`, so without this step the installers ship
+      # without the library and PDF render / text extraction fail
+      # honestly at runtime. The script fetches the pinned release
+      # (sha256-verified on Linux) when target/pdfium/ is empty
+      # and is a no-op otherwise. `shell: bash` makes Windows use
+      # Git Bash (the script needs uname/curl/sha256sum/tar).
+      - name: Fetch + stage libpdfium (pinned)
+        shell: bash
+        run: bash scripts/pdfium/stage-for-tauri.sh
 
       # NOTE (Linux): the .AppImage step needs FUSE at bundle time;
       # on this VM it was produced by hand with linuxdeploy (see

@@ -145,7 +145,7 @@ directly — no conversion logic lives in the frontend.
 
 | Command | Engine call behind it |
 |---|---|
-| `get_desktop_capabilities` | Runtime probe, not an engine call: `TesseractEngine::new()` + `available_languages()` (Tesseract, compile-time feature `native-ocr` — see "Android notes"), `LibreOffice::discover()` + `version()` (LibreOffice), `pdfium_present` is always false in this build (the `pdfium` feature is off — see below) |
+| `get_desktop_capabilities` | Runtime probe, not an engine call: `TesseractEngine::new()` + `available_languages()` (Tesseract, compile-time feature `native-ocr` — see "Android notes"), `LibreOffice::discover()` + `version()` (LibreOffice), `pdfium_present` is true when the bundled libpdfium resolves (Phase 8) |
 | `pdf_info` | `PdfEngine::inspect` |
 | `pdf_inspect` | `PdfEngine::inspect_threats` (JavaScript, embedded files, auto-actions) |
 | `pdf_merge` | `PdfEngine::merge` + `page_count` on the result |
@@ -158,9 +158,9 @@ directly — no conversion logic lives in the frontend.
 | `pdf_set_metadata` | `PdfEngine::set_metadata` (title, author, subject, keywords) |
 | `pdf_sanitize` | `PdfEngine::sanitize` (strips JavaScript / embedded files / auto-actions) |
 | `pdf_repair` | `PdfEngine::repair` (damaged cross-reference table) |
-| `pdf_extract_text` | `PdfEngine::extract_text` + `PdfEngine::text_to_txt` / `text_to_html` / `text_to_epub` / `text_to_docx` — **needs libpdfium, fails honestly in this build** |
+| `pdf_extract_text` | `PdfEngine::extract_text` + `PdfEngine::text_to_txt` / `text_to_html` / `text_to_epub` / `text_to_docx` — **needs libpdfium, shipped in the bundle (Phase 8)** |
 | `pdf_from_images` | `PdfEngine::from_images` (one page per image) + `Engine::decode_bytes` per input image |
-| `pdf_to_images` | `PdfEngine::render_to_images` + `Engine::convert` per rendered page — **needs libpdfium, fails honestly in this build** |
+| `pdf_to_images` | `PdfEngine::render_to_images` + `Engine::convert` per rendered page — **needs libpdfium, shipped in the bundle (Phase 8)** |
 | `ocr_recognize` | `Engine::decode_bytes` then `TesseractEngine::recognize` (cfg-gated on `native-ocr` — with the feature off it returns the honest "OCR is not available in this build" error) |
 | `pdf_ocr_searchable` | `TesseractEngine::searchable_pdf` over `SearchablePage`s (cfg-gated the same way; PDF inputs also need libpdfium rendering first) |
 | `doc_convert` | `DocumentEngine::convert` (LibreOffice when present; the PDF-text path for txt→pdf; honest error when neither applies) |
@@ -169,11 +169,13 @@ directly — no conversion logic lives in the frontend.
 Honesty rules, carried over from the CLI (see the module docs in
 `pdf_commands.rs`):
 
-- `openpixel-pdf` is built **without** the `pdfium` feature, so
+- `openpixel-pdf` is built **with** the `pdfium` feature and the
+  bundle ships libpdfium as a Tauri resource (Phase 8), so
   `pdf_extract_text` and `pdf_to_images` (and PDF-input
-  `pdf_ocr_searchable`) return the engine's clear "needs libpdfium"
-  error — never an empty result. Phase 8 ships the libpdfium
-  binary.
+  `pdf_ocr_searchable`) work out of the box. If the bundled library
+  is missing anyway (a build that skipped the staging step), they
+  return the engine's clear "needs libpdfium" error — never an
+  empty result.
 - Tesseract and LibreOffice are **runtime probes, never
   compile-time claims**: `get_desktop_capabilities` reports what
   this machine actually has right now (see "Capability matrix"
@@ -213,9 +215,11 @@ Notes:
   `pdf_page_op` backend command; each is its own picker card and
   its own focused page in the UI.
 - The two `needsPdfium` tools (Extract text, PDF to images) show
-  the warning *"Rendering and text extraction need libpdfium, which
-  this build does not ship yet (Phase 8). Running this tool will
-  fail with that explanation — it never returns a fake result."*
+  a warning only when `get_desktop_capabilities` reports
+  `pdfium_present: false` (a build that skipped the libpdfium
+  staging step): *"Rendering and text extraction need libpdfium,
+  which was not found on this machine (the desktop bundle normally
+  ships it — see docs/PDF.md)."*
 - The OCR tools show the Tesseract version and installed languages
   from `get_desktop_capabilities` when present, and an install
   hint when absent; the document tool shows the same for
@@ -236,7 +240,7 @@ claimed at compile time:
 
 | Field | What it reports | This VM (17–18 Nov 2026) |
 |---|---|---|
-| `pdfium_present` | The `pdfium` feature is compiled in **and** a libpdfium binary was found | `false` — feature off by design; Phase 8 ships the binary |
+| `pdfium_present` | The `pdfium` feature is compiled in **and** a libpdfium binary was found | `true` — feature on and the bundled library resolves (Phase 8) |
 | `tesseract_present` | `TesseractEngine::new()` succeeded (feature `native-ocr` on **and** libtesseract + tessdata installed) | `true` — Tesseract 5.3.4, languages `eng`, `ben` (and `osd`) |
 | `tesseract_version` | `TesseractEngine::version()` | `"5.3.4"` |
 | `tesseract_languages` | `TesseractEngine::available_languages()` | `["ben", "eng", "osd"]` (order as returned) |
@@ -398,10 +402,29 @@ cargo check
 
 ```bash
 cd apps/desktop
+# Stage the pinned libpdfium into the Tauri resources dir FIRST
+# (Phase 8 — without this the bundle ships without the library):
+bash ../../scripts/pdfium/stage-for-tauri.sh
 npm run tauri build
 # -> src-tauri/target/release/bundle/deb/openpixel_0.1.0_amd64.deb
 # -> src-tauri/target/release/bundle/appimage/openpixel_0.1.0_amd64.AppImage
 ```
+
+### Bundle contents (Phase 8 — libpdfium)
+
+The `.deb` / `.AppImage` (and the Windows/macOS bundles by the
+same mechanism) ship `libpdfium.so` / `libpdfium.dylib` /
+`pdfium.dll` as a Tauri resource — `tauri.conf.json`
+`"resources": ["resources/*"]`. On Linux the library lands in
+the Tauri resource dir, `/usr/lib/openpixel-desktop/` (`.deb`)
+or `$APPDIR/usr/lib/openpixel-desktop/` (`.AppImage`), NOT
+beside the binary; the resolver in
+`crates/openpixel-pdf/src/render.rs` looks there (step 4 of the
+resolution order, see `docs/PDF.md`). Verify with
+`dpkg-deb -c <deb> | grep libpdfium`. The staged file lives in
+`apps/desktop/src-tauri/resources/` and is gitignored — it is a
+fetched binary, regenerated by `stage-for-tauri.sh`, never
+committed.
 
 On this VM the `.deb` builds through `tauri build` but the
 `.AppImage` step cannot run inside `tauri build` (no FUSE kernel
