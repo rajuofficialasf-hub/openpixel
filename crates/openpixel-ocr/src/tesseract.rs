@@ -244,10 +244,14 @@ unsafe fn read_words(api: *mut tesseract_sys::TessBaseAPI) -> Result<Vec<OcrWord
             return Ok(Vec::new());
         }
         let page_it = it as *mut tesseract_sys::TessPageIterator;
-        // The capi bindings take the iterator level as a plain
-        // u32 (RIL_WORD = 3); the rustified enum would need a cast
-        // at every call site.
-        let level = tesseract_sys::PageIteratorLevel::RIL_WORD as u32;
+        // The capi bindings take the iterator level as
+        // TessPageIteratorLevel, which is c_uint (u32) on Linux /
+        // macOS but c_int (i32) on Windows — the C enum's underlying
+        // type differs by compiler (GCC picks unsigned for an
+        // all-non-negative enum; MSVC always uses int). Cast to
+        // the binding's own type so this compiles on all three.
+        let level =
+            tesseract_sys::PageIteratorLevel::RIL_WORD as tesseract_sys::TessPageIteratorLevel;
         let mut words = Vec::new();
         loop {
             let text_ptr = tesseract_sys::TessResultIteratorGetUTF8Text(it, level);
