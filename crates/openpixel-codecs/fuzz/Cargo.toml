@@ -23,6 +23,9 @@ path = ".."
 [dependencies.openpixel-metadata]
 path = "../../openpixel-metadata"
 
+[dependencies.openpixel-pdf]
+path = "../../openpixel-pdf"
+
 [[bin]]
 name = "fuzz_detect"
 path = "fuzz_targets/fuzz_detect.rs"
@@ -40,6 +43,13 @@ bench = false
 [[bin]]
 name = "fuzz_metadata"
 path = "fuzz_targets/fuzz_metadata.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_pdf"
+path = "fuzz_targets/fuzz_pdf.rs"
 test = false
 doc = false
 bench = false

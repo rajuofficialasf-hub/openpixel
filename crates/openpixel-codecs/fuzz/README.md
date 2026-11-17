@@ -10,6 +10,7 @@ allocation.**
 | `fuzz_detect` | `detect_format` + `discover` (magic-byte sniffing, the security boundary) |
 | `fuzz_decode` | detect → `dimensions()` → `decode()` through the registry, in the engine's own order and with the engine's limits (16 384 px / side, 100 MP) applied before decoding |
 | `fuzz_metadata` | `extract_metadata` (EXIF/ICC/XMP), `animation_info`, GIF frame + TIFF page extraction |
+| `fuzz_pdf` (Phase 8) | `PdfEngine` parse-level paths on arbitrary bytes: `validate`, `page_count`, `inspect`, `extract_text`, `compress`, `sanitize`, `redact` (rect + text). Rendering is NOT fuzzed (needs a libpdfium binary); signing is NOT fuzzed (feature-gated; CMS parsing is covered by unit tests). Seed corpus: `fuzz/corpus/fuzz_pdf/` (minimal + FlateDecode + truncated hand-built PDFs). Run: **5 283 runs in 61 s, 0 crashes** (18 Nov 2026). |
 
 ## Prerequisites
 
@@ -27,7 +28,13 @@ cd crates/openpixel-codecs
 cargo +nightly fuzz run fuzz_detect -- -max_total_time=60
 cargo +nightly fuzz run fuzz_decode -- -max_total_time=300
 cargo +nightly fuzz run fuzz_metadata -- -max_total_time=300
+cargo +nightly fuzz run fuzz_pdf -- -max_total_time=60
 ```
+
+On a small VM (6 GiB RAM, 1.5 shared CPUs) build the PDF target
+with one job — the default parallel build OOM-kills the ASan
+instrumented `lopdf` compile (observed 18 Nov 2026, SIGKILL on
+`rustc --crate-name lopdf`):
 
 Each run prints executions, coverage and any crash. A crash is saved
 under `fuzz/artifacts/<target>/` — minimise it (`cargo +nightly fuzz
