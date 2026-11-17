@@ -11,6 +11,9 @@ interface DropZoneProps {
   label: string
   hint: string
   inputId: string
+  /** Smaller padding/icon so the zone fits a viewport-height
+      workspace (the PDF page uses it) — same content, less air. */
+  compact?: boolean
 }
 
 /**
@@ -20,7 +23,7 @@ interface DropZoneProps {
  * Keyboard: the zone is focusable (Tab) and Enter/Space opens the
  * file picker — the e2e suite asserts on this behaviour.
  */
-export function DropZone({ onFiles, accept, multiple = true, label, hint, inputId }: DropZoneProps) {
+export function DropZone({ onFiles, accept, multiple = true, label, hint, inputId, compact = false }: DropZoneProps) {
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -54,12 +57,13 @@ export function DropZone({ onFiles, accept, multiple = true, label, hint, inputI
       onDragLeave={() => setDragging(false)}
       onDrop={handleDrop}
       sx={{
+        position: 'relative',
         cursor: 'pointer',
         borderRadius: 4,
         border: '1.5px dashed',
         borderColor: dragging ? 'primary.main' : 'divider',
         bgcolor: dragging ? (t) => alpha(t.palette.primary.main, 0.06) : 'background.paper',
-        p: 5,
+        p: compact ? 3 : 5,
         textAlign: 'center',
         transition: (theme) =>
           theme.transitions.create(['border-color', 'background-color'], {
@@ -71,8 +75,8 @@ export function DropZone({ onFiles, accept, multiple = true, label, hint, inputI
       <Box
         sx={{
           mx: 'auto',
-          width: 64,
-          height: 64,
+          width: compact ? 48 : 64,
+          height: compact ? 48 : 64,
           borderRadius: '50%',
           display: 'flex',
           alignItems: 'center',
@@ -80,15 +84,15 @@ export function DropZone({ onFiles, accept, multiple = true, label, hint, inputI
           bgcolor: (t) => alpha(t.palette.primary.main, 0.08),
         }}
       >
-        <CloudUploadIcon color="primary" sx={{ fontSize: 32 }} />
+        <CloudUploadIcon color="primary" sx={{ fontSize: compact ? 24 : 32 }} />
       </Box>
-      <Typography variant="h6" component="p" sx={{ mt: 2 }}>
+      <Typography variant="h6" component="p" sx={{ mt: compact ? 1.5 : 2 }}>
         {label}
       </Typography>
-      <Typography id={`${inputId}-hint`} variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+      <Typography id={`${inputId}-hint`} variant="body2" color="text.secondary" sx={{ mt: compact ? 0.5 : 1 }}>
         {hint}
       </Typography>
-      <Typography variant="body2" color="primary" fontWeight={600} sx={{ mt: 2 }}>
+      <Typography variant="body2" color="primary" fontWeight={600} sx={{ mt: compact ? 1.5 : 2 }}>
         Choose files or drag them here
       </Typography>
       <Box

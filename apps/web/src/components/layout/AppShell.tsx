@@ -177,6 +177,13 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
 
   const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH
 
+  // The PDF route is a viewport-height workspace (like Acrobat /
+  // Figma): its three columns scroll internally and the page itself
+  // never scrolls. Desktop only — below lg the page keeps its
+  // normal stacked scrolling layout. Every other route is
+  // untouched.
+  const fitViewport = route === 'pdf' && isDesktop
+
   const sidebar = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Box
@@ -259,7 +266,16 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
   return (
     <NotifyContext.Provider value={(message) => setSnack(message)}>
       <CssBaseline />
-      <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          // 100vh first, 100dvh where supported (MUI arrays are
+          // CSS fallback values).
+          height: fitViewport ? ['100vh', '100dvh'] : undefined,
+          minHeight: '100vh',
+          overflow: fitViewport ? 'hidden' : undefined,
+        }}
+      >
         {isDesktop ? (
           <Drawer
             variant="permanent"
@@ -283,7 +299,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
           </Drawer>
         )}
 
-        <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: fitViewport ? 0 : undefined }}>
           <AppBar position="sticky" sx={{ zIndex: (t) => t.zIndex.drawer + 1 }}>
             <Toolbar sx={{ minHeight: 64, gap: 1, px: { xs: 1.5, md: 3 } }}>
               {!isDesktop && (
@@ -404,15 +420,19 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
             component="main"
             sx={{
               flex: 1,
+              minHeight: fitViewport ? 0 : undefined,
+              overflow: fitViewport ? 'hidden' : undefined,
+              display: fitViewport ? 'flex' : undefined,
+              flexDirection: 'column',
               width: '100%',
               maxWidth: 1440,
               mx: 'auto',
               px: { xs: 2, md: 4 },
-              py: { xs: 2, md: 4 },
+              py: fitViewport ? { xs: 2, md: 2 } : { xs: 2, md: 4 },
             }}
           >
             {crumbs.length > 0 && (
-              <Breadcrumbs aria-label="Breadcrumb" sx={{ mb: 3 }}>
+              <Breadcrumbs aria-label="Breadcrumb" sx={{ mb: fitViewport ? 2 : 3 }}>
                 {crumbs.map((c, i) =>
                   i === crumbs.length - 1 ? (
                     <Typography key={c.route} color="text.primary" variant="body2">
@@ -436,11 +456,20 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
               role="tabpanel"
               id={`panel-${route}`}
               aria-labelledby={NAV_GROUPS.flatMap((g) => g.items).find((i) => i.route === route)?.tabId ?? `nav-${route}`}
+              sx={{
+                flex: fitViewport ? 1 : undefined,
+                minHeight: fitViewport ? 0 : undefined,
+                display: fitViewport ? 'flex' : undefined,
+                flexDirection: 'column',
+              }}
             >
               {children}
             </Box>
           </Box>
 
+          {/* No footer in the viewport-fit workspace — it would eat
+              workspace height. Every other route keeps it. */}
+          {!fitViewport && (
           <Box
             component="footer"
             sx={{ borderTop: 1, borderColor: 'divider', bgcolor: 'background.paper', px: { xs: 2, md: 4 }, py: 4 }}
@@ -536,6 +565,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
               account.
             </Typography>
           </Box>
+          )}
         </Box>
       </Box>
       <Snackbar

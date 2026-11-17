@@ -364,6 +364,44 @@ bar is corrected to `/` via `replaceState` — no 404 page.
   `routes.test.ts` checks: path map coverage, round-trip,
   trailing slash, unknown → home), lint **0**.
 
+### 2.24 PDF viewport-fit (17 Nov 2026) — PASS
+
+User report: a real 724-page PDF on /pdf made an endlessly long
+scrolling page ("who would scroll down to use it?"). The PDF
+route is now a viewport-height workspace on desktop (≥900px):
+the shell fills `100dvh`, the footer is hidden on this route,
+the page itself never scrolls, and each of the three columns
+scrolls internally. Header is one compact line; the preview
+canvas caps at `clamp(200px, calc(100dvh - 470px), 420px)`.
+Below lg the page keeps its normal stacked scrolling layout.
+
+- viewport-qa **27/27** (was 15/15 — 12 new fit checks):
+  empty and loaded (doc4.pdf) states at 1366×768 and 1440×900
+  assert `documentElement.scrollHeight <= innerHeight + 1` and
+  that the ops + center panels are internally scrollable; at
+  1440×900 a 200-page PDF (`big200.pdf`, stdlib-only Python
+  generator) also fits, with the thumbnails rail internally
+  scrollable (4624 > 721). Screenshots
+  `p6-fit-1366x768-pdf.png`, `p6-fit-1440x900-pdf.png`,
+  `p6-fit-1440x900-pdf-200p.png`.
+- Three real bugs found and fixed while building it (see
+  docs/WEB.md §Editors): Grid items need `height: 100%` on lg
+  (a stretched row sizes to its tallest item); column children
+  need `flexShrink: 0` (MUI Card's `overflow: hidden` zeroes
+  the flex automatic minimum size, so cards squashed); hidden
+  absolutely-positioned file inputs (`#pdf-merge-file`, DropZone
+  inputs) escaped their scroll container and stretched the
+  document to 1563px — they now have positioned ancestors.
+- Regression: web-e2e **36/37** (known keyboard flake only),
+  resize **16/16**, pdf-e2e **24/24**, ocr **14/14**,
+  routing-e2e **9/9**, no-WASM **9/9**; web npm test **84/84**,
+  lint **0**; cargo test --workspace **336/336**.
+- Live on openpixel.pages.dev/pdf: fit verified at 1366×768 and
+  1440×900 (empty + doc4 loaded, docScrollHeight == innerHeight,
+  ops panel internally scrollable, zero console errors);
+  screenshots `p6-fit-live-1366x768.png`,
+  `p6-fit-live-1440x900.png`.
+
 ### 2.16 WASM-absent fallback — PASS (9/9, SVG fix run 16 Nov 2026)
 
 A copy of `dist/` with `public/wasm/` removed, served on port 8322

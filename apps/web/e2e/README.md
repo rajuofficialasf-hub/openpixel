@@ -73,7 +73,7 @@ node apps/web/e2e/resize-e2e.mjs     # 16 checks, Resize tab vs :8321
 node apps/web/e2e/pdf-e2e.mjs        # 24 checks, PDF tab vs :8323
 node apps/web/e2e/ocr-e2e.mjs        # 14 checks, OCR tab vs :8324
 node apps/web/e2e/routing-e2e.mjs    # 9 checks, URL routing; starts its own SPA server on :8325
-node apps/web/e2e/viewport-qa.mjs    # 15 checks, no horizontal overflow vs :8321
+node apps/web/e2e/viewport-qa.mjs    # 27 checks: no horizontal overflow vs :8321 + PDF viewport-fit (empty/loaded at 1366x768 and 1440x900, 200-page PDF at 1440x900; needs /tmp/op-e2e/pdf-in/doc4.pdf and big200.pdf)
 ```
 
 Serve `apps/web/dist` on port 8323 for the PDF run the same way

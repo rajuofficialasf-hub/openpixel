@@ -152,6 +152,27 @@ Formats), Account (Settings / Help Center).
   merge, Edit card). The image editor (Convert) uses the shared
   `EditorShell` (preview left, tools right); Resize/Batch keep
   their multi-item list layouts. No fake undo/redo anywhere.
+- **PDF viewport-fit (17 Nov 2026):** on desktop (≥900px) the PDF
+  page is a viewport-height workspace — the shell (`AppShell`
+  `fitViewport`, PDF route only) fills exactly `100dvh` below the
+  AppBar, the footer is hidden on this route, the page itself
+  never scrolls, and each of the three columns (thumbnails /
+  center / operations, ids `pdf-thumbs-panel` /
+  `pdf-center-panel` / `pdf-ops-panel`) scrolls internally. The
+  header is one compact line (breadcrumb + "PDF tools", no long
+  description); the preview canvas caps at
+  `clamp(200px, calc(100dvh - 470px), 420px)`. The empty state
+  fits too (compact DropZones — `compact` prop on `DropZone`).
+  Below lg the page keeps its normal stacked scrolling layout.
+  Three flexbox gotchas found while building it: (1) a stretched
+  Grid row sizes to its tallest item, so Grid items need explicit
+  `height: 100%` on lg; (2) MUI Card has `overflow: hidden`,
+  which zeroes the automatic minimum size of flex items, so
+  column children need `flexShrink: 0` or the cards squash;
+  (3) absolutely-positioned hidden file inputs (`#pdf-merge-file`,
+  DropZone inputs) escape their scroll container and stretch the
+  document — they need a positioned ancestor (the Merge card's
+  Stack and the DropZone root are `position: relative`).
 - **Settings** (Phase 6 additions): Language (EN/BN preference),
   Privacy (activity recording toggle + clear history), Storage
   (history size, WASM engine status). No auth pages — there is no

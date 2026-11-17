@@ -52,7 +52,6 @@ import { loadWasmEngine } from '../lib/wasm-engine'
 import { recordActivity } from '../lib/activity'
 import { DropZone } from './DropZone'
 import { PdfThumbnails } from './PdfThumbnails'
-import { ToolPageHeader } from './ToolPage'
 
 interface PdfResult {
   label: string
@@ -774,14 +773,166 @@ export function PdfWorkspace({
   const pageSizesShown = info?.page_sizes.slice(0, 6) ?? []
   const pageSizesExtra = info ? info.page_sizes.length - pageSizesShown.length : 0
 
+  // Shared blocks: the center column (file loaded) and the empty
+  // state both show Images-to-PDF and the CLI-only note, so they
+  // live here instead of being duplicated.
+  const imagesToPdfCard = (
+    <Card>
+      <CardContent>
+        <Typography variant="overline" color="text.secondary">
+          Images to PDF
+        </Typography>
+        <Stack spacing={2} sx={{ mt: 1 }}>
+          {imageFiles.length === 0 ? (
+            <DropZone
+              compact
+              inputId="pdf-images-file"
+              label="Drop images here"
+              hint="PNG, JPEG, WebP and the other formats this browser decodes — one PDF page per image, in order. Nothing is uploaded."
+              multiple
+              accept="image/*"
+              onFiles={(files) => setImageFiles(files)}
+            />
+          ) : (
+            <>
+              <Typography variant="body2">
+                {imageFiles.length} image{imageFiles.length === 1 ? '' : 's'}: {imageFiles.map((f) => f.name).join(', ')}
+              </Typography>
+              <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap">
+                <Box>
+                  <Typography variant="subtitle2" component="label" htmlFor="pdf-images-page-size" sx={{ display: 'block' }}>
+                    Page size
+                  </Typography>
+                  <Select
+                    native
+                    id="pdf-images-page-size"
+                    value={imagePageSize}
+                    onChange={(e) => setImagePageSize(e.target.value as PdfPageSize)}
+                    sx={{ mt: 0.5, minWidth: 140 }}
+                  >
+                    {PDF_PAGE_SIZES.map((s) => (
+                      <option key={s} value={s}>{s === 'Original' ? 'Original image size' : s}</option>
+                    ))}
+                  </Select>
+                </Box>
+                <Button
+                  type="button"
+                  variant="contained"
+                  id="pdf-from-images-button"
+                  onClick={() => void handleFromImages()}
+                  disabled={busy !== null || wasmReady === false}
+                >
+                  {busy === 'Images to PDF' ? 'Building…' : 'Build PDF from images'}
+                </Button>
+                <Button type="button" variant="outlined" onClick={() => setImageFiles([])}>
+                  Choose different images
+                </Button>
+              </Stack>
+            </>
+          )}
+        </Stack>
+      </CardContent>
+    </Card>
+  )
+
+  const cliOnlyNote = (
+    <Box
+      role="status"
+      sx={{
+        borderRadius: 3,
+        border: 1,
+        borderColor: (t) => alpha(t.palette.info.main, 0.4),
+        bgcolor: (t) => alpha(t.palette.info.main, 0.08),
+        p: 2.5,
+      }}
+    >
+      <Typography variant="body2">
+        Insert and replace pages need the native CLI or desktop app — they are not
+        available in the browser. Rendering with PDFium is CLI/desktop-only too
+        (<Typography component="code" variant="body2">openpixel pdf render</Typography>).
+        Office documents (Word, Excel, PowerPoint) convert only in the CLI or desktop
+        app (<Typography component="code" variant="body2">openpixel doc convert</Typography>)
+        — LibreOffice cannot run in a browser.
+      </Typography>
+    </Box>
+  )
+
+  const resultBoxes = (
+    <>
+      {status && results.length > 0 && (
+        <Box
+          role="status"
+          sx={{
+            borderRadius: 3,
+            border: 1,
+            borderColor: (t) => alpha(t.palette.success.main, 0.4),
+            bgcolor: (t) => alpha(t.palette.success.main, 0.08),
+            p: 2.5,
+          }}
+        >
+          <Typography variant="body1" fontWeight={600} color="success.main" id="pdf-result-status">
+            {status}
+          </Typography>
+          <Stack direction="row" flexWrap="wrap" spacing={1.5} sx={{ mt: 1.5 }}>
+            {results.map((r, i) => (
+              <Button
+                key={r.filename}
+                type="button"
+                variant="contained"
+                color="success"
+                id={`pdf-download-${i}`}
+                startIcon={<DownloadIcon />}
+                onClick={() => downloadBlob(r.blob, r.filename)}
+              >
+                Download {r.filename}
+              </Button>
+            ))}
+          </Stack>
+        </Box>
+      )}
+
+      {status && results.length === 0 && (
+        <Box
+          role="status"
+          sx={{
+            borderRadius: 3,
+            border: 1,
+            borderColor: (t) => alpha(t.palette.success.main, 0.4),
+            bgcolor: (t) => alpha(t.palette.success.main, 0.08),
+            p: 2.5,
+          }}
+        >
+          <Typography variant="body1" fontWeight={600} color="success.main" id="pdf-result-status">
+            {status}
+          </Typography>
+        </Box>
+      )}
+
+      {error && <Alert severity="error">{error}</Alert>}
+    </>
+  )
+
   return (
-    <Box component="section" aria-labelledby="pdf-heading">
-      <Stack spacing={3}>
-        <ToolPageHeader
-          headingId="pdf-heading"
-          title="PDF tools"
-          description="Work with PDFs entirely in your browser — page operations run through the real engine in WebAssembly and previews render with pdf.js. Files never leave your device."
-        />
+    <Box
+      component="section"
+      aria-labelledby="pdf-heading"
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        flex: { lg: 1 },
+        minHeight: { lg: 0 },
+        overflow: { lg: 'hidden' },
+      }}
+    >
+      <Stack spacing={2} sx={{ flex: { lg: 1 }, minHeight: { lg: 0 } }}>
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 2, flexWrap: 'wrap', flex: 'none' }}>
+          <Typography variant="h5" component="h2" id="pdf-heading">
+            PDF tools
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Page operations, compression and editing — entirely in your browser.
+          </Typography>
+        </Box>
 
         {wasmReady === false && (
           <Box
@@ -803,14 +954,19 @@ export function PdfWorkspace({
         )}
 
         {!file && (
-          <DropZone
-            inputId="pdf-file"
-            label="Drop a PDF here"
-            hint="One PDF at a time. Info, preview and page operations run locally — nothing is uploaded."
-            multiple={false}
-            accept="application/pdf,.pdf"
-            onFiles={(files) => void handleFiles(files)}
-          />
+          <Stack spacing={2} sx={{ flex: { lg: 1 }, minHeight: { lg: 0 }, '& > *': { flexShrink: 0 } }}>
+            <DropZone
+              inputId="pdf-file"
+              label="Drop a PDF here"
+              hint="One PDF at a time. Info, preview and page operations run locally — nothing is uploaded."
+              multiple={false}
+              accept="application/pdf,.pdf"
+              compact
+              onFiles={(files) => void handleFiles(files)}
+            />
+            {imagesToPdfCard}
+            {cliOnlyNote}
+          </Stack>
         )}
 
         {loading && (
@@ -820,9 +976,14 @@ export function PdfWorkspace({
         )}
 
         {file && bytes && (
-          <Grid container spacing={2} alignItems="flex-start">
-            <Grid size={{ xs: 12, lg: 2 }}>
-              <Stack spacing={2}>
+          <Grid
+            container
+            spacing={2}
+            alignItems="stretch"
+            sx={{ flex: { lg: 1 }, minHeight: { lg: 0 } }}
+          >
+            <Grid size={{ xs: 12, lg: 2 }} sx={{ display: 'flex', flexDirection: 'column', height: { lg: '100%' }, minHeight: { lg: 0 } }}>
+              <Stack spacing={2} id="pdf-thumbs-panel" sx={{ flex: { lg: 1 }, minHeight: { lg: 0 }, overflowY: { lg: 'auto' }, pr: { lg: 0.5 }, '& > *': { flexShrink: 0 } }}>
                 <PdfThumbnails
                   key={`${file.name}-${file.size}`}
                   bytes={bytes}
@@ -832,8 +993,8 @@ export function PdfWorkspace({
                 />
               </Stack>
             </Grid>
-            <Grid size={{ xs: 12, lg: 6 }}>
-              <Stack spacing={2}>
+            <Grid size={{ xs: 12, lg: 6 }} sx={{ display: 'flex', flexDirection: 'column', height: { lg: '100%' }, minHeight: { lg: 0 } }}>
+              <Stack spacing={2} id="pdf-center-panel" sx={{ flex: { lg: 1 }, minHeight: { lg: 0 }, overflowY: { lg: 'auto' }, pr: { lg: 0.5 }, '& > *': { flexShrink: 0 } }}>
             <Card id="pdf-info">
               <CardContent>
                 <Typography variant="overline" color="text.secondary">
@@ -961,7 +1122,7 @@ export function PdfWorkspace({
                       id="pdf-preview-canvas"
                       sx={{
                         display: 'block',
-                        maxHeight: 320,
+                        maxHeight: { xs: 320, lg: 'clamp(200px, calc(100dvh - 470px), 420px)' },
                         maxWidth: '100%',
                         borderRadius: 1,
                         border: 1,
@@ -998,10 +1159,13 @@ export function PdfWorkspace({
                 </Stack>
               </CardContent>
             </Card>
+              {imagesToPdfCard}
+              {cliOnlyNote}
+              {resultBoxes}
               </Stack>
             </Grid>
-            <Grid size={{ xs: 12, lg: 4 }}>
-              <Stack spacing={2}>
+            <Grid size={{ xs: 12, lg: 4 }} sx={{ display: 'flex', flexDirection: 'column', height: { lg: '100%' }, minHeight: { lg: 0 } }}>
+              <Stack spacing={2} id="pdf-ops-panel" sx={{ flex: { lg: 1 }, minHeight: { lg: 0 }, overflowY: { lg: 'auto' }, pr: { lg: 0.5 }, '& > *': { flexShrink: 0 } }}>
             <Card>
               <CardContent>
                 <Typography variant="overline" color="text.secondary">
@@ -1653,7 +1817,7 @@ export function PdfWorkspace({
                 <Typography variant="overline" color="text.secondary">
                   Merge
                 </Typography>
-                <Stack spacing={2} sx={{ mt: 1 }}>
+                <Stack spacing={2} sx={{ mt: 1, position: 'relative' }}>
                   <Typography variant="body2">
                     {secondFile
                       ? `Second PDF: ${secondFile.name} — it will be appended after ${file.name}.`
@@ -1691,132 +1855,6 @@ export function PdfWorkspace({
           </Grid>
         )}
 
-        <Card>
-          <CardContent>
-            <Typography variant="overline" color="text.secondary">
-              Images to PDF
-            </Typography>
-            <Stack spacing={2} sx={{ mt: 1 }}>
-              {imageFiles.length === 0 ? (
-                <DropZone
-                  inputId="pdf-images-file"
-                  label="Drop images here"
-                  hint="PNG, JPEG, WebP and the other formats this browser decodes — one PDF page per image, in order. Nothing is uploaded."
-                  multiple
-                  accept="image/*"
-                  onFiles={(files) => setImageFiles(files)}
-                />
-              ) : (
-                <>
-                  <Typography variant="body2">
-                    {imageFiles.length} image{imageFiles.length === 1 ? '' : 's'}: {imageFiles.map((f) => f.name).join(', ')}
-                  </Typography>
-                  <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap">
-                    <Box>
-                      <Typography variant="subtitle2" component="label" htmlFor="pdf-images-page-size" sx={{ display: 'block' }}>
-                        Page size
-                      </Typography>
-                      <Select
-                        native
-                        id="pdf-images-page-size"
-                        value={imagePageSize}
-                        onChange={(e) => setImagePageSize(e.target.value as PdfPageSize)}
-                        sx={{ mt: 0.5, minWidth: 140 }}
-                      >
-                        {PDF_PAGE_SIZES.map((s) => (
-                          <option key={s} value={s}>{s === 'Original' ? 'Original image size' : s}</option>
-                        ))}
-                      </Select>
-                    </Box>
-                    <Button
-                      type="button"
-                      variant="contained"
-                      id="pdf-from-images-button"
-                      onClick={() => void handleFromImages()}
-                      disabled={busy !== null || wasmReady === false}
-                    >
-                      {busy === 'Images to PDF' ? 'Building…' : 'Build PDF from images'}
-                    </Button>
-                    <Button type="button" variant="outlined" onClick={() => setImageFiles([])}>
-                      Choose different images
-                    </Button>
-                  </Stack>
-                </>
-              )}
-            </Stack>
-          </CardContent>
-        </Card>
-
-        <Box
-          role="status"
-          sx={{
-            borderRadius: 3,
-            border: 1,
-            borderColor: (t) => alpha(t.palette.info.main, 0.4),
-            bgcolor: (t) => alpha(t.palette.info.main, 0.08),
-            p: 2.5,
-          }}
-        >
-          <Typography variant="body2">
-            Insert and replace pages need the native CLI or desktop app — they are not
-            available in the browser. Rendering with PDFium is CLI/desktop-only too
-            (<Typography component="code" variant="body2">openpixel pdf render</Typography>).
-            Office documents (Word, Excel, PowerPoint) convert only in the CLI or desktop
-            app (<Typography component="code" variant="body2">openpixel doc convert</Typography>)
-            — LibreOffice cannot run in a browser.
-          </Typography>
-        </Box>
-
-        {status && results.length > 0 && (
-          <Box
-            role="status"
-            sx={{
-              borderRadius: 3,
-              border: 1,
-              borderColor: (t) => alpha(t.palette.success.main, 0.4),
-              bgcolor: (t) => alpha(t.palette.success.main, 0.08),
-              p: 2.5,
-            }}
-          >
-            <Typography variant="body1" fontWeight={600} color="success.main" id="pdf-result-status">
-              {status}
-            </Typography>
-            <Stack direction="row" flexWrap="wrap" spacing={1.5} sx={{ mt: 1.5 }}>
-              {results.map((r, i) => (
-                <Button
-                  key={r.filename}
-                  type="button"
-                  variant="contained"
-                  color="success"
-                  id={`pdf-download-${i}`}
-                  startIcon={<DownloadIcon />}
-                  onClick={() => downloadBlob(r.blob, r.filename)}
-                >
-                  Download {r.filename}
-                </Button>
-              ))}
-            </Stack>
-          </Box>
-        )}
-
-        {status && results.length === 0 && (
-          <Box
-            role="status"
-            sx={{
-              borderRadius: 3,
-              border: 1,
-              borderColor: (t) => alpha(t.palette.success.main, 0.4),
-              bgcolor: (t) => alpha(t.palette.success.main, 0.08),
-              p: 2.5,
-            }}
-          >
-            <Typography variant="body1" fontWeight={600} color="success.main" id="pdf-result-status">
-              {status}
-            </Typography>
-          </Box>
-        )}
-
-        {error && <Alert severity="error">{error}</Alert>}
       </Stack>
     </Box>
   )
