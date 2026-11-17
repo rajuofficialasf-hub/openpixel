@@ -64,7 +64,7 @@ Rust: $(rustc --version)
 Binary: openpixel (CLI)
 Bundled: $LIB beside the binary (libpdfium, bblanchon/pdfium-binaries
 chromium/8152 — see docs/PDF.md; no manual fetching needed for
-`pdf render` / `pdf extract-text`).
+'pdf render' / 'pdf extract-text').
 EOF
 
 echo "== tarball + checksums =="
