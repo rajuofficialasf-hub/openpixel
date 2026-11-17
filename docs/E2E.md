@@ -510,8 +510,8 @@ awaits the coordinator's push.
   pathname — a test-observation race, not a regression).
 - Regression: resize **16/16**, ocr-e2e **14/14**,
   viewport-qa **31/31**, web-nowasm **9/9**; cargo test
-  --workspace — see the run summary in the handoff (count
-  grew with the 4 new OCR export tests).
+  --workspace **340/340** (baseline 336 + the 4 new OCR
+  export tests, 0 failed).
 
 ### 2.16 WASM-absent fallback — PASS (9/9, SVG fix run 16 Nov 2026)
 
