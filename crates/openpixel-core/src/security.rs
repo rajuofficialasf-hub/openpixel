@@ -38,8 +38,15 @@ pub struct EngineConfig {
     pub default_background: [u8; 3],
     /// Wall-clock limit for one decode/encode call. Read by the
     /// jobs pool and the CLI (see `DEFAULT_PROCESSING_TIMEOUT`).
+    /// Phase 8: the CLI enforces it as a true kill (the conversion
+    /// runs in a supervised child process); the in-process jobs
+    /// pool enforces it as a thread timeout (detach, not kill).
     pub processing_timeout: Duration,
-    /// Process RSS cap in bytes (pre-flight check, Linux only).
+    /// Process RSS cap in bytes. The engine itself only
+    /// pre-flights it (Linux only — refuse to start work when the
+    /// process is already over the cap). Phase 8: the CLI enforces
+    /// it for real, killing a child process whose RSS passes the
+    /// cap (Linux only); see `docs/SECURITY.md`.
     pub max_rss_bytes: u64,
 }
 

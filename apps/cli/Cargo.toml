@@ -12,6 +12,10 @@ path = "src/main.rs"
 [dependencies]
 openpixel-core = { path = "../../crates/openpixel-core" }
 openpixel-jobs = { path = "../../crates/openpixel-jobs" }
+# Phase 8: process isolation (timeout-kill + RSS enforcement) for
+# convert / process / batch — the CLI re-execs itself as the
+# hidden `__isolated-work` worker, supervised from this crate.
+openpixel-security = { path = "../../crates/openpixel-security" }
 # Studio Phase 2: PDF page ops + render (pdfium feature = dynamic
 # libpdfium, loaded only when `pdf render` runs; every other pdf
 # command works without it).
