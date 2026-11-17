@@ -32,7 +32,9 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultBackground: '#ffffff',
   metadataPolicy: 'strip',
   batchWorkers: 4,
-  show3dBackground: true,
+  // Phase 6: the 3D backdrop is decoration — default OFF in the new
+  // minimal shell (the Settings toggle still re-enables it).
+  show3dBackground: false,
   resize: { mode: 'fit', preset: 'fhd', quality: 85, format: 'jpeg' },
 }
 

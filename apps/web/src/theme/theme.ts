@@ -1,78 +1,96 @@
 /**
  * Design system — the single source of truth for the web app's look.
  *
- * One theme module, two modes. Every workspace (Convert, Resize,
- * Batch, Formats, Settings — and the PDF workspace next) reads its
+ * OpenPixel Studio tokens (master design prompt §5–7, adopted in
+ * Studio Phase 6 — they replace the pre-Studio blue #2563eb /
+ * slate system). One theme module, two modes. Every page reads its
  * colours, spacing, radius and component defaults from here, so a
- * new tab plugs into the shared layout in `App.tsx` without
+ * new page plugs into the shared shell in `App.tsx` without
  * inventing its own styles. Nothing in `src/components/` hard-codes
  * a brand colour or a hex value: use `theme.palette`, `sx`, or the
  * component overrides below.
  *
  * Rules (see docs/DESIGN_NOTES.md for the full set):
- * - 8px spacing scale — section gaps 24px, card padding 24px.
- * - Type scale: h4 28 / h5 22 / h6 18 / subtitle2 14 semibold /
- *   body2 14 / caption 12. One size per job, no ad-hoc sizes.
- * - Restrained palette: brand blue #2563eb primary, teal #0d9488
- *   secondary, slate neutrals. No new hues.
- * - Cards: 16px radius, 1px divider border, soft shadow — the
- *   same card in light and dark mode.
- * - Controls: 10px radius. No excessive gradients, no decorative
- *   clutter. The 3D backdrop stays calm (see Background3D).
- *
- * Typography is the system font stack — no webfont download, no
- * layout shift. Dark mode is MUI palette mode; the `dark` class on
- * `<html>` is still toggled by `App.tsx` because the e2e suite
- * asserts on it, not because the theme needs it.
+ * - 8px spacing scale — section gaps 24px, card padding 24px,
+ *   page padding 24–32px (16px on mobile).
+ * - Type scale: display/h1 32 / h2 28 / h3 24 / h4 22 / h5 20 /
+ *   h6 18 / subtitle2 14 semibold / body2 14 / caption 12. One
+ *   size per job, no ad-hoc sizes, no oversized headings.
+ * - Restrained palette: primary #3157D5 (light) / #829BFF (dark),
+ *   secondary slate #64748B. No new hues. Status colours carry
+ *   their semantic meaning only.
+ * - Cards: 12px radius, 1px divider border, soft shadow. Buttons:
+ *   8px radius. Dialogs: 16px radius. Inputs: 44px min height.
+ * - Breakpoints (prompt §20): xs 0 / sm 600 / md 768 / lg 900 /
+ *   xl 1200 / xxl 1536. Content max-width 1440px.
+ * - Typography is Inter (English) + Noto Sans Bengali, self-hosted
+ *   via @fontsource (imported in main.tsx) — no webfont CDN, no
+ *   layout shift. Dark mode is MUI palette mode; the `dark` class
+ *   on `<html>` is still toggled by `App.tsx` because the e2e suite
+ *   asserts on it, not because the theme needs it.
  */
 import { alpha, createTheme, type Theme } from '@mui/material/styles'
 
 export type ThemeMode = 'light' | 'dark'
 
-const FONT_STACK = `system-ui, 'Segoe UI', Roboto, sans-serif`
-
-/** Brand blue — unchanged from the original build. */
-const PRIMARY = {
-  main: '#2563eb',
-  light: '#3b82f6',
-  dark: '#1d4ed8',
-  contrastText: '#ffffff',
+// Custom `xxl` breakpoint (prompt §20) — MUI needs the override
+// declared so `theme.breakpoints.up('xxl')` and `xxl` props type-check.
+declare module '@mui/material/styles' {
+  interface BreakpointOverrides {
+    xs: true
+    sm: true
+    md: true
+    lg: true
+    xl: true
+    xxl: true
+  }
 }
 
-const SECONDARY = {
-  main: '#0d9488',
-  light: '#14b8a6',
-  dark: '#0f766e',
-  contrastText: '#ffffff',
-}
+const FONT_STACK = `'Inter', 'Noto Sans Bengali', system-ui, 'Segoe UI', Roboto, sans-serif`
 
 export function getTheme(mode: ThemeMode): Theme {
   const dark = mode === 'dark'
   return createTheme({
+    breakpoints: {
+      values: { xs: 0, sm: 600, md: 768, lg: 900, xl: 1200, xxl: 1536 },
+    },
     palette: {
       mode,
-      primary: PRIMARY,
-      secondary: SECONDARY,
+      primary: {
+        main: dark ? '#829BFF' : '#3157D5',
+        light: dark ? '#A8BCFF' : '#5B7BE0',
+        dark: dark ? '#5B7BE0' : '#2443AA',
+        contrastText: dark ? '#0B1020' : '#ffffff',
+      },
+      secondary: {
+        main: dark ? '#9AA9C2' : '#64748B',
+        light: dark ? '#B9C4D6' : '#94A3B8',
+        dark: dark ? '#7C8AA5' : '#475569',
+        contrastText: '#ffffff',
+      },
       background: {
-        default: dark ? '#0f172a' : '#f8fafc',
-        paper: dark ? '#1e293b' : '#ffffff',
+        default: dark ? '#0B1020' : '#F7F8FC',
+        paper: dark ? '#121A2B' : '#FFFFFF',
       },
       text: {
-        primary: dark ? '#f1f5f9' : '#0f172a',
-        secondary: dark ? '#94a3b8' : '#475569',
+        primary: dark ? '#F1F5FB' : '#172033',
+        secondary: dark ? '#A3AEC2' : '#64748B',
       },
-      divider: dark ? '#334155' : '#e2e8f0',
-      success: { main: dark ? '#4ade80' : '#15803d' },
-      warning: { main: dark ? '#fbbf24' : '#b45309' },
-      error: { main: dark ? '#f87171' : '#dc2626' },
-      info: { main: dark ? '#60a5fa' : '#2563eb' },
+      divider: dark ? '#26344D' : '#E2E8F0',
+      success: { main: dark ? '#39C98A' : '#16A36A' },
+      warning: { main: dark ? '#F0B64D' : '#E6A23C' },
+      error: { main: dark ? '#F07878' : '#DC4C4C' },
+      info: { main: dark ? '#64A9F5' : '#3284D6' },
     },
     shape: { borderRadius: 12 },
     typography: {
       fontFamily: FONT_STACK,
       // Display / section titles — one size per job.
-      h4: { fontSize: '1.75rem', lineHeight: 1.25, fontWeight: 700, letterSpacing: '-0.02em' },
-      h5: { fontSize: '1.375rem', lineHeight: 1.3, fontWeight: 650, letterSpacing: '-0.01em' },
+      h1: { fontSize: '2rem', lineHeight: 1.2, fontWeight: 700, letterSpacing: '-0.02em' },
+      h2: { fontSize: '1.75rem', lineHeight: 1.25, fontWeight: 700, letterSpacing: '-0.02em' },
+      h3: { fontSize: '1.5rem', lineHeight: 1.3, fontWeight: 700, letterSpacing: '-0.01em' },
+      h4: { fontSize: '1.375rem', lineHeight: 1.3, fontWeight: 650, letterSpacing: '-0.01em' },
+      h5: { fontSize: '1.25rem', lineHeight: 1.35, fontWeight: 650, letterSpacing: '-0.01em' },
       h6: { fontSize: '1.125rem', lineHeight: 1.35, fontWeight: 650, letterSpacing: '-0.01em' },
       subtitle1: { fontSize: '1rem', lineHeight: 1.5, fontWeight: 600 },
       subtitle2: { fontSize: '0.875rem', lineHeight: 1.5, fontWeight: 600, letterSpacing: '0.01em' },
@@ -88,18 +106,23 @@ export function getTheme(mode: ThemeMode): Theme {
           // Visible keyboard focus everywhere — accessibility
           // requirement carried over from the old global stylesheet.
           ':focus-visible': {
-            outline: '2px solid #2563eb',
+            outline: '2px solid #3157D5',
             outlineOffset: '2px',
           },
         },
       },
       MuiButton: {
         styleOverrides: {
-          root: { borderRadius: 10, textTransform: 'none', fontWeight: 600 },
+          root: { borderRadius: 8, textTransform: 'none', fontWeight: 600 },
           // Contained buttons: flat, no heavy MUI shadow — the
           // colour does the work, the shadow does not.
           contained: { boxShadow: 'none', '&:hover': { boxShadow: 'none' } },
           sizeLarge: { padding: '10px 22px' },
+        },
+      },
+      MuiIconButton: {
+        styleOverrides: {
+          root: { borderRadius: 8 },
         },
       },
       MuiTabs: {
@@ -121,17 +144,19 @@ export function getTheme(mode: ThemeMode): Theme {
       },
       MuiOutlinedInput: {
         styleOverrides: {
-          root: { borderRadius: 10 },
+          // Prompt §7: input height 44–48px.
+          root: { borderRadius: 8, minHeight: 44 },
         },
       },
       MuiCard: {
         styleOverrides: {
           root: ({ theme }) => ({
-            borderRadius: 16,
+            borderRadius: 12,
             border: `1px solid ${theme.palette.divider}`,
-            boxShadow: theme.palette.mode === 'dark'
-              ? '0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -12px rgba(0, 0, 0, 0.5)'
-              : '0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 24px -12px rgba(15, 23, 42, 0.10)',
+            boxShadow:
+              theme.palette.mode === 'dark'
+                ? '0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -12px rgba(0, 0, 0, 0.5)'
+                : '0 1px 2px rgba(23, 32, 51, 0.05), 0 8px 24px -12px rgba(23, 32, 51, 0.10)',
           }),
         },
       },
@@ -143,7 +168,12 @@ export function getTheme(mode: ThemeMode): Theme {
       },
       MuiPaper: {
         styleOverrides: {
-          rounded: { borderRadius: 16 },
+          rounded: { borderRadius: 12 },
+        },
+      },
+      MuiDialog: {
+        styleOverrides: {
+          paper: { borderRadius: 16 },
         },
       },
       MuiTableCell: {
@@ -153,7 +183,7 @@ export function getTheme(mode: ThemeMode): Theme {
             fontWeight: 600,
             letterSpacing: '0.06em',
             textTransform: 'uppercase',
-            color: dark ? '#94a3b8' : '#475569',
+            color: dark ? '#A3AEC2' : '#64748B',
           },
           body: { padding: '12px 16px' },
         },
@@ -162,9 +192,10 @@ export function getTheme(mode: ThemeMode): Theme {
         styleOverrides: {
           root: ({ theme }) => ({
             border: `1px solid ${theme.palette.divider}`,
-            boxShadow: theme.palette.mode === 'dark'
-              ? '0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -12px rgba(0, 0, 0, 0.5)'
-              : '0 1px 2px rgba(15, 23, 42, 0.05), 0 8px 24px -12px rgba(15, 23, 42, 0.10)',
+            boxShadow:
+              theme.palette.mode === 'dark'
+                ? '0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -12px rgba(0, 0, 0, 0.5)'
+                : '0 1px 2px rgba(23, 32, 51, 0.05), 0 8px 24px -12px rgba(23, 32, 51, 0.10)',
           }),
         },
       },
@@ -186,7 +217,7 @@ export function getTheme(mode: ThemeMode): Theme {
           thumb: {
             width: 18,
             height: 18,
-            boxShadow: '0 1px 4px rgba(15, 23, 42, 0.25)',
+            boxShadow: '0 1px 4px rgba(23, 32, 51, 0.25)',
           },
         },
       },
@@ -212,6 +243,56 @@ export function getTheme(mode: ThemeMode): Theme {
             border: `1px solid ${theme.palette.divider}`,
             margin: 0,
           }),
+        },
+      },
+      // Sidebar navigation — one shared look for every nav item:
+      // 8px radius, 8% primary tint + primary text when active.
+      MuiListItemButton: {
+        styleOverrides: {
+          root: ({ theme }) => ({
+            borderRadius: 8,
+            margin: '2px 8px',
+            padding: '8px 12px',
+            '&.Mui-selected': {
+              backgroundColor: alpha(theme.palette.primary.main, 0.08),
+              color: theme.palette.primary.main,
+              '&:hover': { backgroundColor: alpha(theme.palette.primary.main, 0.12) },
+              '& .MuiListItemIcon-root': { color: theme.palette.primary.main },
+            },
+          }),
+        },
+      },
+      MuiListItemIcon: {
+        styleOverrides: {
+          root: { minWidth: 36 },
+        },
+      },
+      MuiDrawer: {
+        styleOverrides: {
+          paper: ({ theme }) => ({
+            backgroundColor: theme.palette.background.paper,
+            borderRight: `1px solid ${theme.palette.divider}`,
+          }),
+        },
+      },
+      MuiAppBar: {
+        styleOverrides: {
+          root: ({ theme }) => ({
+            backgroundColor: alpha(theme.palette.background.paper, 0.92),
+            color: theme.palette.text.primary,
+            borderBottom: `1px solid ${theme.palette.divider}`,
+            boxShadow: 'none',
+          }),
+        },
+      },
+      MuiBreadcrumbs: {
+        styleOverrides: {
+          root: { fontSize: '0.875rem' },
+        },
+      },
+      MuiSnackbar: {
+        styleOverrides: {
+          root: { '& .MuiSnackbarContent-root': { borderRadius: 12 } },
         },
       },
     },

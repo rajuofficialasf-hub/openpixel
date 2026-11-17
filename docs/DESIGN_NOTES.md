@@ -157,3 +157,80 @@ footer, theme toggle, 3D backdrop switch).
 6. Every button maps to a real engine call; every status line
    reports a real result.
 7. Screenshots in both modes, eyeballed before commit.
+
+## 10. Phase 6 audit — the pre-Studio shell (17 Nov 2026)
+
+Audited before building the unified Studio frontend (prompt §28
+Phase 1). What the site was:
+
+- **Navigation:** seven header tabs (Convert / Resize / PDF /
+  OCR / Batch / Formats / Settings), no sidebar, no homepage,
+  no All Tools directory, no workspace, no recent files. The
+  landing page was the Convert tab itself.
+- **Identity:** wordmark "OpenPixel." + tagline "Local image
+  conversion". The PDF/OCR tools already lived under the same
+  header, but nothing said "Studio" anywhere.
+- **Theme:** brand blue `#2563eb`, teal `#0d9488`, slate
+  neutrals, system font stack, cards 16px radius, controls 10px
+  radius, 8px spacing scale (this document's rules).
+- **Inconsistencies found:** (a) each workspace restates the
+  "files never leave your device" line in its own words;
+  (b) the PDF tab is a long vertical stack of cards — its edit
+  tools sit far below the preview; (c) no shared page pattern:
+  tool pages have no breadcrumb, no common header, no
+  "process another file" affordance; (d) the Formats tab is a
+  reference table hidden as a seventh tab; (e) no way back to a
+  file you processed yesterday (no history at all).
+
+### Honest tool inventory (what the web app really does, 17 Nov 2026)
+
+This is the inventory the All Tools directory is built from.
+Anything not on this list is shown as **Coming Soon**, never as
+a working-looking button.
+
+- **Image (web, real):** Convert (16 browser targets, canvas +
+  WASM), Resize (Fit/Fill/Pad/Exact, presets, aspect lock,
+  never-upscale, target-size mode, batch + zip, Before/After),
+  Batch convert (up to 4 concurrent), metadata read (EXIF/ICC/
+  XMP detection; web conversion always strips metadata).
+- **PDF (web, real):** info, pdf.js preview, PDF→image
+  download, page ops (rotate/extract/remove/reorder/duplicate/
+  insert/replace/reverse/booklet/N-up), compress (screen/ebook/
+  printer), edit overlays (text/images/shapes/highlight/draw/
+  comments/page numbers/header-footer), redaction (within one
+  Tj/TJ run only), flatten, metadata edit, repair, sanitise,
+  threat inspection, text extraction (txt/html), image→PDF.
+- **PDF (CLI/desktop only — label as such on the web):**
+  protect/unlock/watermark, digital signatures, searchable-PDF
+  OCR, PDFium rendering, extract-text to EPUB/DOCX.
+- **Document conversion (CLI/desktop only, LibreOffice):**
+  DOCX/XLSX/PPTX/ODT/ODS/ODP/RTF/TXT/CSV/HTML ↔ PDF and
+  between Office formats. No Office conversion runs in the
+  browser (LibreOffice cannot run in WASM).
+- **OCR (web, real):** image OCR, English + Bengali
+  (tesseract.js, self-hosted), PSM, enhance toggle, text
+  download. Searchable-PDF OCR is CLI-only.
+- **Not built anywhere:** background removal, audio/video
+  conversion, table extraction, media tools, one-click
+  PDF→Word on the web (text extraction exists — label it
+  honestly), interactive form filling, in-place text editing.
+- **Workspace data:** there is no account and no server. Recent
+  Files / My Files derive only from a local activity record
+  (file name, size, type, tool, result, date) in localStorage
+  — never file contents, never a fake history. Empty until the
+  user processes something.
+
+### Phase 6 decisions (prompt-driven, 17 Nov 2026)
+
+- **Shell:** app shell (header + sidebar + content + footer),
+  not the A/B/C directions shown to Raju earlier — the master
+  prompt supersedes them.
+- **Tokens:** prompt §5–7 tokens replace the old ones (primary
+  `#3157D5` light / `#829BFF` dark; background `#F7F8FC` /
+  `#0B1020`; Inter + Noto Sans Bengali, self-hosted via
+  @fontsource — no Google Fonts CDN).
+- **3D background:** stays as a Settings toggle, default **off**
+  in the new shell (minimal decoration per the prompt).
+- **No auth pages:** no backend exists; Sign In / Sign Up are
+  not built. The header profile area says so plainly.
+- **Desktop:** out of scope (Phase 7).
