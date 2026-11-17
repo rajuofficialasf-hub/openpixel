@@ -149,6 +149,16 @@ impl PdfEngine {
     /// owner — this is the legal path only). Wrong password and
     /// unencrypted input are both clean errors.
     pub fn unlock(&self, bytes: &[u8], password: &str) -> Result<Vec<u8>> {
+        // Audit B14: this path used to skip `validate` entirely
+        // and load whatever bytes it was handed — enforce the
+        // file-size limit before the probe load.
+        if bytes.len() as u64 > self.config().max_file_size_bytes {
+            return Err(PdfError::InvalidPdf(format!(
+                "PDF is {} bytes, limit is {} bytes",
+                bytes.len(),
+                self.config().max_file_size_bytes
+            )));
+        }
         // First a password-less load, only to tell whether the
         // file is encrypted at all: a password load strips the
         // /Encrypt marker from the trailer, so it cannot be used
@@ -223,7 +233,25 @@ impl PdfEngine {
                 options.opacity
             )));
         }
-        if options.font_size <= 0.0 || options.font_size > 200.0 {
+        // Audit B11: grey and angle were never validated — NaN
+        // flowed through `fmt_num` into the content stream as
+        // the literal text `NaN`, a corrupt PDF. The range
+        // checks below already reject NaN for opacity and font
+        // size (every NaN comparison is false); grey/angle had
+        // no check at all.
+        if !options.grey.is_finite() || !(0.0..=1.0).contains(&options.grey) {
+            return Err(PdfError::InvalidPdf(format!(
+                "watermark grey must be 0.0..=1.0, not {}",
+                options.grey
+            )));
+        }
+        if !options.angle_degrees.is_finite() {
+            return Err(PdfError::InvalidPdf(format!(
+                "watermark angle must be a finite number, not {}",
+                options.angle_degrees
+            )));
+        }
+        if !options.font_size.is_finite() || options.font_size <= 0.0 || options.font_size > 200.0 {
             return Err(PdfError::InvalidPdf(format!(
                 "watermark font size must be 0..=200 pt, not {}",
                 options.font_size

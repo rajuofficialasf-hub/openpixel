@@ -456,7 +456,8 @@ impl PdfEngine {
             )));
         }
         self.validate(bytes)?;
-        let count = self.page_count(bytes)?;
+        let info = self.inspect(bytes)?;
+        let count = info.page_count;
         let targets: Vec<u32> = match pages {
             Some(list) => {
                 crate::engine::check_pages(list, count)?;
@@ -464,6 +465,32 @@ impl PdfEngine {
             }
             None => (1..=count).collect(),
         };
+        // Audit B8: the old code rendered every page in PDFium
+        // first and only checked the dimensions afterwards — a
+        // huge page (e.g. 100 000 pt wide) at scale 6 would
+        // allocate the full bitmap inside the renderer before
+        // the check ever ran. Reject up front, from the page
+        // boxes; the post-render check below stays as defence
+        // in depth (PDFium's own rounding could differ by a
+        // pixel).
+        for &page in &targets {
+            let (w, h) = info.page_sizes[(page - 1) as usize];
+            let pw = (w * scale as f64).ceil();
+            let ph = (h * scale as f64).ceil();
+            let limit = openpixel_core::security::MAX_DIMENSION as f64;
+            if pw > limit || ph > limit {
+                return Err(PdfError::InvalidPdf(format!(
+                    "rendered page {page} would be {pw:.0}x{ph:.0} px, over the {} px limit — use a smaller scale",
+                    openpixel_core::security::MAX_DIMENSION
+                )));
+            }
+            if (pw as u64) * (ph as u64) > openpixel_core::security::MAX_PIXELS {
+                return Err(PdfError::InvalidPdf(format!(
+                    "rendered page {page} would be {pw:.0}x{ph:.0} px, over the {} MP pixel limit — use a smaller scale",
+                    openpixel_core::security::MAX_PIXELS
+                )));
+            }
+        }
         let rendered = self.render_to_images_inner(bytes, &targets, scale)?;
         for r in &rendered {
             if r.image.width > openpixel_core::security::MAX_DIMENSION
@@ -601,6 +628,42 @@ mod tests {
         assert!(engine.render_to_images(&doc, Some(&[4]), 2.0).is_err());
         assert!(engine.render_to_images(&doc, None, 0.1).is_err());
         assert!(engine.render_to_images(&doc, None, 7.0).is_err());
+    }
+
+    /// Regression (audit B8): an oversized page must be refused
+    /// BEFORE PDFium allocates the bitmap — the old code rendered
+    /// first and checked afterwards. A 20 000 pt page is over
+    /// the per-side limit at scale 1; a 12 000 x 12 000 pt page
+    /// fits per side but is 144 MP, over the pixel limit.
+    #[test]
+    fn oversized_pages_are_refused_before_rendering() {
+        use crate::engine::ordered_pages;
+        use lopdf::{Document, Object};
+        let engine = PdfEngine::default();
+        for (w, h, want) in [
+            (20_000i64, 20_000i64, "px limit"),
+            (12_000, 12_000, "pixel limit"),
+        ] {
+            let mut doc = Document::load_mem(&make_pdf(1, "Big")).unwrap();
+            let pages = ordered_pages(&doc);
+            let page_id = pages[0].1;
+            doc.get_dictionary_mut(page_id).unwrap().set(
+                "MediaBox",
+                Object::Array(vec![
+                    Object::Integer(0),
+                    Object::Integer(0),
+                    Object::Integer(w),
+                    Object::Integer(h),
+                ]),
+            );
+            let mut bytes = Vec::new();
+            doc.save_to(&mut std::io::Cursor::new(&mut bytes)).unwrap();
+            let err = engine.render_to_images(&bytes, None, 1.0).unwrap_err();
+            assert!(
+                err.to_string().contains(want),
+                "expected a {want} error, got: {err}"
+            );
+        }
     }
 }
 

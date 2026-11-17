@@ -1089,6 +1089,7 @@ fn run(cli: &Cli, engine: &Arc<Engine>) -> Result<(), openpixel_core::OpenPixelE
             Ok(())
         }
         Commands::Discover { input } => {
+            check_input_size(input)?;
             let bytes = fs::read(input).map_err(|e| {
                 if e.kind() == std::io::ErrorKind::NotFound {
                     openpixel_core::OpenPixelError::NotFound(input.clone())
@@ -1462,9 +1463,24 @@ fn ocr_result_to_html(result: &openpixel_ocr::OcrResult) -> String {
     s
 }
 
+/// Size-gate an input file BEFORE reading it (audit B7): the
+/// engines refuse files over 100 MiB, but `fs::read` loads the
+/// whole file first, so a multi-GB input was in memory before
+/// the limit ever applied. A missing/unreadable file is left to
+/// the read that follows, which reports it properly; a file that
+/// grows between the check and the read is still refused by the
+/// engine's own `validate` on the bytes.
+fn check_input_size(path: &Path) -> Result<(), openpixel_core::OpenPixelError> {
+    if let Ok(meta) = fs::metadata(path) {
+        openpixel_core::security::check_file_size(meta.len(), &Default::default())?;
+    }
+    Ok(())
+}
+
 /// Read a PDF (or image, for `from-images`) with the same
 /// not-found / I/O distinction the image commands use.
 fn read_pdf_bytes(path: &Path) -> Result<Vec<u8>, openpixel_core::OpenPixelError> {
+    check_input_size(path)?;
     fs::read(path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::NotFound {
             openpixel_core::OpenPixelError::NotFound(path.to_path_buf())
@@ -2495,18 +2511,24 @@ fn run_pdf(
             location,
             contact,
         } => {
-            let key_pem = std::fs::read_to_string(key).map_err(|e| {
-                openpixel_core::OpenPixelError::InvalidArgument(format!(
-                    "could not read private key {}: {e}",
-                    key.display()
-                ))
-            })?;
-            let cert_pem = std::fs::read_to_string(cert).map_err(|e| {
-                openpixel_core::OpenPixelError::InvalidArgument(format!(
-                    "could not read certificate {}: {e}",
-                    cert.display()
-                ))
-            })?;
+            let key_pem = {
+                check_input_size(key)?;
+                std::fs::read_to_string(key).map_err(|e| {
+                    openpixel_core::OpenPixelError::InvalidArgument(format!(
+                        "could not read private key {}: {e}",
+                        key.display()
+                    ))
+                })?
+            };
+            let cert_pem = {
+                check_input_size(cert)?;
+                std::fs::read_to_string(cert).map_err(|e| {
+                    openpixel_core::OpenPixelError::InvalidArgument(format!(
+                        "could not read certificate {}: {e}",
+                        cert.display()
+                    ))
+                })?
+            };
             let bytes = read_pdf_bytes(input)?;
             let options = openpixel_pdf::SignOptions {
                 reason: reason.clone(),
@@ -2543,6 +2565,7 @@ fn run_pdf(
         PdfCommands::VerifySign { input, trust } => {
             let mut anchors: Vec<Vec<u8>> = Vec::new();
             for path in trust {
+                check_input_size(path)?;
                 anchors.push(std::fs::read(path).map_err(|e| {
                     openpixel_core::OpenPixelError::InvalidArgument(format!(
                         "could not read trust anchor {}: {e}",

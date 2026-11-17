@@ -358,15 +358,37 @@ impl PdfEngine {
                 .map(|(_, img)| img.to_dynamic())
                 .map_err(|e| format!("embedded JPEG could not be decoded: {e}"))?,
             Ok(Object::Name(f)) if f == b"FlateDecode" => {
-                let raw = stream
-                    .decompressed_content()
-                    .map_err(|e| format!("FlateDecode image could not be decoded: {e}"))?;
+                // Bomb guard (audit B1): the declared dimensions
+                // decide the exact expected size, and the decode is
+                // capped at exactly that — a stream that expands
+                // past it is rejected before the full output is
+                // ever allocated. Dimensions above the engine's
+                // pixel/dimension limits are refused first, so a
+                // lying /Width/Height cannot smuggle a huge cap
+                // through here either (the old code called the
+                // unbounded `decompressed_content()` and only
+                // checked the length afterwards).
                 let channels = if gray { 1 } else { 3 };
-                if raw.len() != w as usize * h as usize * channels {
+                let pixels = w as u64 * h as u64;
+                if w > openpixel_core::security::MAX_DIMENSION
+                    || h > openpixel_core::security::MAX_DIMENSION
+                    || pixels > openpixel_core::security::MAX_PIXELS
+                {
+                    return Err(format!(
+                        "FlateDecode image is {w}x{h} px, over the {} px / {} MP limit",
+                        openpixel_core::security::MAX_DIMENSION,
+                        openpixel_core::security::MAX_PIXELS
+                    ));
+                }
+                let expected = (pixels * channels as u64) as usize;
+                let raw = stream
+                    .decompressed_content_with_limit(expected)
+                    .map_err(|e| format!("FlateDecode image could not be decoded: {e}"))?;
+                if raw.len() != expected {
                     return Err(format!(
                         "FlateDecode image has {} raw bytes, expected {}",
                         raw.len(),
-                        w as usize * h as usize * channels
+                        expected
                     ));
                 }
                 if gray {
@@ -820,5 +842,97 @@ mod tests {
             Some(CompressMode::Printer)
         );
         assert_eq!(CompressMode::from_name("extreme"), None);
+    }
+
+    /// Build a 1-page PDF with one FlateDecode image XObject of
+    /// `width` x `height`, drawn at its own size, whose stream is
+    /// `bomb_bytes` of zeros (zlib-compressed, so the file stays
+    /// small while the decompressed form is huge).
+    fn bomb_image_pdf(width: i64, height: i64, bomb_bytes: usize) -> Vec<u8> {
+        use std::io::Write as _;
+        let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::best());
+        let zeros = vec![0u8; 1024 * 1024];
+        let mut left = bomb_bytes;
+        while left > 0 {
+            let n = left.min(zeros.len());
+            encoder.write_all(&zeros[..n]).unwrap();
+            left -= n;
+        }
+        let compressed = encoder.finish().unwrap();
+        let mut doc = Document::with_version("1.5");
+        let img_id = doc.add_object(Stream::new(
+            dictionary! {
+                "Type" => "XObject",
+                "Subtype" => "Image",
+                "Width" => width,
+                "Height" => height,
+                "ColorSpace" => "DeviceRGB",
+                "BitsPerComponent" => 8,
+                "Filter" => "FlateDecode",
+            },
+            compressed,
+        ));
+        let content = format!("q {width} 0 0 {height} 0 0 cm /Im0 Do Q").into_bytes();
+        let content_id = doc.add_object(Stream::new(Dictionary::new(), content));
+        let pages_id = doc.add_object(dictionary! {
+            "Type" => "Pages",
+            "Kids" => Object::Array(vec![]),
+            "Count" => Object::Integer(0),
+        });
+        let page_id = doc.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => Object::Reference(pages_id),
+            "MediaBox" => Object::Array(vec![Object::Integer(0), Object::Integer(0), Object::Integer(612), Object::Integer(792)]),
+            "Resources" => dictionary! { "XObject" => dictionary! { "Im0" => Object::Reference(img_id) } },
+            "Contents" => Object::Reference(content_id),
+        });
+        if let Ok(pages) = doc.get_dictionary_mut(pages_id) {
+            pages.set("Kids", Object::Array(vec![Object::Reference(page_id)]));
+            pages.set("Count", Object::Integer(1));
+        }
+        let catalog_id = doc.add_object(dictionary! {
+            "Type" => "Catalog",
+            "Pages" => Object::Reference(pages_id),
+        });
+        doc.trailer.set("Root", Object::Reference(catalog_id));
+        let mut out = Vec::new();
+        doc.save_to(&mut Cursor::new(&mut out)).unwrap();
+        out
+    }
+
+    /// Regression (audit B1): a FlateDecode image that expands
+    /// far past its declared size must be refused by the decode
+    /// cap — the old code called the unbounded
+    /// `decompressed_content()` and allocated the whole bomb
+    /// before the length check. The image is skipped, the
+    /// compress still succeeds, and the output stays valid.
+    #[test]
+    fn flate_image_bomb_is_capped_not_decompressed() {
+        let engine = PdfEngine::default();
+        // 1x1 RGB expects 3 bytes; the stream expands to 300 MiB.
+        let pdf = bomb_image_pdf(1, 1, 300 * 1024 * 1024);
+        let (out, outcome) = engine
+            .compress(&pdf, CompressMode::Screen, CompressOptions::default())
+            .unwrap();
+        assert_eq!(outcome.images_total, 1, "outcome: {outcome:?}");
+        assert_eq!(outcome.images_recompressed, 0, "outcome: {outcome:?}");
+        assert_eq!(outcome.images_skipped, 1, "outcome: {outcome:?}");
+        assert_eq!(engine.page_count(&out).unwrap(), 1);
+    }
+
+    /// Regression (audit B1): lying dimensions cannot smuggle a
+    /// huge decode cap through — 100 000 x 100 000 px is refused
+    /// before any decompression is attempted.
+    #[test]
+    fn flate_image_with_lying_dimensions_is_refused_before_decode() {
+        let engine = PdfEngine::default();
+        let pdf = bomb_image_pdf(100_000, 100_000, 3);
+        let (out, outcome) = engine
+            .compress(&pdf, CompressMode::Screen, CompressOptions::default())
+            .unwrap();
+        assert_eq!(outcome.images_total, 1, "outcome: {outcome:?}");
+        assert_eq!(outcome.images_recompressed, 0, "outcome: {outcome:?}");
+        assert_eq!(outcome.images_skipped, 1, "outcome: {outcome:?}");
+        assert_eq!(engine.page_count(&out).unwrap(), 1);
     }
 }

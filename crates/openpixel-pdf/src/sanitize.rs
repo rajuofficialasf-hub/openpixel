@@ -85,16 +85,18 @@ fn detect_threats(doc: &Document) -> PdfThreats {
         if let Ok(catalog) = doc.get_dictionary(root) {
             if let Ok(open) = catalog.get(b"OpenAction").cloned() {
                 let kind = action_kind(doc, &open);
-                threats.auto_actions.push(format!(
-                    "catalog /OpenAction ({kind}) — runs when the document is opened"
-                ));
+                if is_dangerous_open_action(&kind) {
+                    threats.auto_actions.push(format!(
+                        "catalog /OpenAction ({kind}) — runs when the document is opened"
+                    ));
+                }
             }
             if catalog.get(b"AA").is_ok() {
                 threats
                     .auto_actions
                     .push("catalog /AA — additional actions".to_string());
             }
-            if let Ok(Object::Dictionary(names)) = catalog.get(b"Names").cloned() {
+            if let Some(names) = catalog_subdict(doc, b"Names") {
                 if let Ok(Object::Dictionary(js)) = names.get(b"JavaScript").cloned() {
                     let n = name_tree_count(&js);
                     threats.javascript.push(format!(
@@ -108,13 +110,11 @@ fn detect_threats(doc: &Document) -> PdfThreats {
                     ));
                 }
             }
-            if let Ok(Object::Reference(acro_id)) = catalog.get(b"AcroForm").cloned() {
-                if let Ok(acro) = doc.get_dictionary(acro_id) {
-                    if acro.get(b"XFA").is_ok() {
-                        threats
-                            .javascript
-                            .push("AcroForm /XFA form data — can carry scripts".to_string());
-                    }
+            if let Some(acro) = catalog_subdict(doc, b"AcroForm") {
+                if acro.get(b"XFA").is_ok() {
+                    threats
+                        .javascript
+                        .push("AcroForm /XFA form data — can carry scripts".to_string());
                 }
             }
         }
@@ -171,8 +171,37 @@ fn name_tree_count(tree: &Dictionary) -> usize {
     }
 }
 
-/// The action kind of an action value (a dict, or a reference
-/// to one): "JavaScript", "Launch", "GoTo", or "action".
+/// Action kinds that do something on open without a click:
+/// JavaScript, Launch, URI (opens a URL), GoToR (opens an
+/// external file), SubmitForm (sends form data out), ImportData
+/// (imports data into the form). A plain GoTo (jump to a page),
+/// Named or SetOCGState open action is benign — it is neither
+/// flagged nor removed (audit B6: the old code flagged every
+/// /OpenAction, so sanitising a document with a benign GoTo open
+/// action failed its own post-check).
+fn is_dangerous_open_action(kind: &str) -> bool {
+    matches!(
+        kind,
+        "JavaScript" | "Launch" | "URI" | "GoToR" | "SubmitForm" | "ImportData"
+    )
+}
+
+/// The catalog's `/Names` / `/AcroForm` dictionary, whether it is
+/// an indirect object or an inline dictionary (audit B6: the old
+/// detection only matched the inline form, so threats behind a
+/// reference were under-reported).
+fn catalog_subdict(doc: &Document, key: &[u8]) -> Option<Dictionary> {
+    let root = doc
+        .trailer
+        .get(b"Root")
+        .and_then(|r| r.as_reference())
+        .ok()?;
+    match doc.get_dictionary(root).and_then(|c| c.get(key)).cloned() {
+        Ok(Object::Reference(id)) => doc.get_dictionary(id).cloned().ok(),
+        Ok(Object::Dictionary(d)) => Some(d),
+        _ => None,
+    }
+}
 fn action_kind(doc: &Document, value: &Object) -> String {
     let dict = match value {
         Object::Reference(id) => doc.get_dictionary(*id).ok().cloned(),
@@ -227,7 +256,7 @@ impl PdfEngine {
             });
         if let Some(open) = open_action {
             let kind = action_kind(&doc, &open);
-            if kind == "JavaScript" || kind == "Launch" {
+            if is_dangerous_open_action(&kind) {
                 if let Ok(root) = doc.trailer.get(b"Root").and_then(|r| r.as_reference()) {
                     if let Ok(catalog) = doc.get_dictionary_mut(root) {
                         catalog.remove(b"OpenAction");
@@ -301,6 +330,14 @@ impl PdfEngine {
         if let Ok(root) = doc.trailer.get(b"Root").and_then(|r| r.as_reference()) {
             if let Ok(catalog) = doc.get_dictionary_mut(root) {
                 if catalog.get(b"AA").is_ok() {
+                    // Audit B6: the /AA value is usually an
+                    // indirect dict — dropping the key alone left
+                    // it as an orphan object in the output bytes.
+                    if let Ok(aa) = catalog.get(b"AA").cloned() {
+                        if let Ok(aa_id) = aa.as_reference() {
+                            delete.insert(aa_id);
+                        }
+                    }
                     catalog.remove(b"AA");
                     outcome.auto_actions_removed += 1;
                     outcome
@@ -338,21 +375,15 @@ impl PdfEngine {
                     }
                 }
             }
-            // XFA lives in the AcroForm.
-            if let Ok(acro_id) = doc
-                .get_dictionary(root)
-                .and_then(|c| c.get(b"AcroForm"))
-                .and_then(|a| a.as_reference())
-            {
-                if let Ok(acro) = doc.get_dictionary_mut(acro_id) {
-                    if acro.get(b"XFA").is_ok() {
-                        acro.remove(b"XFA");
-                        outcome.javascript_removed += 1;
-                        outcome.warnings.push(
-                            "removed AcroForm /XFA form data (it can carry scripts)".to_string(),
-                        );
-                    }
-                }
+            // XFA lives in the AcroForm — indirect or inline
+            // (audit B6: the old code only handled the indirect
+            // form, so an inline AcroForm kept its XFA while the
+            // post-check, which missed it the same way, passed).
+            if remove_xfa(&mut doc) {
+                outcome.javascript_removed += 1;
+                outcome
+                    .warnings
+                    .push("removed AcroForm /XFA form data (it can carry scripts)".to_string());
             }
         }
 
@@ -395,6 +426,15 @@ impl PdfEngine {
             let mut changed = false;
             let mut dict = dict;
             if dict.get(b"AA").is_ok() {
+                // Audit B6: the /AA value is usually an indirect
+                // dict — dropping the key alone left it as an
+                // orphan object, and lopdf writes every object,
+                // so the actions stayed in the output bytes.
+                if let Ok(aa) = dict.get(b"AA").cloned() {
+                    if let Ok(aa_id) = aa.as_reference() {
+                        delete.insert(aa_id);
+                    }
+                }
                 dict.remove(b"AA");
                 outcome.auto_actions_removed += 1;
                 changed = true;
@@ -464,6 +504,18 @@ impl PdfEngine {
     /// cross-reference table was read. A file that does not
     /// parse even leniently cannot be repaired.
     pub fn repair(&self, bytes: &[u8]) -> Result<(Vec<u8>, RepairOutcome)> {
+        // Audit B14: repair used to skip `validate` entirely and
+        // load whatever bytes it was handed — enforce the
+        // file-size limit first (the page-count limit still does
+        // not apply: a damaged file cannot be counted reliably,
+        // and the load itself is bounded per stream by lopdf).
+        if bytes.len() as u64 > self.config().max_file_size_bytes {
+            return Err(PdfError::InvalidPdf(format!(
+                "PDF is {} bytes, limit is {} bytes",
+                bytes.len(),
+                self.config().max_file_size_bytes
+            )));
+        }
         let mut doc = Document::load_mem(bytes).map_err(|e| {
             PdfError::InvalidPdf(format!(
                 "could not be repaired — the file does not parse even leniently: {e}"
@@ -497,6 +549,50 @@ impl PdfEngine {
                 warnings,
             },
         ))
+    }
+}
+
+/// Remove /XFA from the AcroForm, whether it is an indirect
+/// object or an inline dictionary (audit B6: the old code only
+/// handled the indirect form). Returns true when anything was
+/// removed.
+fn remove_xfa(doc: &mut Document) -> bool {
+    let root = match doc.trailer.get(b"Root").and_then(|r| r.as_reference()) {
+        Ok(id) => id,
+        Err(_) => return false,
+    };
+    let acro = match doc
+        .get_dictionary(root)
+        .and_then(|c| c.get(b"AcroForm"))
+        .cloned()
+    {
+        Ok(a) => a,
+        Err(_) => return false,
+    };
+    match acro {
+        Object::Reference(id) => {
+            let Ok(acro) = doc.get_dictionary_mut(id) else {
+                return false;
+            };
+            if acro.get(b"XFA").is_ok() {
+                acro.remove(b"XFA");
+                true
+            } else {
+                false
+            }
+        }
+        Object::Dictionary(mut d) => {
+            if d.get(b"XFA").is_err() {
+                return false;
+            }
+            d.remove(b"XFA");
+            let Ok(catalog) = doc.get_dictionary_mut(root) else {
+                return false;
+            };
+            catalog.set("AcroForm", Object::Dictionary(d));
+            true
+        }
+        _ => false,
     }
 }
 
@@ -788,13 +884,138 @@ mod tests {
         let stream = doc.get_object(stream_id).unwrap().as_stream().unwrap();
         // The bounded decode — the one untrusted input must go
         // through — refuses the stream instead of allocating
-        // 300 MiB. (The unbounded `decompressed_content()` is
-        // documented as unsafe for untrusted input and is never
-        // called on it by this crate's engine paths.)
+        // 300 MiB. (Audit B1/B2/B3: the engine paths that used to
+        // call the unbounded `decompressed_content()` —
+        // compress, flatten's appearance decode, and page-content
+        // decode — are now capped; this test pins the lopdf side
+        // of that contract.)
         let result = stream.decompressed_content_with_limit(lopdf::DEFAULT_MAX_DECOMPRESSED_SIZE);
         assert!(
             result.is_err(),
             "the oversized stream decompressed without a limit error"
         );
+    }
+
+    /// Regression (audit B6): an INLINE AcroForm dictionary
+    /// carrying /XFA must be found and removed — the old code
+    /// only handled the indirect form, so the XFA survived
+    /// sanitisation while the post-check, which missed it the
+    /// same way, passed.
+    #[test]
+    fn sanitize_removes_inline_acroform_xfa() {
+        let engine = PdfEngine::default();
+        let mut doc = Document::load_mem(&make_pdf(1, "Doc")).unwrap();
+        let root = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
+        doc.get_dictionary_mut(root).unwrap().set(
+            "AcroForm",
+            lopdf::Dictionary::from_iter([(
+                b"XFA".to_vec(),
+                Object::Array(vec![Object::String(
+                    b"<xdp:xdp>evil</xdp:xdp>".to_vec(),
+                    lopdf::StringFormat::Literal,
+                )]),
+            )]),
+        );
+        let mut input = Vec::new();
+        doc.save_to(&mut std::io::Cursor::new(&mut input)).unwrap();
+        let threats = engine.inspect_threats(&input).unwrap();
+        assert!(
+            !threats.javascript.is_empty(),
+            "inline XFA was not detected: {threats:?}"
+        );
+        let (out, outcome) = engine.sanitize(&input).unwrap();
+        assert!(outcome.javascript_removed >= 1, "outcome: {outcome:?}");
+        assert!(!contains_bytes(&out, b"/XFA"), "XFA marker leaked");
+        assert!(!contains_bytes(&out, b"xdp:xdp"), "XFA payload leaked");
+        assert!(engine.inspect_threats(&out).unwrap().is_clean());
+    }
+
+    /// Regression (audit B6): a benign GoTo /OpenAction (jump to
+    /// a page on open) is neither a threat nor a reason to fail
+    /// — the old code flagged every /OpenAction, so sanitising
+    /// such a document failed its own post-check.
+    #[test]
+    fn sanitize_keeps_benign_goto_open_action() {
+        let engine = PdfEngine::default();
+        let mut doc = Document::load_mem(&make_pdf(1, "Doc")).unwrap();
+        let root = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
+        let pages = ordered_pages(&doc);
+        let page_id = pages[0].1;
+        doc.get_dictionary_mut(root).unwrap().set(
+            "OpenAction",
+            lopdf::Dictionary::from_iter([
+                (b"S".to_vec(), Object::Name(b"GoTo".to_vec())),
+                (b"D".to_vec(), Object::Reference(page_id)),
+            ]),
+        );
+        let mut input = Vec::new();
+        doc.save_to(&mut std::io::Cursor::new(&mut input)).unwrap();
+        assert!(engine.inspect_threats(&input).unwrap().is_clean());
+        let (out, _) = engine.sanitize(&input).unwrap();
+        assert!(
+            contains_bytes(&out, b"/OpenAction"),
+            "benign open action removed"
+        );
+        assert_eq!(engine.inspect(&out).unwrap().page_count, 1);
+    }
+
+    /// Regression (audit B6): a URI /OpenAction IS dangerous
+    /// (opens a URL on open) and must be removed.
+    #[test]
+    fn sanitize_removes_uri_open_action() {
+        let engine = PdfEngine::default();
+        let mut doc = Document::load_mem(&make_pdf(1, "Doc")).unwrap();
+        let root = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
+        doc.get_dictionary_mut(root).unwrap().set(
+            "OpenAction",
+            lopdf::Dictionary::from_iter([
+                (b"S".to_vec(), Object::Name(b"URI".to_vec())),
+                (
+                    b"URI".to_vec(),
+                    Object::String(
+                        b"https://example.invalid/x".to_vec(),
+                        lopdf::StringFormat::Literal,
+                    ),
+                ),
+            ]),
+        );
+        let mut input = Vec::new();
+        doc.save_to(&mut std::io::Cursor::new(&mut input)).unwrap();
+        assert!(!engine.inspect_threats(&input).unwrap().is_clean());
+        let (out, outcome) = engine.sanitize(&input).unwrap();
+        assert!(outcome.auto_actions_removed >= 1, "outcome: {outcome:?}");
+        assert!(!contains_bytes(&out, b"example.invalid"));
+        assert!(engine.inspect_threats(&out).unwrap().is_clean());
+    }
+
+    /// Regression (audit B6): an indirect /AA dictionary must not
+    /// survive as an orphan — lopdf writes every object, so
+    /// dropping only the key left the actions in the output bytes.
+    #[test]
+    fn sanitize_deletes_indirect_aa_dicts_not_just_the_key() {
+        let engine = PdfEngine::default();
+        let mut doc = Document::load_mem(&make_pdf(1, "Doc")).unwrap();
+        let pages = ordered_pages(&doc);
+        let page_id = pages[0].1;
+        let js_id = doc.add_object(lopdf::Dictionary::from_iter([
+            (b"S".to_vec(), Object::Name(b"JavaScript".to_vec())),
+            (
+                b"JS".to_vec(),
+                Object::String(b"app.alert(2)".to_vec(), lopdf::StringFormat::Literal),
+            ),
+        ]));
+        let aa_id = doc.add_object(lopdf::Dictionary::from_iter([(
+            b"O".to_vec(),
+            Object::Reference(js_id),
+        )]));
+        doc.get_dictionary_mut(page_id)
+            .unwrap()
+            .set("AA", Object::Reference(aa_id));
+        let mut input = Vec::new();
+        doc.save_to(&mut std::io::Cursor::new(&mut input)).unwrap();
+        let (out, _) = engine.sanitize(&input).unwrap();
+        assert!(!contains_bytes(&out, b"/AA"), "orphaned /AA dict leaked");
+        assert!(!contains_bytes(&out, b"app.alert"), "JS code leaked");
+        assert!(engine.inspect_threats(&out).unwrap().is_clean());
     }
 }

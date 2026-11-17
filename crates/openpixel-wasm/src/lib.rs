@@ -255,8 +255,7 @@ pub fn pdf_process(bytes: &[u8], ops_json: &str) -> Result<JsValue, JsValue> {
     let outputs = pdf_process_inner(bytes, ops_json).map_err(js_err)?;
     let arr = js_sys::Array::new();
     for out in outputs {
-        let uint = js_sys::Uint8Array::new_with_length(out.len() as u32);
-        uint.copy_from(out.as_slice());
+        let uint = uint8_array(out.as_slice())?;
         arr.push(&uint);
     }
     Ok(arr.into())
@@ -308,8 +307,7 @@ pub fn pdf_from_images(images: JsValue, page_size: Option<String>) -> Result<Vec
 pub fn pdf_compress(bytes: &[u8], options_json: &str) -> Result<JsValue, JsValue> {
     let (out, outcome) = pdf_compress_inner(bytes, options_json).map_err(js_err)?;
     let obj = js_sys::Object::new();
-    let uint = js_sys::Uint8Array::new_with_length(out.len() as u32);
-    uint.copy_from(out.as_slice());
+    let uint = uint8_array(out.as_slice())?;
     set_field(&obj, "data", uint.into())?;
     set_field(
         &obj,
@@ -423,11 +421,22 @@ fn pdf_set_metadata_inner(
 // the native CLI or desktop app instead (see docs/PDF.md).
 // ---------------------------------------------------------------------------
 
+/// Build a `Uint8Array` from bytes. The length conversion is
+/// checked (audit B12): `len as u32` would silently truncate an
+/// output over 4 GiB and `copy_from` would then trap in the
+/// WASM module — an error instead.
+fn uint8_array(bytes: &[u8]) -> Result<js_sys::Uint8Array, JsValue> {
+    let len = u32::try_from(bytes.len())
+        .map_err(|_| js_err("output is too large for a Uint8Array (over 4 GiB)"))?;
+    let uint = js_sys::Uint8Array::new_with_length(len);
+    uint.copy_from(bytes);
+    Ok(uint)
+}
+
 /// Start a `{ data: Uint8Array, ... }` result object for a PDF op.
 fn pdf_data_obj(data: &[u8]) -> Result<js_sys::Object, JsValue> {
     let obj = js_sys::Object::new();
-    let uint = js_sys::Uint8Array::new_with_length(data.len() as u32);
-    uint.copy_from(data);
+    let uint = uint8_array(data)?;
     set_field(&obj, "data", uint.into())?;
     Ok(obj)
 }
@@ -615,7 +624,11 @@ fn js_array_of_bytes(value: &JsValue) -> Result<Vec<Vec<u8>>, openpixel_core::Op
         )
     };
     let arr = value.dyn_ref::<js_sys::Array>().ok_or_else(err)?;
-    let mut out = Vec::with_capacity(arr.length() as usize);
+    // Audit B12: the array length is JS-controlled — a sparse
+    // array of length 2^32-1 would make `with_capacity` try to
+    // allocate ~96 GiB before the first element is even read.
+    // Cap the pre-allocation; the vec still grows as needed.
+    let mut out = Vec::with_capacity((arr.length() as usize).min(1024));
     for i in 0..arr.length() {
         let el = arr.get(i);
         let uint = el.dyn_ref::<js_sys::Uint8Array>().ok_or_else(err)?;
@@ -808,8 +821,7 @@ fn result_object(
     warnings: &[String],
 ) -> Result<js_sys::Object, JsValue> {
     let obj = js_sys::Object::new();
-    let uint = js_sys::Uint8Array::new_with_length(bytes.len() as u32);
-    uint.copy_from(bytes.as_slice());
+    let uint = uint8_array(&bytes)?;
     set_field(&obj, "bytes", uint.into())?;
     set_field(&obj, "width", JsValue::from(width))?;
     set_field(&obj, "height", JsValue::from(height))?;
@@ -1354,5 +1366,14 @@ mod wasm_tests {
             info_json.contains("\"page_count\":4"),
             "info JSON: {info_json}"
         );
+    }
+
+    /// Regression (audit B12): a sparse JS array of length
+    /// 2^32-1 must fail on the first element, not try to
+    /// pre-allocate ~96 GiB for it.
+    #[wasm_bindgen_test]
+    fn sparse_js_array_does_not_preallocate() {
+        let sparse = js_sys::Array::new_with_length(u32::MAX);
+        assert!(js_array_of_bytes(&sparse.into()).is_err());
     }
 }

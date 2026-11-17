@@ -105,6 +105,13 @@ impl DocumentEngine {
         target: &str,
         options: &DocumentOptions,
     ) -> Result<(ConversionOutcome, Vec<u8>)> {
+        // Audit: the LibreOffice path never checked the input
+        // size — only the `ProcessingEngine::validate` trait
+        // method did, and `convert()` does not call it. A
+        // multi-hundred-MB document would be written to a temp
+        // file and handed to soffice unchecked. Enforce the same
+        // 100 MiB limit the image/PDF engines use.
+        openpixel_core::security::check_file_size(bytes.len() as u64, &Default::default())?;
         let target = target.trim().trim_start_matches('.').to_ascii_lowercase();
         let source = self.detect_source(bytes, options.source_hint.as_deref())?;
         let row = find_conversion(source.id(), &target).ok_or_else(|| {

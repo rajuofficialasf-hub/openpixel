@@ -18,6 +18,13 @@ use std::ffi::{CStr, CString};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+/// Maximum pages in one searchable PDF (audit B16): the
+/// entry point takes an arbitrary slice, and each page is a full
+/// Leptonica decode plus a Tesseract pass. The PDF engine caps
+/// documents at 10 000 pages; the same bound applies here so a
+/// caller cannot queue unbounded work with one call.
+pub const MAX_SEARCHABLE_PAGES: usize = 10_000;
+
 /// Tesseract OCR engine. Holds only the tessdata directory; every
 /// recognition creates a fresh API handle.
 #[derive(Debug, Clone)]
@@ -321,6 +328,12 @@ impl TesseractEngine {
             return Err(OcrError::Engine(
                 "searchable PDF needs at least one page".to_string(),
             ));
+        }
+        if pages.len() > MAX_SEARCHABLE_PAGES {
+            return Err(OcrError::Engine(format!(
+                "searchable PDF needs at most {MAX_SEARCHABLE_PAGES} pages, not {}",
+                pages.len()
+            )));
         }
         let tmp = tempfile::tempdir()
             .map_err(|e| OcrError::Engine(format!("could not create a temp dir: {e}")))?;

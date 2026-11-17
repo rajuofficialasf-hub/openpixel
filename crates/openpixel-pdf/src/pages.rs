@@ -88,7 +88,11 @@ impl PdfEngine {
         self.validate(bytes)?;
         let count = self.page_count(bytes)?;
         check_pages(pages, count)?;
-        let keep: Vec<u32> = (1..=count).filter(|p| !pages.contains(p)).collect();
+        // Audit B15: the old `pages.contains(p)` inside the
+        // filter was quadratic in the caller's list length — a
+        // long JSON page list made this O(count x list).
+        let drop: std::collections::HashSet<u32> = pages.iter().copied().collect();
+        let keep: Vec<u32> = (1..=count).filter(|p| !drop.contains(p)).collect();
         if keep.is_empty() {
             return Err(PdfError::InvalidPdf(
                 "removing every page would leave an empty PDF".to_string(),
@@ -120,10 +124,12 @@ impl PdfEngine {
         self.validate(bytes)?;
         let count = self.page_count(bytes)?;
         check_pages(pages, count)?;
+        // Audit B15: see `remove` — same quadratic `contains`.
+        let dup: std::collections::HashSet<u32> = pages.iter().copied().collect();
         let mut list = Vec::new();
         for n in 1..=count {
             list.push(n);
-            if pages.contains(&n) {
+            if dup.contains(&n) {
                 list.push(n);
             }
         }
@@ -349,6 +355,10 @@ fn page_as_form(
             Object::Array(items) => items.iter().filter_map(|i| i.as_reference().ok()).collect(),
             _ => vec![],
         };
+        // Audit B9: each stream is capped individually, but a
+        // page with many content streams could still sum past
+        // any sane size — cap the concatenated total too.
+        let mut total = 0usize;
         for id in refs {
             if let Ok(Object::Stream(stream)) = src.get_object(id) {
                 let bytes = stream
@@ -356,6 +366,12 @@ fn page_as_form(
                     .map_err(|e| {
                         PdfError::Lopdf(format!("could not decode page content stream: {e}"))
                     })?;
+                total += bytes.len();
+                if total > max_decompressed {
+                    return Err(PdfError::Lopdf(format!(
+                        "page content streams total more than {max_decompressed} bytes decompressed"
+                    )));
+                }
                 content.extend_from_slice(&bytes);
                 content.push(b'\n');
             }

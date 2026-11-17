@@ -407,6 +407,8 @@ impl PdfEngine {
                 } => {
                     check_pages(&[*page], page_count)?;
                     validate_text(text, *size)?;
+                    finite(*x, "overlay text x")?;
+                    finite(*y, "overlay text y")?;
                     color.check()?;
                     let (font_id, name) = state.font(&mut doc, *font)?;
                     let page_id = pages[(*page - 1) as usize].1;
@@ -430,6 +432,10 @@ impl PdfEngine {
                     image_index,
                 } => {
                     check_pages(&[*page], page_count)?;
+                    finite(*x, "image overlay x")?;
+                    finite(*y, "image overlay y")?;
+                    finite(*width, "image overlay width")?;
+                    finite(*height, "image overlay height")?;
                     if *width <= 0.0 || *height <= 0.0 {
                         return Err(PdfError::InvalidPdf(format!(
                             "image overlay size must be positive, not {width}x{height}"
@@ -465,6 +471,11 @@ impl PdfEngine {
                     stroke_width,
                 } => {
                     check_pages(&[*page], page_count)?;
+                    finite(*x, "rectangle x")?;
+                    finite(*y, "rectangle y")?;
+                    finite(*width, "rectangle width")?;
+                    finite(*height, "rectangle height")?;
+                    finite(*stroke_width, "rectangle stroke width")?;
                     if *width <= 0.0 || *height <= 0.0 {
                         return Err(PdfError::InvalidPdf(format!(
                             "rectangle size must be positive, not {width}x{height}"
@@ -523,6 +534,11 @@ impl PdfEngine {
                     width,
                 } => {
                     check_pages(&[*page], page_count)?;
+                    finite(*x1, "line x1")?;
+                    finite(*y1, "line y1")?;
+                    finite(*x2, "line x2")?;
+                    finite(*y2, "line y2")?;
+                    finite(*width, "line width")?;
                     color.check()?;
                     if *width < 0.0 {
                         return Err(PdfError::InvalidPdf(
@@ -550,6 +566,10 @@ impl PdfEngine {
                     stroke_width,
                 } => {
                     check_pages(&[*page], page_count)?;
+                    finite(*cx, "circle cx")?;
+                    finite(*cy, "circle cy")?;
+                    finite(*r, "circle radius")?;
+                    finite(*stroke_width, "circle stroke width")?;
                     if *r <= 0.0 {
                         return Err(PdfError::InvalidPdf(format!(
                             "circle radius must be positive, not {r}"
@@ -623,6 +643,10 @@ impl PdfEngine {
                     opacity,
                 } => {
                     check_pages(&[*page], page_count)?;
+                    finite(*x, "highlight x")?;
+                    finite(*y, "highlight y")?;
+                    finite(*width, "highlight width")?;
+                    finite(*height, "highlight height")?;
                     if *width <= 0.0 || *height <= 0.0 {
                         return Err(PdfError::InvalidPdf(format!(
                             "highlight size must be positive, not {width}x{height}"
@@ -659,6 +683,12 @@ impl PdfEngine {
                             "draw needs at least two points".to_string(),
                         ));
                     }
+                    finite(*width, "draw width")?;
+                    if *width < 0.0 {
+                        return Err(PdfError::InvalidPdf(
+                            "draw width must not be negative".to_string(),
+                        ));
+                    }
                     color.check()?;
                     for (x, y) in points {
                         if !x.is_finite() || !y.is_finite() {
@@ -689,6 +719,8 @@ impl PdfEngine {
                     author,
                 } => {
                     check_pages(&[*page], page_count)?;
+                    finite(*x, "comment x")?;
+                    finite(*y, "comment y")?;
                     if text.trim().is_empty() {
                         return Err(PdfError::InvalidPdf(
                             "comment text must not be empty".to_string(),
@@ -726,6 +758,7 @@ impl PdfEngine {
                     position,
                     size,
                 } => {
+                    finite(*size, "page number font size")?;
                     if *size <= 0.0 || *size > 200.0 {
                         return Err(PdfError::InvalidPdf(format!(
                             "page number font size must be 0..=200 pt, not {size}"
@@ -778,6 +811,7 @@ impl PdfEngine {
                             "header/footer needs a header or a footer text".to_string(),
                         ));
                     }
+                    finite(*size, "header/footer font size")?;
                     if *size <= 0.0 || *size > 200.0 {
                         return Err(PdfError::InvalidPdf(format!(
                             "header/footer font size must be 0..=200 pt, not {size}"
@@ -955,12 +989,28 @@ fn validate_text(text: &str, size: f64) -> Result<()> {
             "overlay text must not be empty".to_string(),
         ));
     }
+    finite(size, "overlay font size")?;
     if size <= 0.0 || size > 200.0 {
         return Err(PdfError::InvalidPdf(format!(
             "overlay font size must be 0..=200 pt, not {size}"
         )));
     }
     Ok(())
+}
+
+/// Reject a non-finite coordinate/size (audit B11): the `<= 0`
+/// range checks elsewhere let NaN through (every comparison with
+/// NaN is false), and `fmt_num` would then write `NaN`/`inf`
+/// verbatim into a content stream — a corrupt PDF. `Draw`
+/// already did this for its points; the other arms did not.
+pub(crate) fn finite(v: f64, what: &str) -> Result<()> {
+    if v.is_finite() {
+        Ok(())
+    } else {
+        Err(PdfError::InvalidPdf(format!(
+            "{what} must be a finite number, not {v}"
+        )))
+    }
 }
 
 /// Append an annotation object id to a page's /Annots array
@@ -999,12 +1049,31 @@ pub(crate) fn append_annotation(
 /// appearance streams are inlined as operations, with their
 /// resource names remapped). Fails cleanly when the stream does
 /// not parse — the caller decides whether that is fatal.
-pub(crate) fn decode_ops(doc: &Document, page_id: ObjectId) -> Result<Vec<Operation>> {
+///
+/// Bomb guard (audit B3): the concatenated page content is
+/// capped at `max_decompressed` bytes in total — the old code
+/// used lopdf's unbounded `get_and_decode_page_content`, so one
+/// Flate-compressed page stream could expand without limit
+/// before `Content::decode` ever saw it.
+pub(crate) fn decode_ops(
+    doc: &Document,
+    page_id: ObjectId,
+    max_decompressed: usize,
+) -> Result<Vec<Operation>> {
     let content = doc
-        .get_and_decode_page_content(page_id)
+        .get_page_content_with_limit(page_id, max_decompressed)
         .map_err(|e| PdfError::Lopdf(format!("could not decode page content: {e}")))?;
-    Ok(content.operations)
+    Content::decode(&content)
+        .map(|c| c.operations)
+        .map_err(|e| PdfError::Lopdf(format!("could not decode page content: {e}")))
 }
+
+/// Cap on one annotation appearance stream's decompressed size
+/// (audit B2). Appearance content is operators only — images
+/// are separate XObjects — so 16 MiB is far above anything real,
+/// and a stream that expands past it is refused instead of
+/// allocating the bomb.
+pub(crate) const MAX_APPEARANCE_DECOMPRESSED: usize = 16 * 1024 * 1024;
 
 impl PdfEngine {
     /// Flatten annotations and form fields into page content.
@@ -1106,6 +1175,17 @@ impl PdfEngine {
                 match flatten_annotation(&mut doc, *page_id, annot_id, &mut outcome) {
                     Ok(Some(chunk)) => {
                         flat_content.extend_from_slice(&chunk);
+                        // Audit B9: each appearance is capped
+                        // individually, but a page with many
+                        // annotations could still sum past any
+                        // sane size — cap the flattened content
+                        // of one page at the file-size limit.
+                        if flat_content.len() > self.config().max_file_size_bytes as usize {
+                            return Err(PdfError::InvalidPdf(format!(
+                                "page {page_no}: flattened annotation content exceeds {} bytes",
+                                self.config().max_file_size_bytes
+                            )));
+                        }
                         outcome.annotations_flattened += 1;
                     }
                     Ok(None) => {
@@ -1267,9 +1347,12 @@ fn flatten_annotation(
         }
     }
     // Decode the appearance content, remap resource names that
-    // collided, re-encode, and wrap it in the transform.
+    // collided, re-encode, and wrap it in the transform. Bounded
+    // (audit B2): the old call was the unbounded
+    // `decompressed_content()` — a crafted appearance stream
+    // could expand without limit.
     let raw = ap_stream
-        .decompressed_content()
+        .decompressed_content_with_limit(MAX_APPEARANCE_DECOMPRESSED)
         .map_err(|e| PdfError::Lopdf(format!("appearance content could not be decoded: {e}")))?;
     let content = Content::decode(&raw)
         .map_err(|e| PdfError::Lopdf(format!("appearance content could not be parsed: {e}")))?;
@@ -1444,7 +1527,7 @@ mod tests {
     /// (works without PDFium — it proves an overlay is real text
     /// in the content stream, not a bitmap).
     fn content_text(doc: &Document, page_id: ObjectId) -> String {
-        let ops = decode_ops(doc, page_id).unwrap();
+        let ops = decode_ops(doc, page_id, 100 * 1024 * 1024).unwrap();
         let mut s = String::new();
         for op in &ops {
             match op.operator.as_str() {

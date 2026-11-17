@@ -45,22 +45,25 @@ impl PdfEngine {
                 self.config().max_pages
             )));
         }
-        let engine = Engine::default();
-        let mut decoded = Vec::with_capacity(images.len());
-        for (i, bytes) in images.iter().enumerate() {
-            if bytes.len() as u64 > self.config().max_file_size_bytes {
+        // Audit B10: a page size comes from the caller (the
+        // CLI/WASM/Tauri pass a named size, but this is a public
+        // API) — a NaN, negative or absurd size used to flow
+        // straight into the MediaBox. 14 400 pt is the largest
+        // page PDF allows (200 inches).
+        if let Some((pw, ph)) = page_size {
+            if !pw.is_finite()
+                || !ph.is_finite()
+                || pw <= 0.0
+                || ph <= 0.0
+                || pw > 14_400.0
+                || ph > 14_400.0
+            {
                 return Err(PdfError::InvalidPdf(format!(
-                    "image {} is {} bytes, limit is {} bytes",
-                    i + 1,
-                    bytes.len(),
-                    self.config().max_file_size_bytes
+                    "page size must be finite, positive and at most 14400x14400 pt, not {pw}x{ph}"
                 )));
             }
-            let (_, img) = engine.decode_bytes(bytes, None).map_err(|e| {
-                PdfError::InvalidPdf(format!("image {} could not be decoded: {e}", i + 1))
-            })?;
-            decoded.push(img.to_dynamic().to_rgb8());
         }
+        let engine = Engine::default();
         let mut doc = Document::with_version("1.5");
         let pages_id = doc.add_object(Dictionary::from_iter(vec![
             ("Type", Object::Name(b"Pages".to_vec())),
@@ -73,7 +76,22 @@ impl PdfEngine {
         ]));
         doc.trailer.set("Root", Object::Reference(catalog_id));
         let mut kids = Vec::new();
-        for rgb in &decoded {
+        // Audit B10: the old code decoded EVERY image into a
+        // `decoded` vec first — up to 10 000 images x 100 MP of
+        // RGB held at once. Decode one image, embed it, drop it.
+        for (i, bytes) in images.iter().enumerate() {
+            if bytes.len() as u64 > self.config().max_file_size_bytes {
+                return Err(PdfError::InvalidPdf(format!(
+                    "image {} is {} bytes, limit is {} bytes",
+                    i + 1,
+                    bytes.len(),
+                    self.config().max_file_size_bytes
+                )));
+            }
+            let (_, img) = engine.decode_bytes(bytes, None).map_err(|e| {
+                PdfError::InvalidPdf(format!("image {} could not be decoded: {e}", i + 1))
+            })?;
+            let rgb = img.to_dynamic().to_rgb8();
             let (w, h) = (rgb.width(), rgb.height());
             let (page_w, page_h, draw_w, draw_h, draw_x, draw_y) = match page_size {
                 Some((pw, ph)) => {
@@ -119,7 +137,7 @@ impl PdfEngine {
         }
         if let Ok(pages) = doc.get_dictionary_mut(pages_id) {
             pages.set("Kids", Object::Array(kids));
-            pages.set("Count", Object::Integer(decoded.len() as i64));
+            pages.set("Count", Object::Integer(images.len() as i64));
         }
         save_to_bytes(&mut doc)
     }
@@ -176,6 +194,15 @@ mod tests {
         assert_eq!(named_page_size("A4"), Some((595.0, 842.0)));
         assert_eq!(named_page_size("letter"), Some((612.0, 792.0)));
         assert_eq!(named_page_size("nope"), None);
+        // Audit B10: absurd page sizes are refused, not written
+        // into the MediaBox.
+        assert!(engine
+            .from_images(&images, Some((f64::NAN, 842.0)))
+            .is_err());
+        assert!(engine.from_images(&images, Some((-595.0, 842.0))).is_err());
+        assert!(engine
+            .from_images(&images, Some((20_000.0, 842.0)))
+            .is_err());
     }
 
     /// Round-trip: the embedded images really render (a broken

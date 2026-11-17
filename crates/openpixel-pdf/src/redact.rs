@@ -33,7 +33,7 @@
 //!   rect ARE removed (their /Contents could otherwise leak the
 //!   redacted information).
 
-use crate::edit::{append_content_stream, decode_ops, rect_numbers};
+use crate::edit::{append_content_stream, decode_ops, finite, rect_numbers};
 use crate::engine::{check_pages, ordered_pages, save_to_bytes, PdfEngine};
 use crate::error::{PdfError, Result};
 use lopdf::content::{Content, Operation};
@@ -272,6 +272,10 @@ impl PdfEngine {
             match red {
                 Redaction::Rect(r) => {
                     check_pages(&[r.page], page_count)?;
+                    finite(r.x, "redaction x")?;
+                    finite(r.y, "redaction y")?;
+                    finite(r.width, "redaction width")?;
+                    finite(r.height, "redaction height")?;
                     if r.width <= 0.0 || r.height <= 0.0 {
                         return Err(PdfError::InvalidPdf(format!(
                             "redaction rectangle must have a positive size, not {}x{}",
@@ -301,7 +305,9 @@ impl PdfEngine {
                     let mut found = false;
                     for page in targets {
                         let page_id = pages[(page - 1) as usize].1;
-                        let Ok(ops) = decode_ops(&doc, page_id) else {
+                        let Ok(ops) =
+                            decode_ops(&doc, page_id, self.config().max_file_size_bytes as usize)
+                        else {
                             continue;
                         };
                         for run in extract_runs(&ops) {
@@ -339,7 +345,7 @@ impl PdfEngine {
 
         for (page, rects) in &per_page {
             let page_id = pages[(*page - 1) as usize].1;
-            let ops = match decode_ops(&doc, page_id) {
+            let ops = match decode_ops(&doc, page_id, self.config().max_file_size_bytes as usize) {
                 Ok(ops) => ops,
                 Err(e) => {
                     outcome.warnings.push(format!(
@@ -613,6 +619,66 @@ fn cover_stream(rects: &[(f64, f64, f64, f64)]) -> Vec<u8> {
     s.into_bytes()
 }
 
+/// The appearance stream ids of an annotation (`/AP /N`, `/R`,
+/// `/D` — each a stream, or a sub-dictionary keyed by appearance
+/// state). Appearance content is what can carry the redacted
+/// text, so these go with the annotation when it is removed.
+fn appearance_stream_ids(doc: &Document, annot_id: ObjectId) -> Vec<ObjectId> {
+    let mut out = Vec::new();
+    let mut stack: Vec<Object> = Vec::new();
+    if let Ok(ap) = doc
+        .get_dictionary(annot_id)
+        .and_then(|d| d.get(b"AP"))
+        .cloned()
+    {
+        stack.push(ap);
+    }
+    while let Some(obj) = stack.pop() {
+        match obj {
+            Object::Reference(id) => match doc.get_object(id) {
+                Ok(Object::Stream(_)) => out.push(id),
+                Ok(Object::Dictionary(d)) => {
+                    for (_, v) in d.iter() {
+                        stack.push(v.clone());
+                    }
+                }
+                _ => {}
+            },
+            Object::Dictionary(d) => {
+                for (_, v) in d.iter() {
+                    stack.push(v.clone());
+                }
+            }
+            Object::Array(items) => {
+                for v in items {
+                    stack.push(v);
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Does any object other than `except` reference `want`?
+fn referenced_elsewhere(doc: &Document, want: ObjectId, except: ObjectId) -> bool {
+    doc.objects
+        .iter()
+        .any(|(id, obj)| *id != except && object_references(obj, want))
+}
+
+/// Does this object (dictionaries, arrays, stream dicts) contain
+/// a reference to `want`?
+fn object_references(obj: &Object, want: ObjectId) -> bool {
+    match obj {
+        Object::Reference(id) => *id == want,
+        Object::Array(items) => items.iter().any(|o| object_references(o, want)),
+        Object::Dictionary(d) => d.iter().any(|(_, v)| object_references(v, want)),
+        Object::Stream(s) => object_references(&Object::Dictionary(s.dict.clone()), want),
+        _ => false,
+    }
+}
+
 /// Remove the page's annotations whose /Rect intersects any
 /// redaction rect. Returns how many were removed.
 fn remove_intersecting_annotations(
@@ -663,6 +729,17 @@ fn remove_intersecting_annotations(
             }
         };
         if rects.iter().any(|r| rects_overlap(annot_rect, *r)) {
+            // Delete the appearance streams too (audit: redaction
+            // leak): the annotation dict is gone, but lopdf writes
+            // every object in the document, so an orphaned /AP
+            // stream would keep the redacted text in the output
+            // bytes. Only streams no other object references are
+            // deleted — a shared appearance survives.
+            for ap_id in appearance_stream_ids(doc, id) {
+                if !referenced_elsewhere(doc, ap_id, id) {
+                    doc.objects.remove(&ap_id);
+                }
+            }
             doc.objects.remove(&id);
             removed += 1;
         } else {
@@ -703,7 +780,7 @@ mod tests {
     /// The text a page draws, read from its content operations
     /// (works without PDFium).
     fn content_text(doc: &Document, page_id: ObjectId) -> String {
-        let ops = decode_ops(doc, page_id).unwrap();
+        let ops = decode_ops(doc, page_id, 100 * 1024 * 1024).unwrap();
         let mut s = String::new();
         for op in &ops {
             if let Some(t) = op_text(op) {
@@ -855,6 +932,103 @@ mod tests {
                 &[Redaction::Text(TextRedaction {
                     page: None,
                     text: "   ".to_string(),
+                })]
+            )
+            .is_err());
+    }
+
+    /// Regression (audit: redaction leak): an annotation removed
+    /// by a rect redaction took its dictionary with it, but its
+    /// appearance stream — which draws the same secret — stayed
+    /// behind as an orphan object, and lopdf writes every object.
+    /// The secret must be gone from the output bytes, not just
+    /// from the page content.
+    #[test]
+    fn redact_removes_annotation_appearance_streams_too() {
+        let engine = PdfEngine::default();
+        let mut doc = Document::load_mem(&make_secret_pdf()).unwrap();
+        let pages = ordered_pages(&doc);
+        let page_id = pages[0].1;
+        // Appearance stream drawing a distinct secret.
+        let ap_id = doc.add_object(lopdf::Stream::new(
+            lopdf::Dictionary::new(),
+            b"BT /F1 24 Tf 0 0 Td (AP-SECRET-999) Tj ET".to_vec(),
+        ));
+        let annot_id = doc.add_object(lopdf::Dictionary::from_iter([
+            (b"Type".to_vec(), Object::Name(b"Annot".to_vec())),
+            (b"Subtype".to_vec(), Object::Name(b"Text".to_vec())),
+            (
+                b"Rect".to_vec(),
+                Object::Array(vec![
+                    Object::Integer(90),
+                    Object::Integer(690),
+                    Object::Integer(290),
+                    Object::Integer(730),
+                ]),
+            ),
+            (
+                b"AP".to_vec(),
+                Object::Dictionary(lopdf::Dictionary::from_iter([(
+                    b"N".to_vec(),
+                    Object::Reference(ap_id),
+                )])),
+            ),
+        ]));
+        doc.get_dictionary_mut(page_id)
+            .unwrap()
+            .set("Annots", Object::Array(vec![Object::Reference(annot_id)]));
+        let mut input = Vec::new();
+        doc.save_to(&mut std::io::Cursor::new(&mut input)).unwrap();
+        assert!(contains_bytes(&input, b"AP-SECRET-999"));
+
+        let (out, outcome) = engine
+            .redact(
+                &input,
+                &[Redaction::Rect(RectRedaction {
+                    page: 1,
+                    x: 90.0,
+                    y: 690.0,
+                    width: 200.0,
+                    height: 40.0,
+                })],
+            )
+            .unwrap();
+        assert_eq!(outcome.annotations_removed, 1, "outcome: {outcome:?}");
+        assert!(
+            !contains_bytes(&out, b"AP-SECRET-999"),
+            "annotation appearance stream leaked the secret"
+        );
+        assert!(!contains_bytes(&out, b"SECRET-123"));
+    }
+
+    /// Regression (audit B11): a NaN redaction coordinate must be
+    /// refused — the old `width <= 0.0` check let NaN through and
+    /// `fmt_num` wrote `NaN` into the cover stream.
+    #[test]
+    fn redact_rejects_nan_coordinates() {
+        let engine = PdfEngine::default();
+        let input = make_secret_pdf();
+        assert!(engine
+            .redact(
+                &input,
+                &[Redaction::Rect(RectRedaction {
+                    page: 1,
+                    x: f64::NAN,
+                    y: 0.0,
+                    width: 10.0,
+                    height: 10.0,
+                })]
+            )
+            .is_err());
+        assert!(engine
+            .redact(
+                &input,
+                &[Redaction::Rect(RectRedaction {
+                    page: 1,
+                    x: 0.0,
+                    y: 0.0,
+                    width: f64::INFINITY,
+                    height: 10.0,
                 })]
             )
             .is_err());

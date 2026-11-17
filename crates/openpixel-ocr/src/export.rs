@@ -112,6 +112,12 @@ fn escape_xml(s: &str) -> String {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
+            // Audit B13: XML 1.0 forbids control characters
+            // except tab/LF/CR — recognised text can carry them,
+            // and one would make the whole DOCX/XLSX unparseable.
+            // They are dropped, not escaped (there is no escape
+            // for them in XML 1.0).
+            c if (c as u32) < 0x20 && !matches!(c, '\t' | '\n' | '\r') => {}
             _ => out.push(c),
         }
     }
@@ -321,6 +327,25 @@ mod tests {
             duration_ms: 1,
             preprocessed: vec![],
         }
+    }
+
+    /// Regression (audit B13): a control character in a
+    /// recognised word must not corrupt the whole DOCX/XLSX —
+    /// it is dropped by `escape_xml`, and the export stays valid.
+    #[test]
+    fn exports_drop_control_characters_from_words() {
+        let mut result = sample();
+        result.words[0].text = "he\x00llo".to_string();
+        result.words[1].text = "wor\x07ld".to_string();
+        let docx = ocr_to_docx(&result);
+        let document = unzip_entry(&docx, "word/document.xml").unwrap();
+        assert!(document.contains("hello"), "word lost: {document}");
+        assert!(document.contains("world"), "word lost: {document}");
+        assert!(!document.contains('\x00'), "NUL leaked into document.xml");
+        let xlsx = ocr_to_xlsx(&result);
+        let sheet = unzip_entry(&xlsx, "xl/worksheets/sheet1.xml").unwrap();
+        assert!(sheet.contains("hello"), "word lost: {sheet}");
+        assert!(!sheet.contains('\x07'), "BEL leaked into sheet1.xml");
     }
 
     /// Read one entry out of a ZIP made by `build_zip`, by

@@ -267,6 +267,12 @@ fn escape_xml(s: &str) -> String {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '"' => out.push_str("&quot;"),
+            // Audit B13: XML 1.0 forbids control characters
+            // except tab/LF/CR — extracted text can carry them,
+            // and one would make the whole EPUB/DOCX unparseable.
+            // They are dropped, not escaped (there is no escape
+            // for them in XML 1.0).
+            c if (c as u32) < 0x20 && !matches!(c, '\t' | '\n' | '\r') => {}
             _ => out.push(c),
         }
     }
@@ -294,6 +300,17 @@ mod tests {
         assert_eq!(one.len(), 1);
         assert_eq!(one[0].page, 2);
         assert!(engine.extract_text(&doc, Some(&[3])).is_err());
+    }
+
+    /// Regression (audit B13): XML 1.0 forbids control
+    /// characters — one NUL in extracted text would make the
+    /// whole EPUB/DOCX unparseable. They are dropped; tab, LF
+    /// and CR survive, and the usual escapes still apply.
+    #[test]
+    fn escape_xml_drops_forbidden_control_characters() {
+        assert_eq!(escape_xml("a\x00b\x07c\x1fd"), "abcd");
+        assert_eq!(escape_xml("a\tb\nc\rd"), "a\tb\nc\rd");
+        assert_eq!(escape_xml("<a & b>"), "&lt;a &amp; b&gt;");
     }
 
     #[test]

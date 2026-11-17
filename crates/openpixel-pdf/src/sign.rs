@@ -673,7 +673,14 @@ fn collect_sig_dicts(doc: &Document) -> Vec<Dictionary> {
         .into_iter()
         .filter_map(|o| o.as_reference().ok())
         .collect();
+    // Audit B5: a cyclic /Kids graph (a field listing itself as
+    // its own child) looped forever here — the old walk had no
+    // visited set, unlike `collect_field_ids` in edit.rs.
+    let mut seen: std::collections::HashSet<ObjectId> = std::collections::HashSet::new();
     while let Some(id) = stack.pop() {
+        if !seen.insert(id) {
+            continue;
+        }
         let Ok(d) = doc.get_dictionary(id).cloned() else {
             continue;
         };
@@ -772,9 +779,29 @@ fn verify_one_signature(
         return info;
     }
     let (off1, len1, off2, len2) = (nums[0], nums[1], nums[2], nums[3]);
-    if off1 + len1 > file.len() || off2 + len2 > file.len() || off1 > off2 {
-        info.warnings
-            .push("signature /ByteRange lies outside the file".to_string());
+    // Audit B4: the ranges must partition the whole file around
+    // exactly the /Contents value. The old check only asked that
+    // each range end inside the file, so a /ByteRange that
+    // excluded most of the file still "verified": the digest
+    // covered only the declared ranges, and tampering outside
+    // them was never seen. The gap between the ranges is the
+    // /Contents value as written in the file — a hex string
+    // `<...>` (2 bytes per byte, plus brackets) or a literal
+    // string (bytes plus brackets).
+    let end1 = off1.checked_add(len1);
+    let end2 = off2.checked_add(len2);
+    let covers_file = off1 == 0
+        && matches!(end1, Some(e1) if e1 <= off2)
+        && matches!(end2, Some(e2) if e2 == file.len())
+        && end1.map_or(false, |e1| {
+            let gap = off2 - e1;
+            gap == contents.len() * 2 + 2 || gap == contents.len() + 2
+        });
+    if !covers_file {
+        info.warnings.push(
+            "signature /ByteRange does not cover the whole file except the /Contents value — the signature cannot prove the file is unchanged"
+                .to_string(),
+        );
         return info;
     }
     let mut signed_data = Vec::with_capacity(len1 + len2);
@@ -1338,5 +1365,68 @@ mod tests {
             .unwrap();
         let outcome = engine.verify_signatures(&signed, &[]).unwrap();
         assert!(outcome.signatures[0].valid);
+    }
+
+    /// Regression (audit B4): bytes appended after signing left
+    /// the old verifier reporting valid — the digest covered only
+    /// the declared ranges, and the old /ByteRange check only
+    /// asked that each range end inside the file. The ranges must
+    /// cover the whole file except the /Contents value.
+    #[test]
+    fn verify_rejects_bytes_appended_after_signing() {
+        let engine = PdfEngine::default();
+        let (key_pem, cert_pem) = test_cert();
+        let input = make_pdf(1, "Doc");
+        let signed = engine
+            .sign(&input, &key_pem, &cert_pem, &SignOptions::default())
+            .unwrap();
+        let mut appended = signed.clone();
+        appended.extend_from_slice(b"% trailing garbage appended after signing\n");
+        let outcome = engine.verify_signatures(&appended, &[]).unwrap();
+        assert_eq!(outcome.signatures.len(), 1);
+        assert!(
+            !outcome.signatures[0].valid,
+            "appended bytes were not detected: {:?}",
+            outcome.signatures[0]
+        );
+        assert!(
+            outcome.signatures[0]
+                .warnings
+                .iter()
+                .any(|w| w.contains("ByteRange")),
+            "warnings: {:?}",
+            outcome.signatures[0].warnings
+        );
+    }
+
+    /// Regression (audit B5): a signature field listing itself
+    /// in /Kids looped forever in `collect_sig_dicts` — the walk
+    /// had no visited set. The walk must terminate (here the
+    /// field has no /V, so no signature is reported at all).
+    #[test]
+    fn verify_terminates_on_cyclic_acroform_fields() {
+        let engine = PdfEngine::default();
+        let mut doc = Document::load_mem(&make_pdf(1, "Doc")).unwrap();
+        let field_id = doc.add_object(dictionary! {
+            "Type" => "Annot",
+            "Subtype" => "Widget",
+            "FT" => "Sig",
+            "T" => Object::String(b"Sig1".to_vec(), lopdf::StringFormat::Literal),
+        });
+        doc.get_dictionary_mut(field_id)
+            .unwrap()
+            .set("Kids", Object::Array(vec![Object::Reference(field_id)]));
+        let root = doc.trailer.get(b"Root").unwrap().as_reference().unwrap();
+        let acro_id = doc.add_object(dictionary! {
+            "Fields" => Object::Array(vec![Object::Reference(field_id)]),
+            "SigFlags" => Object::Integer(1),
+        });
+        doc.get_dictionary_mut(root)
+            .unwrap()
+            .set("AcroForm", Object::Reference(acro_id));
+        let mut bytes = Vec::new();
+        doc.save_to(&mut std::io::Cursor::new(&mut bytes)).unwrap();
+        let outcome = engine.verify_signatures(&bytes, &[]).unwrap();
+        assert!(outcome.signatures.is_empty());
     }
 }
