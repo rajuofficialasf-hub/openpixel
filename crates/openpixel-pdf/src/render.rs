@@ -7,8 +7,12 @@
 //! 2. `OPENPIXEL_PDFIUM_DIR` (a directory holding the library),
 //! 3. next to the current executable (so a release tarball can
 //!    ship `libpdfium.so` beside the `openpixel` binary),
-//! 4. the system library,
-//! 5. `./target/pdfium` (dev convenience — where
+//! 4. the Tauri resource directory (Phase 8: the desktop bundle
+//!    ships the library as a Tauri resource — on Linux that is
+//!    `/usr/lib/<exe_name>/`, NOT beside the binary; see
+//!    `tauri_resource_candidates`),
+//! 5. the system library,
+//! 6. `./target/pdfium` (dev convenience — where
 //!    `scripts/pdfium/fetch-pdfium.sh` puts it).
 //!
 //! When nothing is found, the error says exactly how to fetch it
@@ -167,10 +171,68 @@ pub(crate) mod worker {
         Ok(Pdfium::new(bindings))
     }
 
+    /// Tauri resource-directory candidates for `exe` (Phase 8).
+    /// Tauri 2 `bundle.resources` lands a bundled file in the app's
+    /// resource dir, which is NOT beside the binary on Linux/macOS
+    /// (Tauri 2.12 `resource_dir`, `tauri/src/path/desktop.rs`):
+    /// - Linux .deb: `/usr/lib/<exe_name>/` (binary in `/usr/bin/`);
+    /// - Linux AppImage: `$APPDIR/usr/lib/<exe_name>/`;
+    /// - running unbundled from `src-tauri/target/(debug|release)/`:
+    ///   `<exe_dir>/../lib/<exe_name>/`;
+    /// - macOS .app: `<exe_dir>/../Resources`
+    ///   (`Contents/MacOS` -> `Contents/Resources`);
+    /// - Windows: the resource dir IS the exe dir, already covered
+    ///   by the beside-the-binary step above.
+    /// The `resources/` subdir variants cover the case where the
+    /// bundler preserves the source directory structure
+    /// (`resources/libpdfium.so` -> `$RESOURCES/resources/...`),
+    /// and `APPDIR` is checked explicitly in case `current_exe`
+    /// resolves outside the AppImage mount. Candidates are pure
+    /// path arithmetic (no filesystem access); the caller checks
+    /// `is_file()`. The exe's file stem is the `<exe_name>` —
+    /// `openpixel-desktop` for the installed app.
+    pub(crate) fn tauri_resource_candidates(exe: &std::path::Path) -> Vec<std::path::PathBuf> {
+        use pdfium_render::prelude::Pdfium;
+        use std::path::PathBuf;
+        let mut out: Vec<PathBuf> = Vec::new();
+        let Some(exe_dir) = exe.parent() else {
+            return out;
+        };
+        let mut push_dir = |dir: PathBuf| {
+            let p = Pdfium::pdfium_platform_library_name_at_path(&dir);
+            if !out.contains(&p) {
+                out.push(p);
+            }
+        };
+        if let Some(stem) = exe.file_stem() {
+            let stem = stem.to_string_lossy().into_owned();
+            // <exe_dir>/../lib/<stem>/ — deb, AppImage, dev target/lib/.
+            push_dir(exe_dir.join("..").join("lib").join(&stem));
+            push_dir(exe_dir.join("..").join("lib").join(&stem).join("resources"));
+            if let Ok(appdir) = std::env::var("APPDIR") {
+                push_dir(PathBuf::from(&appdir).join("usr").join("lib").join(&stem));
+                push_dir(
+                    PathBuf::from(&appdir)
+                        .join("usr")
+                        .join("lib")
+                        .join(&stem)
+                        .join("resources"),
+                );
+            }
+        }
+        // macOS .app: Contents/MacOS -> Contents/Resources.
+        push_dir(exe_dir.join("..").join("Resources"));
+        push_dir(exe_dir.join("..").join("Resources").join("resources"));
+        // Defensive: a `resources/` dir beside the binary.
+        push_dir(exe_dir.join("resources"));
+        out
+    }
+
     /// Locate a libpdfium binary using the same resolution order as
-    /// `bind_pdfium` (env vars, beside the binary, dev `target/pdfium`
-    /// cache). `None` when no file is found — the system library is
-    /// NOT checked here; `bind_to_system_library` covers that path.
+    /// `bind_pdfium` (env vars, beside the binary, Tauri resource
+    /// dir, dev `target/pdfium` cache). `None` when no file is
+    /// found — the system library is NOT checked here;
+    /// `bind_to_system_library` covers that path.
     pub(crate) fn resolve_pdfium_library() -> Option<std::path::PathBuf> {
         use pdfium_render::prelude::Pdfium;
         use std::path::PathBuf;
@@ -189,6 +251,12 @@ pub(crate) mod worker {
         if let Ok(exe) = std::env::current_exe() {
             if let Some(dir) = exe.parent() {
                 let p = Pdfium::pdfium_platform_library_name_at_path(dir);
+                if p.is_file() {
+                    return Some(p);
+                }
+            }
+            // Tauri resource dir (Phase 8 desktop bundle).
+            for p in tauri_resource_candidates(&exe) {
                 if p.is_file() {
                     return Some(p);
                 }
@@ -458,6 +526,50 @@ mod tests {
             available,
             "pdfium_available()={available} but render returned {rendered:?}"
         );
+    }
+
+    #[test]
+    fn tauri_resource_candidates_cover_deb_appimage_and_macos_layouts() {
+        // The platform library name is OS-dependent (libpdfium.so
+        // on Linux); assert on the directory tail, not the filename.
+        let has_tail = |paths: &[std::path::PathBuf], tail: &str| {
+            paths
+                .iter()
+                .any(|p| p.to_string_lossy().replace('\\', "/").contains(tail))
+        };
+        // Installed .deb: /usr/bin/openpixel-desktop ->
+        // /usr/lib/openpixel-desktop/libpdfium.so.
+        let deb = super::worker::tauri_resource_candidates(std::path::Path::new(
+            "/usr/bin/openpixel-desktop",
+        ));
+        assert!(
+            has_tail(&deb, "bin/../lib/openpixel-desktop/libpdfium"),
+            "deb candidates: {deb:?}"
+        );
+        // AppImage mount: $APPDIR/usr/bin/... ->
+        // $APPDIR/usr/lib/openpixel-desktop/libpdfium.so.
+        let appimage = super::worker::tauri_resource_candidates(std::path::Path::new(
+            "/tmp/.mount-OpenPixel/usr/bin/openpixel-desktop",
+        ));
+        assert!(
+            has_tail(
+                &appimage,
+                ".mount-OpenPixel/usr/bin/../lib/openpixel-desktop/libpdfium"
+            ),
+            "appimage candidates: {appimage:?}"
+        );
+        // macOS .app: Contents/MacOS/OpenPixel ->
+        // Contents/Resources/libpdfium.dylib.
+        let macos = super::worker::tauri_resource_candidates(std::path::Path::new(
+            "/Applications/OpenPixel.app/Contents/MacOS/OpenPixel",
+        ));
+        assert!(
+            has_tail(&macos, "MacOS/../Resources/libpdfium"),
+            "macos candidates: {macos:?}"
+        );
+        // The resource-dir candidates never outrank the env vars:
+        // resolve_pdfium_library checks OPENPIXEL_PDFIUM_* first
+        // (order is asserted by the CLI e2e, not here).
     }
 
     #[test]
