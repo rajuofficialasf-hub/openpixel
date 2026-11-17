@@ -1,8 +1,8 @@
 use clap::{Parser, Subcommand};
 use openpixel_core::security::parse_background;
 use openpixel_core::{
-    detect_format, ConvertOptions, Engine, EngineConfig, ImageFormat, MetadataPolicy, Operation,
-    Pipeline, PipelineSpec, ProcessOptions, WatermarkPosition, WatermarkSpec,
+    detect_format, ConvertOptions, Engine, ImageFormat, MetadataPolicy, Operation, Pipeline,
+    PipelineSpec, ProcessOptions, WatermarkPosition, WatermarkSpec,
 };
 use openpixel_jobs::{JobManager, JobManagerConfig};
 use openpixel_ocr::OcrEngine;
@@ -13,6 +13,7 @@ use std::process::ExitCode;
 use std::sync::Arc;
 
 mod bench;
+mod isolated;
 
 #[derive(Parser)]
 #[command(
@@ -292,6 +293,14 @@ enum Commands {
         #[arg(long, default_value = "txt")]
         format: String,
     },
+    /// Internal worker for process isolation (Phase 8): runs one
+    /// conversion from a JSON spec on stdin and prints the result
+    /// JSON on stdout. Hidden from help and never invoked by
+    /// users — the parent `convert` / `process` / `batch` commands
+    /// re-exec this binary with it. Do not call it directly: it
+    /// takes no arguments and reads its whole job from stdin.
+    #[command(name = "__isolated-work", hide = true)]
+    IsolatedWork,
 }
 
 /// The `openpixel pdf ...` subcommands (Studio Phase 2). Every
@@ -715,7 +724,11 @@ enum DocCommands {
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    let engine = Arc::new(Engine::new(EngineConfig::default()));
+    // Phase 8: the engine config honours the
+    // OPENPIXEL_PROCESSING_TIMEOUT_SECS / OPENPIXEL_MAX_RSS_MB
+    // overrides (see `isolated`). The worker child inherits the
+    // same environment, so parent and child enforce the same limits.
+    let engine = Arc::new(Engine::new(isolated::engine_config_from_env(cli.quiet)));
     match run(&cli, &engine) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -729,6 +742,15 @@ fn main() -> ExitCode {
 
 fn run(cli: &Cli, engine: &Arc<Engine>) -> Result<(), openpixel_core::OpenPixelError> {
     match &cli.command {
+        // Phase 8 worker: never spawned by the parent's isolated
+        // path (it calls the engine directly), so it cannot
+        // re-exec itself. Reads one JSON spec from stdin, writes
+        // the output atomically, prints the result JSON on stdout.
+        Commands::IsolatedWork => {
+            let result = isolated::run_worker(engine)?;
+            println!("{}", serde_json::to_string_pretty(&result).unwrap());
+            Ok(())
+        }
         Commands::Info { input } => {
             let info = engine.get_image_info(input)?;
             if cli.json {
@@ -911,7 +933,21 @@ fn run(cli: &Cli, engine: &Arc<Engine>) -> Result<(), openpixel_core::OpenPixelE
                 selected_frame: *frame,
                 convert_to_srgb: *to_srgb,
             };
-            let result = engine.convert_to_path(input, output, &options)?;
+            // Phase 8: the conversion runs in a supervised child
+            // process (timeout-kill + RSS cap) unless isolation
+            // was disabled with OPENPIXEL_NO_ISOLATION=1. The
+            // result (and its JSON shape) is unchanged.
+            let result = if isolated::isolation_enabled() {
+                let spec = isolated::IsolatedWorkSpec::convert(
+                    input.clone(),
+                    output.clone(),
+                    isolated::target_format_for_output(output)?,
+                    options.clone(),
+                );
+                isolated::run_isolated(&spec, &isolated::limits_for(engine.config()))?
+            } else {
+                engine.convert_to_path(input, output, &options)?
+            };
             print_convert_result(cli, &result, "converted");
             Ok(())
         }
@@ -1016,6 +1052,45 @@ fn run(cli: &Cli, engine: &Arc<Engine>) -> Result<(), openpixel_core::OpenPixelE
                 }
                 spec.build()?
             };
+            // Phase 8: the worker rebuilds this pipeline from
+            // op-spec strings. `--op` strings travel verbatim;
+            // individual flags render to the same strings in
+            // canonical order (colours as #rrggbb). The watermark
+            // cannot be an op spec, so it travels separately.
+            let (worker_ops, worker_watermark) = if !op.is_empty() {
+                (op.clone(), None)
+            } else {
+                (
+                    isolated::individual_flags_to_op_specs(
+                        resize.as_deref(),
+                        resize_fit.as_deref(),
+                        resize_fill.as_deref(),
+                        pad.as_deref(),
+                        pad_color,
+                        crop.as_deref(),
+                        *thumbnail,
+                        *rotate,
+                        rotate_background,
+                        *flip_h,
+                        *flip_v,
+                        *grayscale,
+                        *brightness,
+                        *contrast,
+                        *saturation,
+                        *blur,
+                        *sharpen,
+                        *sharpen_threshold,
+                        *flatten,
+                        background,
+                    ),
+                    watermark.as_ref().map(|path| isolated::WatermarkSpecJson {
+                        path: path.clone(),
+                        position: watermark_position.clone(),
+                        opacity: *watermark_opacity,
+                        margin: *watermark_margin,
+                    }),
+                )
+            };
             let options = ProcessOptions::new(
                 ConvertOptions {
                     quality: *quality,
@@ -1039,7 +1114,23 @@ fn run(cli: &Cli, engine: &Arc<Engine>) -> Result<(), openpixel_core::OpenPixelE
                     ));
                 }
                 let target_bytes = parse_target_size(target_size)?;
-                let outcome = engine.process_to_size(input, output, &options, target_bytes)?;
+                // Phase 8: the target-size search runs in the
+                // supervised child, like every other conversion.
+                let outcome: openpixel_core::TargetSizeOutcome = if isolated::isolation_enabled() {
+                    let spec = isolated::IsolatedWorkSpec {
+                        kind: isolated::WorkKind::ProcessToSize,
+                        input: input.clone(),
+                        output: output.clone(),
+                        target: isolated::target_name_for_output(output)?,
+                        options: options.convert.clone(),
+                        ops: worker_ops,
+                        watermark: worker_watermark,
+                        target_bytes: Some(target_bytes),
+                    };
+                    isolated::run_isolated(&spec, &isolated::limits_for(engine.config()))?
+                } else {
+                    engine.process_to_size(input, output, &options, target_bytes)?
+                };
                 if cli.json {
                     println!("{}", serde_json::to_string_pretty(&outcome).unwrap());
                 } else if !cli.quiet {
@@ -1068,7 +1159,25 @@ fn run(cli: &Cli, engine: &Arc<Engine>) -> Result<(), openpixel_core::OpenPixelE
                 }
                 return Ok(());
             }
-            let result = engine.process_to_path(input, output, &options)?;
+            // Phase 8: the conversion runs in the supervised child
+            // process unless isolation was disabled with
+            // OPENPIXEL_NO_ISOLATION=1. The result (and its JSON
+            // shape) is unchanged.
+            let result = if isolated::isolation_enabled() {
+                let spec = isolated::IsolatedWorkSpec {
+                    kind: isolated::WorkKind::Process,
+                    input: input.clone(),
+                    output: output.clone(),
+                    target: isolated::target_name_for_output(output)?,
+                    options: options.convert.clone(),
+                    ops: worker_ops,
+                    watermark: worker_watermark,
+                    target_bytes: None,
+                };
+                isolated::run_isolated(&spec, &isolated::limits_for(engine.config()))?
+            } else {
+                engine.process_to_path(input, output, &options)?
+            };
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&result).unwrap());
             } else if !cli.quiet {
@@ -3213,7 +3322,25 @@ fn batch_sequential(
     let mut done = 0usize;
     for input in inputs {
         let output = batch_output_path(&input, out_dir, target, &mut used);
-        match engine.convert(&input, &output, target, options) {
+        // Phase 8: each file converts in a supervised child
+        // process (timeout-kill + RSS cap) unless isolation was
+        // disabled with OPENPIXEL_NO_ISOLATION=1. A killed file
+        // is a recorded failure, like any other failed file.
+        let converted = if isolated::isolation_enabled() {
+            let spec = isolated::IsolatedWorkSpec::convert(
+                input.clone(),
+                output.clone(),
+                target,
+                options.clone(),
+            );
+            isolated::run_isolated::<openpixel_core::ConvertResult>(
+                &spec,
+                &isolated::limits_for(engine.config()),
+            )
+        } else {
+            engine.convert(&input, &output, target, options)
+        };
+        match converted {
             Ok(r) => {
                 done += 1;
                 if cli.verbose {
@@ -3246,6 +3373,11 @@ fn batch_sequential(
 /// The Phase 6 batch: the same inputs and output rules, converted
 /// through a bounded `JobManager` pool. A failed file is recorded
 /// in its `JobResult` and never stops the batch.
+///
+/// Phase 8: the pool is isolated (`for_engine_isolated`) — each
+/// job runs as a supervised child process (the `openpixel`
+/// binary re-executed as `__isolated-work`), killed on timeout
+/// or RSS breach and recorded `Failed` with the limit named.
 fn batch_parallel(
     cli: &Cli,
     engine: &Arc<Engine>,
@@ -3255,11 +3387,69 @@ fn batch_parallel(
     options: &ConvertOptions,
     workers: usize,
 ) -> Result<BatchSummary, openpixel_core::OpenPixelError> {
-    let (inputs, mut failures) = collect_batch_inputs(cli, input_dir)?;
+    let (inputs, failures) = collect_batch_inputs(cli, input_dir)?;
+    // OPENPIXEL_NO_ISOLATION=1 falls back to the classic
+    // in-process pool (thread timeout, detach-on-timeout) — the
+    // debug escape hatch, not the default.
+    if !isolated::isolation_enabled() {
+        let manager =
+            JobManager::for_engine(JobManagerConfig::with_workers(workers), Arc::clone(engine))
+                .map_err(|e| openpixel_core::OpenPixelError::InvalidArgument(e.to_string()))?;
+        return batch_parallel_collect(
+            cli, manager, inputs, out_dir, target, options, workers, failures,
+        );
+    }
+    let runner: Arc<openpixel_jobs::IsolatedRunner> = Arc::new(|job: &openpixel_jobs::Job| {
+        let spec = isolated::IsolatedWorkSpec::convert(
+            job.input.clone(),
+            job.output.clone(),
+            job.target,
+            job.options.clone(),
+        );
+        let stdin = serde_json::to_vec(&spec).unwrap_or_default();
+        let command = match isolated::isolated_work_command() {
+            Ok(cmd) => cmd,
+            // `current_exe` effectively never fails on a running
+            // process; if it does, fail the job with a diagnosable
+            // message instead of a bare spawn error.
+            Err(e) => {
+                let mut cmd = std::process::Command::new("sh");
+                cmd.arg("-c").arg(format!(
+                    "echo 'could not re-execute openpixel binary: {e}' >&2; exit 1"
+                ));
+                cmd
+            }
+        };
+        openpixel_jobs::ChildJobSpec::with_stdin(command, stdin)
+            .with_temp_file(isolated::temp_output_path(&job.output))
+    });
+    let manager = JobManager::for_engine_isolated(
+        JobManagerConfig::with_workers(workers),
+        Arc::clone(engine),
+        runner,
+    )
+    .map_err(|e| openpixel_core::OpenPixelError::InvalidArgument(e.to_string()))?;
+    batch_parallel_collect(
+        cli, manager, inputs, out_dir, target, options, workers, failures,
+    )
+}
+
+/// Submit `inputs` to a parallel-batch `manager`, wait, and build
+/// the summary. Shared by the isolated pool and the
+/// `OPENPIXEL_NO_ISOLATION=1` in-process fallback so both report
+/// failures the same way.
+#[allow(clippy::too_many_arguments)]
+fn batch_parallel_collect(
+    cli: &Cli,
+    manager: JobManager,
+    inputs: Vec<PathBuf>,
+    out_dir: &Path,
+    target: ImageFormat,
+    options: &ConvertOptions,
+    workers: usize,
+    mut failures: Vec<BatchFailure>,
+) -> Result<BatchSummary, openpixel_core::OpenPixelError> {
     let mut used: HashSet<PathBuf> = HashSet::new();
-    let manager =
-        JobManager::for_engine(JobManagerConfig::with_workers(workers), Arc::clone(engine))
-            .map_err(|e| openpixel_core::OpenPixelError::InvalidArgument(e.to_string()))?;
     for input in inputs {
         let output = batch_output_path(&input, out_dir, target, &mut used);
         manager.submit(input, output, target, options.clone());

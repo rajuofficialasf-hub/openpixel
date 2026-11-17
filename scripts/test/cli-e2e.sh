@@ -527,38 +527,48 @@ pdfinfo "$OUT/clean.pdf" | grep -Eq "Pages:\\s+1" || { echo "FAIL: sanitized PDF
 "$BIN" pdf set-metadata "$IN/text2.pdf" "$OUT/x.pdf" > /dev/null 2>&1
 [ $? -eq 1 ] || { echo "FAIL: pdf set-metadata with no fields should exit 1"; exit 1; }
 echo "=== 14. process isolation (Phase 8): RSS kill, no partial output, escape hatch ==="
-# A 16 MiB RSS cap is below any real conversion's footprint, so the
-# supervised child must be killed and the error must name the cap.
-# No output file and no temp file may be left behind.
-OPENPIXEL_MAX_RSS_MB=16 "$BIN" convert "$IN/rgba.png" "$OUT/rss-killed.jpg" > /tmp/op-e2e/cli/rss.log 2>&1
-[ $? -eq 1 ] || { echo "FAIL: convert under a 16 MiB RSS cap should exit 1"; exit 1; }
+# The binary's own baseline is ~19 MiB and a small conversion peaks
+# ~32 MiB, so the RSS test needs a big image: 4000x3000 decodes to
+# ~48 MiB of RGBA, peaking ~70 MiB — over a 48 MiB cap, under it at
+# startup (so the parent's kill, not the worker's pre-flight, fires).
+python3 -c "from PIL import Image; Image.new('RGB', (4000, 3000), 'red').save('$IN/big.png')"
+# A 48 MiB RSS cap: the supervised child must be killed and the
+# error must name the cap. No output file and no temp file may be
+# left behind.
+OPENPIXEL_MAX_RSS_MB=48 "$BIN" convert "$IN/big.png" "$OUT/rss-killed.jpg" > /tmp/op-e2e/cli/rss.log 2>&1
+[ $? -eq 1 ] || { echo "FAIL: convert under a 48 MiB RSS cap should exit 1"; exit 1; }
 grep -q "RSS cap" /tmp/op-e2e/cli/rss.log || { echo "FAIL: RSS kill should name the cap"; exit 1; }
 grep -q "killed" /tmp/op-e2e/cli/rss.log || { echo "FAIL: RSS kill should say the child was killed"; exit 1; }
 [ ! -e "$OUT/rss-killed.jpg" ] || { echo "FAIL: RSS-killed convert must not leave an output file"; exit 1; }
 [ ! -e "$OUT/rss-killed.jpg.openpixel-tmp" ] || { echo "FAIL: RSS-killed convert must not leave a temp file"; exit 1; }
-# Same cap through process (not just convert).
-OPENPIXEL_MAX_RSS_MB=16 "$BIN" process "$IN/rgba.png" "$OUT/rss-killed2.png" --resize 128x96 > /tmp/op-e2e/cli/rss2.log 2>&1
-[ $? -eq 1 ] || { echo "FAIL: process under a 16 MiB RSS cap should exit 1"; exit 1; }
+# Same cap through process (decode still allocates the full image
+# before the resize, so the cap trips there too).
+OPENPIXEL_MAX_RSS_MB=48 "$BIN" process "$IN/big.png" "$OUT/rss-killed2.png" --resize 128x96 > /tmp/op-e2e/cli/rss2.log 2>&1
+[ $? -eq 1 ] || { echo "FAIL: process under a 48 MiB RSS cap should exit 1"; exit 1; }
 grep -q "RSS cap" /tmp/op-e2e/cli/rss2.log || { echo "FAIL: process RSS kill should name the cap"; exit 1; }
 [ ! -e "$OUT/rss-killed2.png" ] || { echo "FAIL: RSS-killed process must not leave an output file"; exit 1; }
 # The escape hatch: with isolation off, the same cap is ignored and
 # the conversion succeeds in-process (old behaviour, debug only).
-OPENPIXEL_NO_ISOLATION=1 OPENPIXEL_MAX_RSS_MB=16 "$BIN" convert "$IN/rgba.png" "$OUT/rss-noiso.jpg" > /tmp/op-e2e/cli/noiso.log 2>&1
+OPENPIXEL_NO_ISOLATION=1 OPENPIXEL_MAX_RSS_MB=48 "$BIN" convert "$IN/big.png" "$OUT/rss-noiso.jpg" > /tmp/op-e2e/cli/noiso.log 2>&1
 [ $? -eq 0 ] || { echo "FAIL: NO_ISOLATION convert should succeed despite the RSS cap"; exit 1; }
 [ -s "$OUT/rss-noiso.jpg" ] || { echo "FAIL: NO_ISOLATION convert should write an output file"; exit 1; }
-# Batch under the cap, both paths: every real file fails with the RSS
-# cap named, the batch still reports (exit 0 for the batch run) and
-# no output files are left behind. $IN/batch has 5 files (4 images +
-# corrupt.png, which fails on decode either way).
-OPENPIXEL_MAX_RSS_MB=16 "$BIN" batch "$IN/batch" --format webp --workers 1 --out-dir "$OUT/batch-rss" --json > /tmp/op-e2e/cli/rss-batch.json 2>&1
+# Batch under the cap, both paths: the big file fails with the RSS
+# cap named, the small file still converts, the batch still reports
+# (exit 0 for the batch run) and no partial output is left behind.
+mkdir -p "$IN/batch-rss" && cp "$IN/big.png" "$IN/rgba.png" "$IN/batch-rss/"
+OPENPIXEL_MAX_RSS_MB=48 "$BIN" batch "$IN/batch-rss" --format webp --workers 1 --out-dir "$OUT/batch-rss" --json > /tmp/op-e2e/cli/rss-batch.json 2>&1
 [ $? -eq 0 ] || { echo "FAIL: sequential RSS-capped batch should still exit 0"; exit 1; }
-grep -q '"failed": 5' /tmp/op-e2e/cli/rss-batch.json || { echo "FAIL: sequential RSS-capped batch should fail all 5 files"; exit 1; }
+grep -q '"converted": 1' /tmp/op-e2e/cli/rss-batch.json || { echo "FAIL: sequential RSS-capped batch should convert 1 file"; exit 1; }
+grep -q '"failed": 1' /tmp/op-e2e/cli/rss-batch.json || { echo "FAIL: sequential RSS-capped batch should fail 1 file"; exit 1; }
 grep -q "RSS cap" /tmp/op-e2e/cli/rss-batch.json || { echo "FAIL: sequential batch failures should name the RSS cap"; exit 1; }
-[ -z "$(ls -A "$OUT/batch-rss" 2>/dev/null)" ] || { echo "FAIL: sequential RSS-capped batch must not leave outputs"; exit 1; }
-OPENPIXEL_MAX_RSS_MB=16 "$BIN" batch "$IN/batch" --format webp --workers 2 --out-dir "$OUT/batch-rss2" --json > /tmp/op-e2e/cli/rss-batch2.json 2>&1
+[ -f "$OUT/batch-rss/rgba.webp" ] || { echo "FAIL: sequential RSS-capped batch should write rgba.webp"; exit 1; }
+[ ! -e "$OUT/batch-rss/big.webp" ] || { echo "FAIL: sequential RSS-capped batch must not leave big.webp"; exit 1; }
+OPENPIXEL_MAX_RSS_MB=48 "$BIN" batch "$IN/batch-rss" --format webp --workers 2 --out-dir "$OUT/batch-rss2" --json > /tmp/op-e2e/cli/rss-batch2.json 2>&1
 [ $? -eq 0 ] || { echo "FAIL: parallel RSS-capped batch should still exit 0"; exit 1; }
-grep -q '"failed": 5' /tmp/op-e2e/cli/rss-batch2.json || { echo "FAIL: parallel RSS-capped batch should fail all 5 files"; exit 1; }
+grep -q '"converted": 1' /tmp/op-e2e/cli/rss-batch2.json || { echo "FAIL: parallel RSS-capped batch should convert 1 file"; exit 1; }
+grep -q '"failed": 1' /tmp/op-e2e/cli/rss-batch2.json || { echo "FAIL: parallel RSS-capped batch should fail 1 file"; exit 1; }
 grep -q "RSS cap" /tmp/op-e2e/cli/rss-batch2.json || { echo "FAIL: parallel batch failures should name the RSS cap"; exit 1; }
-[ -z "$(ls -A "$OUT/batch-rss2" 2>/dev/null)" ] || { echo "FAIL: parallel RSS-capped batch must not leave outputs"; exit 1; }
+[ -f "$OUT/batch-rss2/rgba.webp" ] || { echo "FAIL: parallel RSS-capped batch should write rgba.webp"; exit 1; }
+[ ! -e "$OUT/batch-rss2/big.webp" ] || { echo "FAIL: parallel RSS-capped batch must not leave big.webp"; exit 1; }
 echo "=== DONE ==="
 ls -la "$OUT" | head -50

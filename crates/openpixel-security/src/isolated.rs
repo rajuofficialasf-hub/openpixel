@@ -318,7 +318,7 @@ pub fn run_command_isolated(
                 if let Some(cap) = limits.max_rss_bytes {
                     if let Some(rss) = rss_bytes_for_pid(pid) {
                         rss_enforced = true;
-                        peak_rss_bytes = Some(peak_rss_bytes.map_or(rss, |p: u64| p.max(rss)));
+                        peak_rss_bytes = Some(peak_rss_bytes.unwrap_or(rss).max(rss));
                         if rss > cap {
                             break match kill_and_reap(&mut child, pid) {
                                 Ok(()) => Err(IsolationError::RssCapExceeded {
@@ -445,15 +445,9 @@ mod tests {
 
     #[test]
     fn stdin_is_fed_to_the_child() {
-        let out = run_command_isolated(
-            {
-                let cmd = Command::new("cat");
-                cmd
-            },
-            b"round-trip",
-            &IsolationLimits::none(),
-        )
-        .unwrap();
+        let out =
+            run_command_isolated(Command::new("cat"), b"round-trip", &IsolationLimits::none())
+                .unwrap();
         assert_eq!(out.stdout, b"round-trip");
     }
 

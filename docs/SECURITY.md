@@ -97,7 +97,11 @@ an isolated pool is future work, not done in Phase 8.
   poll can be OOM-killed before the monitor sees it. The
   file-size / pixel / dimension limits remain the first line of
   defence; this is the second. A cgroup / `ulimit` cap is still
-  the answer for a hard deployment-wide ceiling.
+  the answer for a hard deployment-wide ceiling. (With a very
+  small cap — below the worker's own ~19 MiB startup footprint —
+  the worker's pre-flight check refuses the job before the
+  parent's monitor ever sees it; either way the job fails and
+  names the cap.)
 - **Only the direct child is killed.** The worker never spawns
   grandchildren (pure engine, no subprocesses), so a kill always
   ends the work — but the supervisor does not kill a process

@@ -448,6 +448,11 @@ fn write_output_atomically(
 /// `--background` / `--pad-color` / `--rotate-background` strings)
 /// and render as `#rrggbb`, which `parse_op_spec` reads back.
 /// `watermark` is returned separately — it cannot be an op spec.
+///
+/// Twenty parameters, one per `--process` flag: bundling them
+/// into a struct would only rename the call site, and the
+/// function takes exactly the flag list it renders.
+#[allow(clippy::too_many_arguments)]
 pub fn individual_flags_to_op_specs(
     resize: Option<&str>,
     resize_fit: Option<&str>,
