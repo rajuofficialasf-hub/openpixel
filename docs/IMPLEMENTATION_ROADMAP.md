@@ -426,6 +426,8 @@ scoped.
 
 ## Phase 7 — Desktop and Mobile
 
+**Status: DONE 17 Nov 2026** (commits 996bb2b–e520442, pushed; live on openpixel.pages.dev). Desktop: MUI migration (shared Studio tokens) + 20 PDF/OCR/document Tauri commands + desktop PDF UI (picker + 23 focused tool pages); backend 28/28 (27/27 with --no-default-features, cfg-gated native-ocr), frontend 15/15, .deb + .AppImage built, Xvfb smoke green, AVIF kept. Web: Bengali UI (EN/BN switch, 92/92), OCR→Word/Excel CLI export, PDF Edit undo/redo (pdf-e2e 41/41). Mobile: Android toolchain installed, `tauri android init` succeeds, build BLOCKED at dav1d-sys 0.8.3 (no meson cross-file; fix needs workspace-level jobs change — user decision); iOS blocked (needs a Mac). Click-through (1)–(8) + new PDF/OCR flows unrun (needs a real desktop); commands behind them unit-tested.
+
 **Entry:** Phase 6 exit green; all engines stable.
 **Work:** Tauri integration of PDF/OCR/document engines
 (same commands pattern as today); Android/iOS via Tauri
