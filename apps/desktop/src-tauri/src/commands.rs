@@ -672,6 +672,28 @@ mod tests {
     }
 
     #[test]
+    fn avif_roundtrip_still_works_after_core_default_features_off() {
+        // Phase 7: openpixel-core is depended on with
+        // `default-features = false` (the Android dav1d work);
+        // feature unification via openpixel-jobs must keep
+        // `native-avif` on for the desktop build. This test fails
+        // loudly if that ever stops being true.
+        let dir = tempfile::tempdir().expect("tempdir");
+        let png = fixture_png(dir.path());
+        let bytes = std::fs::read(&png).expect("read fixture png");
+        let engine = engine();
+        let (_, avif) = engine
+            .convert_bytes(&bytes, ImageFormat::Avif, &ConvertOptions::default())
+            .expect("encode AVIF");
+        assert_eq!(engine.detect_format(&avif), ImageFormat::Avif);
+        let (r, back) = engine
+            .convert_bytes(&avif, ImageFormat::Png, &ConvertOptions::default())
+            .expect("decode AVIF");
+        assert_eq!(r.source_format, ImageFormat::Avif);
+        assert_eq!(engine.detect_format(&back), ImageFormat::Png);
+    }
+
+    #[test]
     fn parse_format_accepts_names_and_extensions() {
         assert_eq!(parse_format("jpeg").unwrap(), ImageFormat::Jpeg);
         assert_eq!(parse_format("jpg").unwrap(), ImageFormat::Jpeg);

@@ -14,12 +14,14 @@
 //! * Tesseract and LibreOffice are runtime probes, never
 //!   compile-time claims: see `get_desktop_capabilities`.
 
-use openpixel_core::{ConvertOptions, Engine, ImageFormat};
+use openpixel_core::{ConvertOptions, DecodedImage, Engine, ImageFormat};
 use openpixel_documents::{ConversionOutcome, DocumentEngine, DocumentOptions, LibreOffice};
 use openpixel_formats::{DocumentConversion, DOCUMENT_CONVERSIONS};
-use openpixel_ocr::{
-    OcrEngine, OcrOptions, OcrResult, PreprocessMode, SearchablePage, TesseractEngine,
-};
+#[cfg(feature = "native-ocr")]
+use openpixel_ocr::OcrEngine;
+use openpixel_ocr::{OcrOptions, OcrResult, PreprocessMode};
+#[cfg(feature = "native-ocr")]
+use openpixel_ocr::{SearchablePage, TesseractEngine};
 use openpixel_pdf::{
     CompressMode, CompressOptions, CompressOutcome, EditOutcome, FlattenOutcome, MetadataEdit,
     OverlayFont, OverlayOp, PageNumberPosition, PageText, PdfEngine, PdfInfo, PdfThreats,
@@ -221,10 +223,22 @@ fn parse_ocr_options(req: &OcrRequest) -> Result<OcrOptions, String> {
 // ---- Testable core ----
 
 pub fn do_desktop_capabilities() -> DesktopCapabilities {
+    // Tesseract is a compile-time feature (`native-ocr`, on by
+    // default) AND a runtime install: with the feature off — the
+    // Android path — the probe reports absent instead of claiming
+    // anything, and the OCR commands below return the same honest
+    // error instead of failing to compile.
+    #[cfg(feature = "native-ocr")]
     let (tesseract_present, tesseract_version, tesseract_languages) = match TesseractEngine::new() {
         Ok(engine) => (true, Some(engine.version()), engine.available_languages()),
         Err(_) => (false, None, Vec::new()),
     };
+    #[cfg(not(feature = "native-ocr"))]
+    let (tesseract_present, tesseract_version, tesseract_languages): (
+        bool,
+        Option<String>,
+        Vec<String>,
+    ) = (false, None, Vec::new());
     let (libreoffice_present, libreoffice_version) = match LibreOffice::discover() {
         Some(lo) => (true, lo.version().ok()),
         None => (false, None),
@@ -520,8 +534,32 @@ pub fn do_ocr_recognize(
     let (_, image) = engine
         .decode_bytes(&bytes, None)
         .map_err(|e| e.to_string())?;
+    recognize_with_tesseract(&image, &options)
+}
+
+/// The one place that touches `TesseractEngine`: with
+/// `native-ocr` off (the Android path) this is an honest error,
+/// not a compile failure — see the module docs.
+#[cfg(feature = "native-ocr")]
+fn recognize_with_tesseract(
+    image: &DecodedImage,
+    options: &OcrOptions,
+) -> Result<OcrResult, String> {
     let ocr = TesseractEngine::new().map_err(|e| e.to_string())?;
-    ocr.recognize(&image, &options).map_err(|e| e.to_string())
+    ocr.recognize(image, options).map_err(|e| e.to_string())
+}
+
+#[cfg(not(feature = "native-ocr"))]
+fn recognize_with_tesseract(
+    _image: &DecodedImage,
+    _options: &OcrOptions,
+) -> Result<OcrResult, String> {
+    Err(ocr_unavailable_message())
+}
+
+#[cfg(not(feature = "native-ocr"))]
+fn ocr_unavailable_message() -> String {
+    "OCR is not available in this build: Tesseract support (feature `native-ocr`) is off — rebuild with default features on a machine with libtesseract installed (see docs/OCR.md)".to_string()
 }
 
 pub fn do_pdf_ocr_searchable(
@@ -549,6 +587,19 @@ pub fn do_pdf_ocr_searchable(
         raw.push(read_bytes(path)?);
     }
     let names: Vec<String> = (1..=raw.len()).map(|i| format!("page {i}")).collect();
+    searchable_pdf_bytes(&raw, &names, &options, title)
+}
+
+/// The one place that touches `TesseractEngine::searchable_pdf`:
+/// with `native-ocr` off this is an honest error, not a compile
+/// failure — see `recognize_with_tesseract`.
+#[cfg(feature = "native-ocr")]
+fn searchable_pdf_bytes(
+    raw: &[Vec<u8>],
+    names: &[String],
+    options: &OcrOptions,
+    title: &str,
+) -> Result<(Vec<u8>, Vec<OcrResult>), String> {
     let pages: Vec<SearchablePage<'_>> = raw
         .iter()
         .zip(names.iter())
@@ -558,8 +609,18 @@ pub fn do_pdf_ocr_searchable(
         })
         .collect();
     let ocr = TesseractEngine::new().map_err(|e| e.to_string())?;
-    ocr.searchable_pdf(&pages, title, &options)
+    ocr.searchable_pdf(&pages, title, options)
         .map_err(|e| e.to_string())
+}
+
+#[cfg(not(feature = "native-ocr"))]
+fn searchable_pdf_bytes(
+    _raw: &[Vec<u8>],
+    _names: &[String],
+    _options: &OcrOptions,
+    _title: &str,
+) -> Result<(Vec<u8>, Vec<OcrResult>), String> {
+    Err(ocr_unavailable_message())
 }
 
 pub fn do_doc_convert(
@@ -1177,21 +1238,9 @@ mod tests {
     #[test]
     fn capabilities_report_the_real_machine() {
         let caps = do_desktop_capabilities();
-        // This VM has Tesseract 5.3.4 + tessdata and LibreOffice
-        // 24.2.7.2 installed; pdfium stays OFF by design.
-        assert!(
-            caps.tesseract_present,
-            "tesseract should be present on this VM"
-        );
-        assert!(
-            caps.tesseract_version
-                .as_deref()
-                .unwrap_or("")
-                .contains("5.3"),
-            "tesseract version: {:?}",
-            caps.tesseract_version
-        );
-        assert!(caps.tesseract_languages.contains(&"eng".to_string()));
+        // This VM has LibreOffice 24.2.7.2 installed; pdfium stays
+        // OFF by design. Tesseract is asserted in the cfg-gated
+        // test below (it is absent when `native-ocr` is off).
         assert!(
             caps.libreoffice_present,
             "libreoffice should be present on this VM"
@@ -1205,6 +1254,34 @@ mod tests {
             caps.libreoffice_version
         );
         assert!(!caps.pdfium_present, "pdfium feature is off in this build");
+    }
+
+    #[test]
+    #[cfg(feature = "native-ocr")]
+    fn capabilities_report_tesseract() {
+        let caps = do_desktop_capabilities();
+        assert!(
+            caps.tesseract_present,
+            "tesseract should be present on this VM"
+        );
+        assert!(
+            caps.tesseract_version
+                .as_deref()
+                .unwrap_or("")
+                .contains("5.3"),
+            "tesseract version: {:?}",
+            caps.tesseract_version
+        );
+        assert!(caps.tesseract_languages.contains(&"eng".to_string()));
+    }
+
+    #[test]
+    #[cfg(not(feature = "native-ocr"))]
+    fn capabilities_report_no_tesseract_without_the_feature() {
+        let caps = do_desktop_capabilities();
+        assert!(!caps.tesseract_present);
+        assert!(caps.tesseract_version.is_none());
+        assert!(caps.tesseract_languages.is_empty());
     }
 
     #[test]
@@ -1390,6 +1467,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "native-ocr")]
     fn ocr_recognize_reads_the_fixture_text() {
         let dir = tempfile::tempdir().expect("tempdir");
         let fixture = dir.path().join("eng-clean.png");
@@ -1410,6 +1488,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "native-ocr")]
     fn pdf_ocr_searchable_builds_a_real_pdf() {
         let dir = tempfile::tempdir().expect("tempdir");
         let fixture = dir.path().join("eng-clean.png");
@@ -1426,6 +1505,26 @@ mod tests {
         // A PDF input is refused honestly: no PDFium rendering here.
         let pdf = fixture_pdf(dir.path(), "a.pdf", 1, "Hello");
         assert!(do_pdf_ocr_searchable(&[pdf], &ocr_req(), "x").is_err());
+    }
+
+    /// With `native-ocr` off (the Android path) the OCR commands
+    /// fail with a clear "not in this build" error — never a
+    /// compile failure and never a fake result.
+    #[test]
+    #[cfg(not(feature = "native-ocr"))]
+    fn ocr_commands_fail_honestly_without_the_feature() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let fixture = dir.path().join("eng-clean.png");
+        std::fs::write(
+            &fixture,
+            include_bytes!("../../../../crates/openpixel-ocr/tests/fixtures/eng-clean.png"),
+        )
+        .unwrap();
+        let engine = Engine::new(openpixel_core::EngineConfig::default());
+        let err = do_ocr_recognize(&engine, &fixture, &ocr_req()).unwrap_err();
+        assert!(err.contains("native-ocr"), "ocr error: {err}");
+        let err = do_pdf_ocr_searchable(&[fixture], &ocr_req(), "x").unwrap_err();
+        assert!(err.contains("native-ocr"), "searchable-pdf error: {err}");
     }
 
     #[test]
