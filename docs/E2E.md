@@ -465,6 +465,54 @@ rely on was preserved on the new pages.
   zero console/page errors. Screenshots
   `p6-picker-live.png`, `p6-merge-live.png`.
 
+### 2.26 Phase 7 web items (18 Nov 2026) — PASS
+
+Bengali UI strings, OCR→Word/Excel export (CLI), PDF Edit
+undo/redo. No live check yet — nothing has been pushed, so the
+live site still serves the previous commit; live verification
+awaits the coordinator's push.
+
+- **Bengali UI (web npm test 92/92, was 85/85 — +7 i18n
+  tests; lint 0 errors, build clean):** `lib/i18n.ts`
+  (EN/BN tables, English fallback) + `lib/i18n-context.tsx`
+  (provider). Header toggle (`#language-toggle`) + Settings →
+  Language, wired to the stored `settings.language`
+  preference. web-e2e §10b (4 new checks): nav label flips
+  `All Tools` → `সব টুল`, `lang="bn"`, persists across reload,
+  flips back. web-e2e **40/41** (was 36/37 — the 4 new checks
+  plus the extra format checks the suite already had; the one
+  failure is the same known keyboard flake, §2.19a).
+- **OCR export (CLI):** `openpixel ocr --format docx|xlsx`
+  (`crates/openpixel-ocr/src/export.rs`, hand-rolled ZIP + XML,
+  no new dependency). Unit tests 4/4 in the crate; verified
+  end-to-end with real Tesseract on a generated text image:
+  `out.docx` opens in python-docx (lines `Hello OpenPixel`,
+  `OCR export test`), `out.xlsx` opens in openpyxl (header +
+  5 word rows with confidences and boxes). `--format docx`
+  without `--output` is refused with a clear error (binary
+  cannot go to stdout). Web OCR tab download NOT built — needs
+  a new WASM export + rebuild + re-test (follow-up).
+- **PDF Edit undo/redo (pdf-e2e 41/41, was 31/31 — +10
+  checks in §16b):** history stack in `EditTool` — each action
+  pushes its ops, output rebuilt from the original bytes, so
+  undo is exact and actions now accumulate (found while
+  building: the old editor applied each action to the original
+  bytes, so the page-numbers download lost the earlier DRAFT
+  overlay — §16 now asserts both survive, `3 ops on 2 pages`).
+  Buttons + Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y (never inside text
+  fields), disabled states, history reset on a new file.
+- **routing-e2e 12/12:** two checks (`/nope`, `/pdf/nope`)
+  were changed to assert `location.pathname` instead of
+  `page.url()` — the app corrects the bar with a load-time
+  `replaceState`, which Playwright's `page.url()` does not
+  always observe (verified identical on the pre-change build
+  6085488: same stale `page.url()`, same correct `/`
+  pathname — a test-observation race, not a regression).
+- Regression: resize **16/16**, ocr-e2e **14/14**,
+  viewport-qa **31/31**, web-nowasm **9/9**; cargo test
+  --workspace — see the run summary in the handoff (count
+  grew with the 4 new OCR export tests).
+
 ### 2.16 WASM-absent fallback — PASS (9/9, SVG fix run 16 Nov 2026)
 
 A copy of `dist/` with `public/wasm/` removed, served on port 8322

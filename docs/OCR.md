@@ -50,6 +50,8 @@ openpixel ocr scan.png --lang ben             # Bengali
 openpixel ocr scan.png --lang eng+ben         # both (Tesseract "eng+ben")
 openpixel ocr scan.png --format json          # full result: words, boxes, confidences
 openpixel ocr scan.png --format html          # standalone page, word spans carry bboxes
+openpixel ocr scan.png -o out.docx --format docx   # Word: one paragraph per line
+openpixel ocr scan.png -o out.xlsx --format xlsx   # Excel: one row per word (text, confidence %, x, y, w, h)
 openpixel ocr scan.png --preprocess none|light|full   # default light
 openpixel ocr scan.png --psm 3                # page segmentation mode 0..=13
 openpixel pdf ocr scan.pdf searchable.pdf     # scanned PDF -> searchable PDF

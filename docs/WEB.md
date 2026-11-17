@@ -30,8 +30,9 @@ User drops a file
   selectors and the tests all read this one file; nothing in the app
   hard-codes a format list. Regenerate after any registry change.
 - **Settings**: `src/lib/settings.ts`, persisted in localStorage
-  under `openpixel.settings.v1` (theme, language `en`/`bn` — stored
-  preference, UI stays English until the Bengali strings land,
+  under `openpixel.settings.v1` (theme, language `en`/`bn` — the
+  stored preference now switches the interface chrome, see
+  [Bengali interface](#bengali-interface-enbn-phase-7-18-nov-2026),
   default quality/format/background, metadata policy, batch workers
   1–4). No account. Activity history (My Files / Recent Files) is a
   separate store, `src/lib/activity.ts` (`openpixel.activity.v1`,
@@ -177,7 +178,17 @@ Formats), Account (Settings / Help Center).
   center preview + info, tools on the right (text overlays,
   highlights, page numbers, headers/footers). The image editor (Convert) uses the shared
   `EditorShell` (preview left, tools right); Resize/Batch keep
-  their multi-item list layouts. No fake undo/redo anywhere.
+  their multi-item list layouts. **Undo/redo (Phase 7, 18 Nov
+  2026):** the Edit tool has a real history — every action pushes
+  one entry (its ops) onto the undo stack; the output is always
+  rebuilt by re-applying the remaining ops to the ORIGINAL bytes,
+  so undo is exact and actions accumulate (before this, each
+  action produced a result holding only itself — the page-numbers
+  download lost the earlier DRAFT overlay). Undo/Redo buttons in
+  the ops panel (disabled when the stack is empty) + Ctrl+Z /
+  Ctrl+Shift+Z / Ctrl+Y; the shortcuts never hijack typing inside
+  a text field. History resets when a different file is loaded.
+  e2e: pdf-e2e §16b (10 checks).
 - **PDF viewport-fit (17 Nov 2026):** on desktop (≥900px) every
   PDF tool page is a viewport-height workspace — the shell
   (`AppShell` `fitViewport`, all `pdf-*` routes) fills exactly
@@ -212,6 +223,37 @@ Formats), Account (Settings / Help Center).
   hamburger — the drawer could not be opened. Fixed with
   `justifyContent: 'flex-start'` on the logo button and the
   wordmark hidden below `sm` (icon only on phones).
+
+## Bengali interface (EN/BN) — Phase 7, 18 Nov 2026
+
+- **Module:** `apps/web/src/lib/i18n.ts` (hand-written EN/BN
+  string tables + `translate()` with English fallback for a
+  missing Bengali string) and `apps/web/src/lib/i18n-context.tsx`
+  (`I18nProvider` / `useI18n`). No i18n library, no machine
+  translation. Rules: translate the chrome (navigation, headings,
+  buttons, help text, statuses); keep tool and format names
+  English (PDF, Merge, Compress, OCR, PNG, JPEG…); tool
+  descriptions stay English for now.
+- **Wiring:** `App` wraps the shell in `<I18nProvider
+  language={settings.language}>` and sets `<html lang>` — the
+  stored `settings.language` preference (which existed since
+  Phase 6 but did nothing) now drives the UI on first load.
+  Toggle in the header next to the theme button
+  (`#language-toggle`, shows `বাং` / `EN`) and in Settings →
+  Language; both write the same stored preference.
+- **Coverage:** sidebar/header nav, breadcrumbs, search, footer,
+  homepage, All Tools directory, shared PDF tool shell
+  (upload/settings/result/download), Settings, workspace
+  (Overview / My Files / Recent Files). Convert/Resize/Batch/OCR
+  workspaces keep their English labels — their chrome was not
+  moved into the tables in this pass.
+- **Tests:** `apps/web/src/lib/i18n.test.ts` (7 tests: lookup,
+  Bengali values, tool names stay English, English fallback,
+  unknown-key fallback, interpolation, switching) and web-e2e
+  §10b (4 checks: nav label flips `All Tools` → `সব টুল`,
+  `lang="bn"`, persists across reload, flips back). Default stays
+  English, so every suite that asserts English text passes
+  unchanged.
 
 ## What converts where
 
@@ -446,6 +488,16 @@ WebAssembly) — never presented as the native CLI engine.
 - **Tests:** `apps/web/src/lib/ocr.test.ts` (12 unit tests:
   language/PSM parsing, result shaping); e2e in
   `apps/web/e2e/ocr-e2e.mjs` (14/14 — see docs/E2E.md §2.21).
+- **Word/Excel export (Phase 7, 18 Nov 2026 — CLI only):**
+  `openpixel ocr --format docx|xlsx` needs `--output`
+  (binary — refused without a file). `ocr_to_docx` (one
+  paragraph per recognised line) and `ocr_to_xlsx` (one row per
+  word: text, confidence %, x, y, width, height) live in
+  `crates/openpixel-ocr/src/export.rs` — hand-rolled ZIP + XML,
+  same minimal pattern as the PDF text exports, no new
+  dependency. Verified to open in python-docx / openpyxl. The
+  web OCR tab does NOT offer the download yet: it would need a
+  new WASM export + rebuild + re-test — follow-up, not built.
 
 ## WASM status — shipped (follow-up item 2, 16 Nov 2026)
 

@@ -68,6 +68,18 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
   const [highlightH, setHighlightH] = useState('20')
   const [highlightColor, setHighlightColor] = useState('#ffeb3b')
 
+  // Edit history (Phase 7): every action pushes one entry (its
+  // ops) onto the undo stack; the current output is always
+  // rebuilt by re-applying the remaining ops to the ORIGINAL
+  // bytes — never to a previous result, so undo is exact and
+  // actions accumulate instead of replacing each other (before
+  // this, each action produced a result holding only itself).
+  // Undo pops the last entry onto the redo stack; redo pushes
+  // it back. An empty stack clears the result (pdf_edit rejects
+  // an empty ops list, so it is never called with one).
+  const [undoStack, setUndoStack] = useState<PdfOverlayOp[][]>([])
+  const [redoStack, setRedoStack] = useState<PdfOverlayOp[][]>([])
+
   // Preview: render the selected page with pdf.js into the
   // canvas. A render that throws is a visible error, never a
   // silently blank canvas.
@@ -107,8 +119,14 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
     return Number.isFinite(n) ? n : null
   }
 
-  const runEdit = async (label: string, ops: PdfOverlayOp[], suffix: string) => {
+  const applyOps = async (ops: PdfOverlayOp[], label: string) => {
     if (!bytes || !file) return
+    if (ops.length === 0) {
+      pdf.setResults([])
+      pdf.setStatus('All edits undone — no changes to download yet.')
+      pdf.setBusy(null)
+      return
+    }
     pdf.setBusy(label)
     pdf.setError(null)
     pdf.setStatus(null)
@@ -122,7 +140,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
       {
         label,
         blob: new Blob([result.data as BlobPart], { type: 'application/pdf' }),
-        filename: pdfOutputName(file.name, suffix),
+        filename: pdfOutputName(file.name, 'edited'),
         pages: pageCount,
       },
     ])
@@ -131,6 +149,68 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
     )
     pdf.setBusy(null)
   }
+
+  /** Push one action onto the history and rebuild the output. */
+  const pushAction = (ops: PdfOverlayOp[]) => {
+    const next = [...undoStack, ops]
+    setUndoStack(next)
+    setRedoStack([])
+    void applyOps(next.flat(), 'Edited PDF')
+  }
+
+  const handleUndo = () => {
+    if (undoStack.length === 0 || pdf.busy !== null) return
+    const entry = undoStack[undoStack.length - 1]
+    const next = undoStack.slice(0, -1)
+    setUndoStack(next)
+    setRedoStack([...redoStack, entry])
+    void applyOps(next.flat(), 'Edited PDF')
+  }
+
+  const handleRedo = () => {
+    if (redoStack.length === 0 || pdf.busy !== null) return
+    const entry = redoStack[redoStack.length - 1]
+    setRedoStack(redoStack.slice(0, -1))
+    const next = [...undoStack, entry]
+    setUndoStack(next)
+    void applyOps(next.flat(), 'Edited PDF')
+  }
+
+  // A new file starts with empty history — an old edit must
+  // never be re-applied to a different document.
+  // A new file starts with empty history — an old edit must
+  // never be re-applied to a different document. Reset in the
+  // load/clear handlers (not an effect) so no cascading render.
+  const loadFile = (files: File[]) => {
+    setUndoStack([])
+    setRedoStack([])
+    void pdf.handleFiles(files)
+  }
+  const clearAll = () => {
+    setUndoStack([])
+    setRedoStack([])
+    pdf.clearFile()
+  }
+
+  // Ctrl+Z undo / Ctrl+Shift+Z or Ctrl+Y redo. Never hijack
+  // typing: inside a text field the browser's own undo wins.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return
+      const target = e.target as HTMLElement | null
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)) return
+      const key = e.key.toLowerCase()
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        handleUndo()
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault()
+        handleRedo()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  })
 
   const handleEditText = () => {
     const page = editPageNumber()
@@ -142,7 +222,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
       pdf.setError('Check the text overlay — page 1–' + pageCount + ', numbers for X/Y/size, a #RRGGBB colour, and some text.')
       return
     }
-    void runEdit('Edited PDF', [{ kind: 'text', page, x, y, text: editText, size, color, font: 'helvetica' }], 'edited')
+    pushAction([{ kind: 'text', page, x, y, text: editText, size, color, font: 'helvetica' }])
   }
 
   const handlePageNumbers = () => {
@@ -150,11 +230,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
       pdf.setError('Give a page-number format, e.g. "Page {n} of {total}".')
       return
     }
-    void runEdit(
-      'Edited PDF',
-      [{ kind: 'page_numbers', pages: null, format: pageNumFormat, position: pageNumPosition, size: 10 }],
-      'edited',
-    )
+    pushAction([{ kind: 'page_numbers', pages: null, format: pageNumFormat, position: pageNumPosition, size: 10 }])
   }
 
   const handleHeaderFooter = () => {
@@ -162,11 +238,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
       pdf.setError('Give a header, a footer, or both.')
       return
     }
-    void runEdit(
-      'Edited PDF',
-      [{ kind: 'header_footer', pages: null, header: headerText.trim() || null, footer: footerText.trim() || null, size: 10 }],
-      'edited',
-    )
+    pushAction([{ kind: 'header_footer', pages: null, header: headerText.trim() || null, footer: footerText.trim() || null, size: 10 }])
   }
 
   const handleHighlight = () => {
@@ -180,11 +252,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
       pdf.setError('Check the highlight — page 1–' + pageCount + ', numbers for X/Y/width/height, and a #RRGGBB colour.')
       return
     }
-    void runEdit(
-      'Edited PDF',
-      [{ kind: 'highlight', page, x, y, width: w, height: h, color, opacity: 0.4 }],
-      'edited',
-    )
+    pushAction([{ kind: 'highlight', page, x, y, width: w, height: h, color, opacity: 0.4 }])
   }
 
   const handleRenderDownload = async () => {
@@ -246,7 +314,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
               multiple={false}
               accept="application/pdf,.pdf"
               compact
-              onFiles={(files) => void pdf.handleFiles(files)}
+              onFiles={loadFile}
             />
           </Stack>
         )}
@@ -319,7 +387,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                         </>
                       )}
                     </Box>
-                    <Button type="button" variant="outlined" onClick={pdf.clearFile} sx={{ mt: 2 }}>
+                    <Button type="button" variant="outlined" onClick={clearAll} sx={{ mt: 2 }}>
                       Choose a different file
                     </Button>
                   </CardContent>
@@ -431,6 +499,33 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
             </Grid>
             <Grid size={{ xs: 12, lg: 4 }} sx={{ display: 'flex', flexDirection: 'column', height: { lg: '100%' }, minHeight: { lg: 0 } }}>
               <Stack spacing={2} id="pdf-ops-panel" sx={{ flex: { lg: 1 }, minHeight: { lg: 0 }, overflowY: { lg: 'auto' }, pr: { lg: 0.5 }, '& > *': { flexShrink: 0 } }}>
+                <Stack direction="row" spacing={1.5} flexWrap="wrap">
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    id="pdf-edit-undo"
+                    onClick={handleUndo}
+                    disabled={undoStack.length === 0 || pdf.busy !== null}
+                    title="Undo last edit (Ctrl+Z)"
+                  >
+                    Undo
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    id="pdf-edit-redo"
+                    onClick={handleRedo}
+                    disabled={redoStack.length === 0 || pdf.busy !== null}
+                    title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
+                  >
+                    Redo
+                  </Button>
+                  <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
+                    {undoStack.length === 0
+                      ? 'No edits yet.'
+                      : `${undoStack.length} edit${undoStack.length === 1 ? '' : 's'} applied — Undo removes the last one.`}
+                  </Typography>
+                </Stack>
                 <Card>
                   <CardContent>
                     <Typography variant="overline" color="text.secondary">

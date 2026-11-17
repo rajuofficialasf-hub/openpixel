@@ -334,16 +334,55 @@ check(
   editedInfo.ok && editedText.includes('DRAFT') && editedText.includes('SECRET-123 is here'),
   `${editedInfo.detail} | text: ${editedText.replace(/\n/g, ' | ').slice(0, 160)}`,
 );
+check('undo enabled and redo disabled after one edit',
+  !(await page.locator('#pdf-edit-undo').isDisabled()) && (await page.locator('#pdf-edit-redo').isDisabled()));
 await page.locator('#pdf-edit-pagenum-button').click();
-await waitStatus('Edited PDF: 2 ops on 2 pages');
+await waitStatus('Edited PDF: 3 ops on 2 pages');
 const numberedPath = await downloadResult(0);
 const numberedInfo = verifyPdf(numberedPath, 2);
 const numberedText = numberedInfo.ok ? extractText(numberedPath) : '';
 check(
-  'page numbers downloads a real 2-page PDF with "Page 1 of 2"',
-  numberedInfo.ok && numberedText.includes('Page 1 of 2'),
+  'page numbers downloads a real 2-page PDF with "Page 1 of 2" — and the earlier DRAFT overlay is still there (edits accumulate)',
+  numberedInfo.ok && numberedText.includes('Page 1 of 2') && numberedText.includes('DRAFT'),
   `${numberedInfo.detail} | text: ${numberedText.replace(/\n/g, ' | ').slice(0, 160)}`,
 );
+
+// --- 16b. Edit undo / redo (Phase 7): buttons + Ctrl+Z ---
+check('undo enabled and redo disabled after two edits',
+  !(await page.locator('#pdf-edit-undo').isDisabled()) && (await page.locator('#pdf-edit-redo').isDisabled()));
+await page.locator('#pdf-edit-undo').click();
+await waitStatus('Edited PDF: 1 op');
+const undonePath = await downloadResult(0);
+const undoneText = extractText(undonePath);
+check(
+  'undo removes the page numbers but keeps the DRAFT overlay',
+  undoneText.includes('DRAFT') && !undoneText.includes('Page 1 of 2'),
+  `text: ${undoneText.replace(/\n/g, ' | ').slice(0, 160)}`,
+);
+check('redo enabled after an undo', !(await page.locator('#pdf-edit-redo').isDisabled()));
+await page.locator('#pdf-edit-undo').click();
+await waitStatus('All edits undone');
+check('undoing the last edit leaves no download', (await page.locator('#pdf-download-0').count()) === 0);
+check('undo disabled when the history is empty', await page.locator('#pdf-edit-undo').isDisabled());
+await page.locator('#pdf-edit-redo').click();
+await waitStatus('Edited PDF: 1 op');
+const redonePath = await downloadResult(0);
+check('redo brings the DRAFT overlay back', extractText(redonePath).includes('DRAFT'));
+await page.locator('#pdf-edit-redo').click();
+await waitStatus('Edited PDF: 3 ops on 2 pages');
+const redone2Text = extractText(await downloadResult(0));
+check(
+  'second redo restores page numbers and DRAFT together',
+  redone2Text.includes('Page 1 of 2') && redone2Text.includes('DRAFT'),
+  `text: ${redone2Text.replace(/\n/g, ' | ').slice(0, 160)}`,
+);
+// Keyboard: Ctrl+Z undoes, Ctrl+Shift+Z redoes (focus is on a button, not a text field).
+await page.keyboard.press('Control+z');
+await waitStatus('Edited PDF: 1 op');
+check('Ctrl+Z undoes the last edit', !(await page.locator('#pdf-edit-redo').isDisabled()));
+await page.keyboard.press('Control+Shift+z');
+await waitStatus('Edited PDF: 3 ops on 2 pages');
+check('Ctrl+Shift+Z redoes', (await page.locator('#pdf-edit-redo').isDisabled()));
 await shot('22-pdf-edit.png');
 
 // --- 17. redact the secret by text: byte-proof (absent from the

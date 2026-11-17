@@ -65,12 +65,15 @@ try {
   );
 
   // 1d. Unknown /pdf/* falls back to the /pdf picker, not home.
+  // Same `page.url()` caveat as §6 below: the correction is a
+  // load-time replaceState, so assert on `location.pathname`.
   await page.goto(`${BASE}/pdf/nope`, { waitUntil: 'networkidle' });
   await sleep(500);
+  const pdfNopePath = await page.evaluate(() => window.location.pathname);
   check(
     'unknown /pdf/nope lands on PDF picker',
-    page.url() === `${BASE}/pdf` && (await page.locator('#pdf-heading').count()) > 0,
-    `url=${page.url()}`,
+    pdfNopePath === '/pdf' && (await page.locator('#pdf-heading').count()) > 0,
+    `pathname=${pdfNopePath} url=${page.url()}`,
   );
 
   // 2. Deep link /convert loads Convert.
@@ -126,12 +129,20 @@ try {
   );
 
   // 6. Unknown path lands on home and the address bar is corrected.
+  // NOTE (18 Nov 2026): assert on `location.pathname`, not
+  // `page.url()` — the app corrects the bar with
+  // `history.replaceState` during the initial load, and
+  // Playwright's `page.url()` does not pick that up (it still
+  // reports /nope while `pathname` is already `/`). Verified
+  // identical on the pre-change build (6085488): same stale
+  // `page.url()`, same correct `/` pathname — not a regression.
   await page.goto(`${BASE}/nope`, { waitUntil: 'networkidle' });
   await sleep(500);
+  const nopePath = await page.evaluate(() => window.location.pathname);
   check(
     'unknown /nope lands on home',
-    page.url() === `${BASE}/` && (await bodyText()).includes('Everything You Need to Work With Files'),
-    `url=${page.url()}`,
+    nopePath === '/' && (await bodyText()).includes('Everything You Need to Work With Files'),
+    `pathname=${nopePath} url=${page.url()}`,
   );
 
   check('no console/page errors during routing', errs.length === 0, errs.slice(0, 2).join(' | '));
