@@ -22,7 +22,7 @@ import { EditTool } from './components/pdf/EditTool'
 import { FlattenTool, MetadataTool, RedactTool, RepairTool, SanitizeTool } from './components/pdf/CleanUpTools'
 import { AppShell } from './components/layout/AppShell'
 import { loadSettings, resolveTheme, saveSettings, type Settings } from './lib/settings'
-import { I18nProvider } from './lib/i18n'
+import { I18nProvider } from './lib/i18n-context'
 import { getTheme } from './theme/theme'
 import { ROUTE_PATHS, routeFromPath, type RouteId, type ToolCategory } from './lib/routes'
 

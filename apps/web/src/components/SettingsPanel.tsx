@@ -23,7 +23,8 @@ import {
 import { browserEncodableFormats, formatLabel } from '../lib/capabilities'
 import { DEFAULT_SETTINGS, type Settings } from '../lib/settings'
 import { useWasmSupport } from '../lib/wasm-engine'
-import { plural, useI18n } from '../lib/i18n'
+import { plural } from '../lib/i18n'
+import { useI18n } from '../lib/i18n-context'
 
 interface SettingsPanelProps {
   settings: Settings

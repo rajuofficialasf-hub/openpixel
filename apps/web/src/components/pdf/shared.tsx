@@ -21,7 +21,7 @@ import { formatBytes } from '../../lib/capabilities'
 import { DropZone } from '../DropZone'
 import { ToolPageHeader } from '../ToolPage'
 import { downloadBlob, type UsePdfFile } from './usePdfFile'
-import { useI18n } from '../../lib/i18n'
+import { useI18n } from '../../lib/i18n-context'
 
 export function WasmWarning() {
   return (

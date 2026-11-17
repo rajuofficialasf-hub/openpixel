@@ -21,7 +21,8 @@ import SearchIcon from '@mui/icons-material/Search'
 import { CATEGORIES, ROUTE_TITLES, searchTools, TOOLS, type RouteId, type ToolCategory } from '../lib/routes'
 import { formatDate, loadActivity } from '../lib/activity'
 import { ToolCard } from './ToolCard'
-import { plural, translate, useI18n } from '../lib/i18n'
+import { plural, translate } from '../lib/i18n'
+import { useI18n } from '../lib/i18n-context'
 
 export type ToolsCategoryFilter = ToolCategory | 'all'
 

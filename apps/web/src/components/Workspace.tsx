@@ -49,7 +49,8 @@ import {
   type ActivityEntry,
 } from '../lib/activity'
 import { ROUTE_TITLES, type RouteId } from '../lib/routes'
-import { plural, useI18n } from '../lib/i18n'
+import { plural } from '../lib/i18n'
+import { useI18n } from '../lib/i18n-context'
 
 interface WorkspaceProps {
   onNavigate: (route: RouteId) => void
