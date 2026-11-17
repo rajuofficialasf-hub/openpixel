@@ -287,7 +287,8 @@ enum Commands {
         /// Preprocessing: none, light (default), full
         #[arg(long, default_value = "light")]
         preprocess: String,
-        /// Output format: txt, html or json (default txt)
+        /// Output format: txt, html, json, docx or xlsx (default txt).
+        /// docx/xlsx need an --output file (binary — they cannot go to stdout).
         #[arg(long, default_value = "txt")]
         format: String,
     },
@@ -1255,9 +1256,14 @@ fn run(cli: &Cli, engine: &Arc<Engine>) -> Result<(), openpixel_core::OpenPixelE
             format,
         } => {
             let format = format.trim().to_ascii_lowercase();
-            if !matches!(format.as_str(), "txt" | "html" | "json") {
+            if !matches!(format.as_str(), "txt" | "html" | "json" | "docx" | "xlsx") {
                 return Err(openpixel_core::OpenPixelError::InvalidArgument(format!(
-                    "unknown OCR format '{format}' — use txt, html or json"
+                    "unknown OCR format '{format}' — use txt, html, json, docx or xlsx"
+                )));
+            }
+            if matches!(format.as_str(), "docx" | "xlsx") && output.is_none() {
+                return Err(openpixel_core::OpenPixelError::InvalidArgument(format!(
+                    "OCR format '{format}' is binary — give an output file with --output <file>"
                 )));
             }
             let options = ocr_options(lang, *psm, preprocess)?;
@@ -1275,6 +1281,8 @@ fn run(cli: &Cli, engine: &Arc<Engine>) -> Result<(), openpixel_core::OpenPixelE
                 "txt" => format!("{}\n", result.text).into_bytes(),
                 "html" => ocr_result_to_html(&result).into_bytes(),
                 "json" => serde_json::to_string_pretty(&result).unwrap().into_bytes(),
+                "docx" => openpixel_ocr::ocr_to_docx(&result),
+                "xlsx" => openpixel_ocr::ocr_to_xlsx(&result),
                 _ => unreachable!(),
             };
             match output {

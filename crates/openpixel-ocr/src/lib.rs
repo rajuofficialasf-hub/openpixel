@@ -8,6 +8,7 @@
 
 pub mod engine;
 pub mod error;
+pub mod export;
 pub mod preprocess;
 pub mod result;
 
@@ -16,6 +17,7 @@ pub mod tesseract;
 
 pub use engine::{OcrEngine, OcrOptions, PreprocessMode};
 pub use error::OcrError;
+pub use export::{ocr_to_docx, ocr_to_xlsx};
 pub use result::{OcrResult, OcrWord};
 
 #[cfg(feature = "native-ocr")]

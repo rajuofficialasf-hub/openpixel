@@ -14,6 +14,8 @@ description = "OpenPixel OCR engine — Tesseract native OCR with a pluggable en
 # in a native build). Same pattern as openpixel-core.
 openpixel-codecs = { path = "../openpixel-codecs", default-features = false }
 openpixel-pipeline = { path = "../openpixel-pipeline" }
+crc32fast.workspace = true
+flate2.workspace = true
 image.workspace = true
 serde.workspace = true
 thiserror.workspace = true
