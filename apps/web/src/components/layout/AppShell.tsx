@@ -92,6 +92,7 @@ function Logo({ onNavigate }: { onNavigate: (route: RouteId) => void }) {
       sx={{
         display: 'flex',
         alignItems: 'center',
+        justifyContent: 'flex-start',
         gap: 1,
         px: 0.5,
         minWidth: 0,
@@ -115,7 +116,11 @@ function Logo({ onNavigate }: { onNavigate: (route: RouteId) => void }) {
       >
         <GridOnIcon fontSize="small" />
       </Box>
-      <Typography variant="h6" component="span" sx={{ fontSize: '1.125rem', whiteSpace: 'nowrap' }}>
+      <Typography
+        variant="h6"
+        component="span"
+        sx={{ fontSize: '1.125rem', whiteSpace: 'nowrap', display: { xs: 'none', sm: 'block' } }}
+      >
         OpenPixel{' '}
         <Box component="span" sx={{ color: 'primary.main' }}>
           Studio

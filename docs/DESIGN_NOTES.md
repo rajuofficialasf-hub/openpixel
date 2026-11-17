@@ -234,3 +234,47 @@ a working-looking button.
 - **No auth pages:** no backend exists; Sign In / Sign Up are
   not built. The header profile area says so plainly.
 - **Desktop:** out of scope (Phase 7).
+
+## 11. Phase 6 as built (17 Nov 2026)
+
+- **Tokens live in `apps/web/src/theme/theme.ts`** (`getTheme(mode)`):
+  light primary `#3157D5` / primary-dark `#2443AA`, background
+  `#F7F8FC`, surface `#FFFFFF`, surface-secondary `#F1F4F9`, text
+  `#172033` / `#64748B`, border `#E2E8F0`, success `#16A36A`,
+  warning `#E6A23C`, error `#DC4C4C`, info `#3284D6`; dark
+  background `#0B1020`, surface `#121A2B`, elevated `#19243A`,
+  primary `#829BFF`, text `#F1F5FB` / `#A3AEC2`, border `#26344D`,
+  success `#39C98A`, warning `#F0B64D`, error `#F07878`, info
+  `#64A9F5`. Inter + Noto Sans Bengali via `@fontsource`
+  (self-hosted woff/woff2, no CDN). 8px spacing; sidebar 248px /
+  collapsed 72px; header 64–72px; content max-width 1440px; page
+  padding 24–32px (16px mobile); card radius 12, dialog 16,
+  button 8; input min-height 44.
+- **Shell:** `src/components/layout/AppShell.tsx` + `src/lib/routes.ts`
+  (route registry, tool inventory, nav groups, titles, search) +
+  `src/lib/activity.ts` (local history). Pages: `HomePage`,
+  `ToolsDirectory`, `Workspace` (dashboard / My Files / Recent),
+  `HelpPage`, `ToolCard`, `ToolPageHeader`, `EditorShell`,
+  `PdfThumbnails`, `src/components/layout/notify.ts` (snackbar
+  channel, kept out of AppShell for fast refresh).
+- **Homepage upload routing is real:** the file is sniffed and
+  handed to the workspace (`initialFiles`, consumed once,
+  StrictMode-safe via a ref guard) — not just a navigation.
+- **E2E contracts kept:** all `tab-*` / `panel-*` ids, all
+  workspace ids, `role="status"` / `role="alert"`, result strings.
+  The one behaviour change is the default route: Home, not
+  Convert — `web-e2e.mjs`, `web-nowasm.mjs` and `live-matrix.mjs`
+  click `#tab-convert` after load (added `tab-tools` id for the
+  All Tools nav item). `resize` / `pdf` / `ocr` scripts already
+  clicked their tab.
+- **Viewport QA** (`apps/web/e2e/viewport-qa.mjs`, 15/15): no
+  horizontal overflow at 360×800 / 768×1024 / 1440×900 on Home,
+  All Tools, Convert, PDF tab, Settings. The run caught a real
+  bug — the centered logo button covering the hamburger on
+  phones (see `docs/WEB.md`, header gotcha) — fixed, not waived.
+- **What Phase 6 did NOT build:** auth pages (no backend);
+  Bengali UI strings (preference stored, UI stays English);
+  background removal / audio-video / table extraction / media
+  tools (labelled Coming Soon); PDF→Word one-click web tool
+  (text extraction exists); desktop Tailwind→MUI migration
+  (Phase 7); undo/redo in the editors (nothing faked).

@@ -440,7 +440,7 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Tools',
     items: [
-      { route: 'tools', label: 'All Tools', icon: 'grid' },
+      { route: 'tools', label: 'All Tools', icon: 'grid', tabId: 'tab-tools' },
       { route: 'convert', label: 'Convert Image', icon: 'image', tabId: 'tab-convert' },
       { route: 'resize', label: 'Resize Image', icon: 'resize', tabId: 'tab-resize' },
       { route: 'pdf', label: 'PDF Tools', icon: 'pdf', tabId: 'tab-pdf' },

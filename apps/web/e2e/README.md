@@ -19,9 +19,36 @@ cd apps/web && npm run build
 cd dist && python3 -m http.server 8321 --bind 127.0.0.1
 ```
 
-Fixtures are generated on the fly by `scripts/test/cli-e2e.sh`
-(Pillow) into `/tmp/op-e2e/cli/in/` — run that first, or copy any
-real PNG/JPEG/TIFF/HEIC/GIF into that directory with the same names.
+Fixtures live in `/tmp/op-e2e/cli/in/` and are wiped with /tmp —
+regenerate them with Pillow + the CLI (17 Nov 2026 recipe):
+
+```bash
+python3 scripts/test/gen-web-fixtures.py   # rgba.png, photo.jpg, lying.jpg,
+                                    # multi.tiff, checker-64.png, anim.gif,
+                                    # notes.txt, corrupt.png, simple.svg,
+                                    # hand-built minimal mini.psd
+./target/release/openpixel convert /tmp/op-e2e/cli/in/checker-64.png /tmp/op-e2e/cli/in/checker-64.heic
+./target/release/openpixel convert /tmp/op-e2e/cli/in/rgba.png /tmp/op-e2e/cli/in/sample.qoi
+./target/debug/openpixel pdf from-images -o /tmp/op-e2e/pdf-in/doc4.pdf \
+  /tmp/op-e2e/cli/in/rgba.png /tmp/op-e2e/cli/in/photo.jpg \
+  /tmp/op-e2e/cli/in/checker-64.png /tmp/op-e2e/cli/in/rgba.png
+./target/debug/openpixel pdf from-images -o /tmp/op-e2e/pdf-in/doc2.pdf \
+  /tmp/op-e2e/cli/in/rgba.png /tmp/op-e2e/cli/in/photo.jpg
+```
+
+`scripts/test/cli-e2e.sh` does NOT generate these — it expects them
+(and builds its §11 Office fixtures + §13 PDF fixtures inline).
+The CLI run additionally needs `photo-2048.heic` (2048px noisy PNG
+→ HEIC via the CLI), `doc2.pdf`/`doc3.pdf` in `cli/in/` (same
+`pdf from-images` command, 2 and 3 pages), `test.svg` (copy of
+`simple.svg`), the OCR crate fixtures copied in
+(`crates/openpixel-ocr/tests/fixtures/eng-clean.png`,
+`eng-clean.txt`, `ben-clean.png`, `ben-clean.txt`,
+`eng-skewed.png`), and `python-pptx` installed
+(`pip install --user --break-system-packages python-pptx` —
+a VM reset removes it). A VM reset also wipes the Tesseract dev
+provisioning — re-run `docs/OCR.md` §Provisioning before any
+cargo build that touches `openpixel-ocr`.
 
 ## Run
 

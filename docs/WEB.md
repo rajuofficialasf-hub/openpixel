@@ -30,8 +30,13 @@ User drops a file
   selectors and the tests all read this one file; nothing in the app
   hard-codes a format list. Regenerate after any registry change.
 - **Settings**: `src/lib/settings.ts`, persisted in localStorage
-  under `openpixel.settings.v1` (theme, default quality/format/
-  background, metadata policy, batch workers 1–4). No account.
+  under `openpixel.settings.v1` (theme, language `en`/`bn` — stored
+  preference, UI stays English until the Bengali strings land,
+  default quality/format/background, metadata policy, batch workers
+  1–4). No account. Activity history (My Files / Recent Files) is a
+  separate store, `src/lib/activity.ts` (`openpixel.activity.v1`,
+  names/sizes only, max 200 entries, recording switchable in
+  Settings → Privacy).
 - **Batch**: a small promise pool (up to `batchWorkers`, capped at 4
   in the browser — the CLI allows 8) converts files concurrently;
   per-file status/error; individual downloads plus a client-side zip
@@ -46,12 +51,12 @@ User drops a file
   lazy-loaded so it never blocks first paint. It respects
   `prefers-reduced-motion` (one static frame, no loop), pauses when the
   tab is hidden, and disposes everything on unmount. Toggled in
-  Settings ("3D background", on by default, persisted in localStorage
-  as `show3dBackground`).
-- **Accessibility**: labelled controls, `role="tablist"` tabs with
-  `aria-selected`, `role="status"`/`role="alert"` live regions for
-  progress and errors, visible `:focus-visible` outlines, keyboard
-  operable drop zone (Enter/Space opens the picker).
+  Settings ("3D background", **off by default since the Phase 6 shell**,
+  17 Nov 2026, persisted in localStorage as `show3dBackground`).
+- **Accessibility**: labelled controls, sidebar navigation with
+  `aria-current="page"` on the active item, `role="status"`/`role="alert"`
+  live regions for progress and errors, visible `:focus-visible` outlines,
+  keyboard operable drop zone (Enter/Space opens the picker).
 
 ## Design system
 
@@ -61,36 +66,103 @@ reinventing it. Tailwind was removed entirely (16 Nov 2026 redesign)
 `apps/web/`; MUI and Tailwind must not coexist in this app.
 
 - **`src/theme/theme.ts`** — `getTheme(mode: 'light' | 'dark')`, the
-  single source of truth. Palette: brand blue primary `#2563eb`
-  (unchanged from the Tailwind build), teal secondary, slate
-  neutrals; system font stack (no webfont download); `borderRadius`
-  12; component overrides for Button / Tabs / Select / Slider /
-  Table / Card / Alert so every view looks consistent. Global
-  rules that used to live in `src/index.css` (body font, visible
-  `:focus-visible` outline, `color-scheme`) are `MuiCssBaseline`
-  overrides here. `src/index.css` no longer exists.
-- **`App.tsx` is the shared shell** — header (brand + theme toggle),
-  tab navigation, `Container maxWidth="lg"` main area, footer. A new
-  workspace plugs in as one more tab: add its id to `TABS`, its
-  panel to the `tabpanel` switch, and its component under
-  `src/components/`. It gets the theme, the 3D background, the
-  header/footer and the tab keyboard behaviour for free.
+  single source of truth. Palette (Studio Phase 6 tokens, 17 Nov 2026):
+  primary `#3157D5` light / `#829BFF` dark, background `#F7F8FC` /
+  `#0B1020`, surface `#FFFFFF` / `#121A2B`, text `#172033` / `#F1F5FB`,
+  border `#E2E8F0` / `#26344D`; Inter (English) + Noto Sans Bengali,
+  self-hosted via `@fontsource` (no Google Fonts CDN); breakpoints
+  xs 0 / sm 600 / md 768 / lg 900 / xl 1200 / xxl 1536; `borderRadius`
+  12 (card), 8 (button), 16 (dialog); input min-height 44; component
+  overrides for Button / Tabs / Select / Slider / Table / Card / Alert /
+  Drawer / AppBar / Breadcrumbs / Snackbar so every view looks
+  consistent. Global rules that used to live in `src/index.css` (body
+  font, visible `:focus-visible` outline, `color-scheme`) are
+  `MuiCssBaseline` overrides here. `src/index.css` no longer exists.
+- **`src/components/layout/AppShell.tsx` is the shared shell** (Studio
+  Phase 6) — AppBar header (logo, global tool search, theme toggle,
+  Help, local-profile menu), sidebar (permanent Drawer ≥ lg, 248px,
+  collapsible to 72px, temporary drawer on mobile), breadcrumbs,
+  `Container maxWidth 1440px` content, footer. The default route is
+  the homepage (`home`); the dashboard is its own route (`overview`).
+  A new tool plugs in as one more entry in `src/lib/routes.ts`
+  (`TOOLS` + `NAV_GROUPS` + `ROUTE_TITLES`) and its component under
+  `src/components/`. It gets the theme, the header/footer and the
+  breadcrumb behaviour for free.
 - **Shared components** (`src/components/`): `DropZone` (drag-and-drop
   + keyboard-operable file picker, reused by Convert and Batch),
-  `Background3D` (see above). Conversion logic stays in `src/lib/`
-  and is UI-agnostic — a new workspace calls the same `probeImage` /
-  `convertImage` / `useWasmSupport` helpers.
+  `Background3D` (see above), `ToolCard` (one card for the homepage
+  and the All Tools directory — web / CLI-only with exact command /
+  coming-soon states), `ToolPageHeader` (the shared tool-page title +
+  description pattern), `EditorShell` (two-column editor layout:
+  preview left, tools right), `PdfThumbnails` (real pdf.js page
+  thumbnails for the PDF editor rail). Conversion logic stays in
+  `src/lib/` and is UI-agnostic — a new workspace calls the same
+  `probeImage` / `convertImage` / `useWasmSupport` helpers.
 - **Hard UI contracts** (the Playwright e2e suites depend on these —
-  keep them or update `apps/web/e2e/` to match): `#convert-file`
+  keep them or update `apps/web/e2e/` to match): the default route is
+  the homepage — suites click a nav item first (`#tab-convert`,
+  `#tab-resize`, `#tab-pdf`, `#tab-ocr`, `#tab-batch`,
+  `#tab-formats`, `#tab-settings`, `#tab-tools`); `#convert-file`
   file input; `#target-format` is a real native `<select>` (MUI
-  `Select` with the `native` prop); tab ids `#tab-batch`,
-  `#tab-formats`, `#tab-settings`; panel ids `#panel-formats`,
-  `#panel-settings`; `role="status"` for conversion notes,
-  `role="alert"` for errors; button texts "Choose a different file",
-  "Convert to …", "Download …", "Download all (2) as .zip"; drop-zone
-  text "Drop an image here" with Tab-focus + Enter-to-open behaviour;
-  theme toggle aria-labels "Switch to dark theme" / "Switch to light
-  theme"; "WASM engine" note texts unchanged.
+  `Select` with the `native` prop); panel ids `#panel-<route>`
+  (`#panel-formats`, `#panel-settings`, …); `role="status"` for
+  conversion notes, `role="alert"` for errors; button texts "Choose a
+  different file", "Convert to …", "Download …", "Download all (2) as
+  .zip"; drop-zone text "Drop an image here" with Tab-focus +
+  Enter-to-open behaviour; theme toggle aria-labels "Switch to dark
+  theme" / "Switch to light theme"; "WASM engine" note texts
+  unchanged.
+
+## App shell and navigation (Studio Phase 6, 17 Nov 2026)
+
+Routes (`src/lib/routes.ts`, `RouteId`): `home` (homepage, default),
+`overview` (workspace dashboard), `tools` (All Tools), `convert`,
+`resize`, `pdf`, `ocr`, `batch`, `formats`, `files` (My Files),
+`recent` (Recent Files), `settings`, `help`. The sidebar groups are
+Workspace (Overview / My Files / Recent Files), Tools (All Tools /
+Convert Image / Resize Image / PDF Tools / OCR / Batch Convert /
+Formats), Account (Settings / Help Center).
+
+- **Homepage** (`src/components/HomePage.tsx`): hero, upload area,
+  popular tools, categories, how-it-works, benefits, privacy
+  section. The upload area sniffs the file (PDF magic bytes, then
+  `detectFileFormat`) and routes it with the file handed over:
+  image → Convert, several images → Batch, PDF → PDF Tools.
+  Office documents and unknown files get an honest notice naming
+  the CLI route — never a dead end.
+- **All Tools** (`src/components/ToolsDirectory.tsx`): search,
+  category filter, popular, recently used (from the local activity
+  store), sort. Every entry carries a status — `web` (opens the
+  tool), `cli-only` (dialog with the exact verified command +
+  Copy), `coming-soon` (non-clickable, clearly labelled). The
+  registry is `TOOLS` in `src/lib/routes.ts`; see
+  `docs/DESIGN_NOTES.md` §10 for the inventory it is built from.
+- **Workspace** (`src/components/Workspace.tsx`): dashboard
+  ("Welcome back" + overview cards + recent files table + activity
+  timeline + storage), My Files (grid/list, search, type filter,
+  sort, star, remove), Recent Files (table). All three read only
+  the local activity store; empty states are honest — no invented
+  files. Recording a success happens in each workspace
+  (`recordActivity()` in Convert / Resize / Batch / OCR; the PDF
+  workspace records once per produced result set, keyed on the
+  results array identity so preview renders do not re-record).
+- **Editors**: the PDF tab is a 3-panel editor — thumbnails rail
+  (`PdfThumbnails`, real pdf.js renders, max 12, click to jump),
+  center preview + info, tools on the right (page ops, compress,
+  merge, Edit card). The image editor (Convert) uses the shared
+  `EditorShell` (preview left, tools right); Resize/Batch keep
+  their multi-item list layouts. No fake undo/redo anywhere.
+- **Settings** (Phase 6 additions): Language (EN/BN preference),
+  Privacy (activity recording toggle + clear history), Storage
+  (history size, WASM engine status). No auth pages — there is no
+  auth backend.
+- **Header gotcha (found by the viewport QA, 17 Nov 2026):** MUI
+  `Button` defaults to `justify-content: center`, so when the logo
+  button shrank below its content width on a 360px screen the
+  centered wordmark overflowed LEFT and its icon covered the
+  hamburger — the drawer could not be opened. Fixed with
+  `justifyContent: 'flex-start'` on the logo button and the
+  wordmark hidden below `sm` (icon only on phones).
 
 ## What converts where
 

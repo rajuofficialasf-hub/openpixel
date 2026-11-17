@@ -379,7 +379,7 @@ evidence from this phase); certificate-based signing UX.
   flake only), resize e2e 16/16, ocr-e2e 14/14, no-WASM 9/9.
   Full details: `docs/PDF.md`, `docs/E2E.md` (§1.18, §2.20).
 
-## Phase 6 — Unified Frontend
+## Phase 6 — Unified Frontend — DONE 17 Nov 2026
 
 **Entry:** Phases 2–4 exit green (there must be real tools to
 unify); desktop Tailwind decision made (§7).
@@ -390,15 +390,39 @@ Image + PDF + Document + OCR tabs, local/server mode
 selection (no silent uploads — always show where processing
 happens), Recent Files, Settings. Desktop frontend migrated
 to the shared MUI theme if decision (a) was taken.
-**Exit criteria:**
+**Built (commits `0c044ff` steps 1–2, `7d38f6f` steps 3–9, plus
+the logo-centering fix):** prompt tokens in `theme.ts` (Inter +
+Noto Sans Bengali via @fontsource); AppShell (header + 248px
+collapsible sidebar / mobile drawer, global search, breadcrumbs,
+footer); homepage with sniff-and-route upload; All Tools with
+search/filter/sort and an honest web / CLI-only / coming-soon
+inventory; ToolPageHeader + EditorShell shared patterns;
+workspace dashboard + My Files + Recent Files from a local
+activity store (names/sizes only, never contents, honest empty
+states); PDF editor as a 3-panel layout with real pdf.js
+thumbnails; Settings gains Language (EN/BN prep), Privacy
+(activity toggle + clear) and Storage (history size, WASM
+status). No auth pages (no backend). Desktop migration stays
+Phase 7.
+**Exit criteria — verified 17 Nov 2026:**
 - Web e2e covers every tool tab; live-site matrix re-run
   (image matrix + new PDF matrix).
-- No tool is UI-only: every button maps to a real engine call.
+  - cargo test --workspace: **336/336**; web npm test **79/79**;
+    lint **0 warnings, 0 errors**; CLI e2e exit 0, **0 FAILs**.
+  - web-e2e **36/37** (only the known keyboard-focus
+    environmental flake), resize-e2e **16/16**, pdf-e2e **24/24**,
+    ocr-e2e **14/14**, no-WASM **9/9**, viewport QA **15/15**
+    (360×800 / 768×1024 / 1440×900, no horizontal overflow).
+  - Live matrix on openpixel.pages.dev: **57/57**, zero console
+    errors; live home screenshot confirms the new shell deployed.
+- No tool is UI-only: every button maps to a real engine call
+  (CLI-only tools show the exact verified command; unbuilt tools
+  are labelled Coming Soon and are not clickable).
 - Existing Convert/Resize/Batch flows unchanged (selectors green).
-**Honest unknowns:** how much of the homepage/tool directory
-is design work vs engine work (mostly design — scope it as
-such); Recent Files needs a storage decision (localStorage
-vs IndexedDB) made in this phase.
+**Honest unknowns (resolved):** Recent Files storage decision —
+localStorage (`openpixel.activity.v1`, max 200 entries), not
+IndexedDB; the homepage/tool directory work was design work, as
+scoped.
 
 ## Phase 7 — Desktop and Mobile
 
