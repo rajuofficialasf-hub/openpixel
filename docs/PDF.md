@@ -597,8 +597,8 @@ is **not** beside the binary — the resolver's step 4 covers it:
 
 | Bundle | Binary | Bundled library |
 |---|---|---|
-| Linux `.deb` | `/usr/bin/openpixel-desktop` | `/usr/lib/openpixel-desktop/libpdfium.so` |
-| Linux `.AppImage` | `$APPDIR/usr/bin/openpixel-desktop` | `$APPDIR/usr/lib/openpixel-desktop/libpdfium.so` |
+| Linux `.deb` | `/usr/bin/openpixel-desktop` | `/usr/lib/OpenPixel/resources/libpdfium.so` |
+| Linux `.AppImage` | `$APPDIR/usr/bin/openpixel-desktop` | `$APPDIR/usr/lib/OpenPixel/resources/libpdfium.so` |
 | Windows `.msi` / NSIS | `openpixel-desktop.exe` | beside the exe (the Windows resource dir *is* the exe dir) |
 | macOS `.dmg` / `.app` | `Contents/MacOS/OpenPixel` | `Contents/Resources/libpdfium.dylib` |
 
@@ -640,7 +640,7 @@ check: remove the bundled library (`rm
 naming libpdfium, exit non-zero, no crash, no silent wrong
 result. For the desktop, the same check is `dpkg-deb -c` on the
 `.deb` (the library must be at
-`usr/lib/openpixel-desktop/libpdfium.so`) plus installing it and
+`usr/lib/OpenPixel/resources/libpdfium.so`) plus installing it and
 confirming the app launches under Xvfb; the resolver's
 resource-dir candidates are unit-tested in
 `crates/openpixel-pdf/src/render.rs`

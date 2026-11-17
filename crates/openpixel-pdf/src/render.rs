@@ -175,22 +175,27 @@ pub(crate) mod worker {
     /// Tauri 2 `bundle.resources` lands a bundled file in the app's
     /// resource dir, which is NOT beside the binary on Linux/macOS
     /// (Tauri 2.12 `resource_dir`, `tauri/src/path/desktop.rs`):
-    /// - Linux .deb: `/usr/lib/<exe_name>/` (binary in `/usr/bin/`);
-    /// - Linux AppImage: `$APPDIR/usr/lib/<exe_name>/`;
+    /// - Linux .deb: `/usr/lib/<product>/` (binary in `/usr/bin/`);
+    /// - Linux AppImage: `$APPDIR/usr/lib/<product>/`;
     /// - running unbundled from `src-tauri/target/(debug|release)/`:
-    ///   `<exe_dir>/../lib/<exe_name>/`;
+    ///   `<exe_dir>/../lib/<product>/`;
     /// - macOS .app: `<exe_dir>/../Resources`
     ///   (`Contents/MacOS` -> `Contents/Resources`);
     /// - Windows: the resource dir IS the exe dir, already covered
     ///   by the beside-the-binary step above.
-    /// The `resources/` subdir variants cover the case where the
-    /// bundler preserves the source directory structure
-    /// (`resources/libpdfium.so` -> `$RESOURCES/resources/...`),
-    /// and `APPDIR` is checked explicitly in case `current_exe`
-    /// resolves outside the AppImage mount. Candidates are pure
-    /// path arithmetic (no filesystem access); the caller checks
-    /// `is_file()`. The exe's file stem is the `<exe_name>` —
-    /// `openpixel-desktop` for the installed app.
+    ///
+    /// Two gotchas, both verified against the real 17 Nov 2026
+    /// .deb (NOT assumed from the docs): `<product>` is the Tauri
+    /// **product name** (`OpenPixel`), not the binary name
+    /// (`openpixel-desktop`), and the bundler preserves the source
+    /// directory structure, so `resources/libpdfium.so` lands at
+    /// `$RESOURCES/resources/libpdfium.so` — i.e. the installed
+    /// library is `/usr/lib/OpenPixel/resources/libpdfium.so`.
+    /// The `<exe_dir>/../lib/` directory is therefore SCANNED for
+    /// subdirectories (any product name) instead of guessing one
+    /// name, plus the exe-stem name as a fallback. `APPDIR` is
+    /// checked explicitly in case `current_exe` resolves outside
+    /// the AppImage mount. The caller checks `is_file()`.
     pub(crate) fn tauri_resource_candidates(exe: &std::path::Path) -> Vec<std::path::PathBuf> {
         use pdfium_render::prelude::Pdfium;
         use std::path::PathBuf;
@@ -206,7 +211,8 @@ pub(crate) mod worker {
         };
         if let Some(stem) = exe.file_stem() {
             let stem = stem.to_string_lossy().into_owned();
-            // <exe_dir>/../lib/<stem>/ — deb, AppImage, dev target/lib/.
+            // <exe_dir>/../lib/<stem>/ — dev target/lib/<stem>/
+            // and any bundle that uses the binary name.
             push_dir(exe_dir.join("..").join("lib").join(&stem));
             push_dir(exe_dir.join("..").join("lib").join(&stem).join("resources"));
             if let Ok(appdir) = std::env::var("APPDIR") {
@@ -219,6 +225,33 @@ pub(crate) mod worker {
                         .join("resources"),
                 );
             }
+        }
+        // The installed layout: scan <exe_dir>/../lib/ (deb,
+        // AppImage, dev target/lib/) and $APPDIR/usr/lib/ for
+        // subdirectories holding the library, flat or under a
+        // `resources/` subdir (the bundler preserves the source
+        // structure). This is how the real .deb layout
+        // (`/usr/lib/OpenPixel/resources/libpdfium.so`) is found
+        // without hardcoding the product name.
+        let scan_lib_dir = |lib_dir: PathBuf, push_dir: &mut dyn FnMut(PathBuf)| {
+            push_dir(lib_dir.clone());
+            push_dir(lib_dir.join("resources"));
+            if let Ok(entries) = std::fs::read_dir(&lib_dir) {
+                for entry in entries.flatten() {
+                    let dir = entry.path();
+                    if dir.is_dir() {
+                        push_dir(dir.clone());
+                        push_dir(dir.join("resources"));
+                    }
+                }
+            }
+        };
+        scan_lib_dir(exe_dir.join("..").join("lib"), &mut push_dir);
+        if let Ok(appdir) = std::env::var("APPDIR") {
+            scan_lib_dir(
+                PathBuf::from(&appdir).join("usr").join("lib"),
+                &mut push_dir,
+            );
         }
         // macOS .app: Contents/MacOS -> Contents/Resources.
         push_dir(exe_dir.join("..").join("Resources"));
@@ -597,6 +630,39 @@ mod tests {
         // The resource-dir candidates never outrank the env vars:
         // resolve_pdfium_library checks OPENPIXEL_PDFIUM_* first
         // (order is asserted by the CLI e2e, not here).
+    }
+
+    #[test]
+    fn tauri_resource_candidates_find_the_real_deb_layout() {
+        // Regression: the first version guessed
+        // /usr/lib/openpixel-desktop/libpdfium.so, but the real
+        // .deb (17 Nov 2026) ships
+        // /usr/lib/OpenPixel/resources/libpdfium.so — product name,
+        // source structure preserved. Build exactly that layout in
+        // a tempdir and assert a candidate really exists on disk
+        // (the `..` in the candidate path resolves through the
+        // filesystem, so `is_file()` is the honest check).
+        let root = tempfile::tempdir().expect("tempdir");
+        let bin = root
+            .path()
+            .join("usr")
+            .join("bin")
+            .join("openpixel-desktop");
+        let lib = root
+            .path()
+            .join("usr")
+            .join("lib")
+            .join("OpenPixel")
+            .join("resources")
+            .join("libpdfium.so");
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(lib.parent().unwrap()).unwrap();
+        std::fs::write(&bin, b"fake exe").unwrap();
+        std::fs::write(&lib, b"fake lib").unwrap();
+        let found = super::worker::tauri_resource_candidates(&bin)
+            .into_iter()
+            .any(|p| p.is_file());
+        assert!(found, "no candidate resolved to the staged lib at {lib:?}");
     }
 
     #[test]
