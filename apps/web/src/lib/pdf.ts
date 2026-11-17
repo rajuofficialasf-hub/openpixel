@@ -21,8 +21,8 @@
  *   `GlobalWorkerOptions.workerSrc` with the standard Vite
  *   `new URL(..., import.meta.url)` pattern; without the worker
  *   pdf.js silently renders nothing, so the preview effect in
- *   `PdfWorkspace` treats a missing canvas paint as a failure
- *   and says so.
+ *   `PdfToImageTool` / `EditTool` treats a missing canvas paint
+ *   as a failure and says so.
  *
  * What the browser CANNOT do (never offered as a working
  * button): insert / replace pages — the WASM binding has no

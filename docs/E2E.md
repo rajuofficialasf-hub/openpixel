@@ -458,8 +458,12 @@ rely on was preserved on the new pages.
   test **85/85** (routes.test.ts gained 1 test: unknown `/pdf/*`
   → picker), lint **0**; cargo test --workspace **336/336**
   (no Rust changed).
-- Live verification on openpixel.pages.dev: pending (see the
-  phase report — deploy takes ~4 min after the push).
+- Live on openpixel.pages.dev (commit `46621b8`): `/pdf` shows
+  the picker, `/pdf/merge` and `/pdf/compress` load directly,
+  and a real merge runs in the browser (doc4 + doc2 → genuine
+  6-page PDF, 4,889,175 bytes, verified with `pdf info`),
+  zero console/page errors. Screenshots
+  `p6-picker-live.png`, `p6-merge-live.png`.
 
 ### 2.16 WASM-absent fallback — PASS (9/9, SVG fix run 16 Nov 2026)
 
