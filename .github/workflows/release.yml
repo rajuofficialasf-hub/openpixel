@@ -78,10 +78,15 @@ jobs:
     # not installed for vcpkg triplet x64-windows-static-md") —
     # run 43968513223, Windows CLI job, before any test ran.
     # VCPKGRS_TRIPLET is the crate's own override (it does NOT
-    # read vcpkg's VCPKG_DEFAULT_TRIPLET). Harmless on Linux/macOS
-    # (the crate is Windows-only there).
+    # read vcpkg's VCPKG_DEFAULT_TRIPLET). The crate ALSO demands
+    # explicit opt-in for dynamic linking: with a non-static
+    # triplet it errors RequiredEnvMissing("VCPKGRS_DYNAMIC")
+    # (run 44012792811) — so both are set. Dynamic is what we
+    # want: the vcpkg bin dir goes on PATH so the DLLs load at
+    # test time. Harmless on Linux/macOS (Windows-only crate).
     env:
       VCPKGRS_TRIPLET: x64-windows
+      VCPKGRS_DYNAMIC: "1"
     strategy:
       fail-fast: false
       matrix:
