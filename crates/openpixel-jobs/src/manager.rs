@@ -29,6 +29,67 @@ pub trait JobHandler: Send + Sync {
     fn run(&self, job: &Job) -> std::result::Result<u64, String>;
 }
 
+/// One isolated job (Phase 8): the child process that performs
+/// this job's work, plus the bytes to feed it on stdin. The pool
+/// spawns the command, supervises it under the pool's timeout and
+/// RSS cap, and kills it on breach — see
+/// `openpixel_security::run_command_isolated`. A child that exits
+/// 0 has succeeded; anything else is recorded as `Failed` with the
+/// supervisor's error (timeout / RSS cap / child stderr).
+#[derive(Debug)]
+pub struct ChildJobSpec {
+    /// The command to run. It must be a fresh command on every
+    /// call: `Command` is single-use, and the pool calls the
+    /// runner once per job attempt (a retried job rebuilds it).
+    pub command: std::process::Command,
+    /// Bytes written to the child's stdin, then closed (EOF).
+    /// Usually a JSON job description; empty when the command
+    /// needs no input.
+    pub stdin: Vec<u8>,
+    /// A temp file the child writes to (e.g. the CLI worker's
+    /// `<output>.openpixel-tmp`). The pool removes it when the
+    /// job fails — a killed child cannot clean up after itself,
+    /// and a failed job must not leave a partial output behind.
+    /// `None` when the child writes no temp file.
+    pub temp_file: Option<PathBuf>,
+}
+
+impl ChildJobSpec {
+    /// A command with no stdin.
+    pub fn new(command: std::process::Command) -> Self {
+        Self {
+            command,
+            stdin: Vec::new(),
+            temp_file: None,
+        }
+    }
+
+    /// A command fed `stdin` on its standard input.
+    pub fn with_stdin(command: std::process::Command, stdin: Vec<u8>) -> Self {
+        Self {
+            command,
+            stdin,
+            temp_file: None,
+        }
+    }
+
+    /// Declare the temp file the pool removes when this job fails.
+    pub fn with_temp_file(mut self, temp_file: PathBuf) -> Self {
+        self.temp_file = Some(temp_file);
+        self
+    }
+}
+
+/// Build the child process for one job (Phase 8). Called on a
+/// worker thread, once per job attempt. The runner sees the whole
+/// [`Job`] — input, output, target, options, kind and params —
+/// and translates it into a command line (the CLI's runner
+/// re-execs the `openpixel` binary as `__isolated-work` with the
+/// job as JSON on stdin; a test runner can return `sleep` or any
+/// other command). The pool owns supervision: the runner never
+/// waits on, kills, or reads the child itself.
+pub type IsolatedRunner = dyn Fn(&Job) -> ChildJobSpec + Send + Sync;
+
 /// Maximum workers the pool will ever run. The default is smaller
 /// (see [`default_workers`]); this is the hard clamp on a caller's
 /// explicit count, so a typo cannot spawn an unbounded pool.
@@ -55,7 +116,21 @@ pub struct JobManagerConfig {
     /// finishes. `JobManager::for_engine` fills this in from the
     /// engine's `EngineConfig::processing_timeout` when it is `None`,
     /// so engine-backed pools always have a timeout.
+    ///
+    /// Phase 8: in an *isolated* pool (see
+    /// [`JobManager::new_isolated`]) this same timeout **kills**
+    /// the job's child process instead of detaching a thread — the
+    /// field's meaning does not change, only the enforcement does.
     pub processing_timeout: Option<Duration>,
+    /// Resident-memory ceiling for one isolated job, in bytes.
+    /// Only used by isolated pools ([`JobManager::new_isolated`]):
+    /// the supervisor polls the child process's RSS (Linux
+    /// `/proc`) and kills it over this cap. `None` means no RSS
+    /// cap. `JobManager::for_engine_isolated` fills this in from
+    /// the engine's `EngineConfig::max_rss_bytes` when it is
+    /// `None`. In-process pools ignore this field — a thread has
+    /// no RSS of its own to cap.
+    pub max_rss_bytes: Option<u64>,
 }
 
 impl Default for JobManagerConfig {
@@ -63,6 +138,7 @@ impl Default for JobManagerConfig {
         Self {
             workers: default_workers(),
             processing_timeout: None,
+            max_rss_bytes: None,
         }
     }
 }
@@ -72,11 +148,19 @@ impl JobManagerConfig {
         Self {
             workers,
             processing_timeout: None,
+            max_rss_bytes: None,
         }
     }
 
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.processing_timeout = Some(timeout);
+        self
+    }
+
+    /// Cap one isolated job's child RSS at `cap` bytes (Phase 8).
+    /// Only meaningful for isolated pools; in-process pools ignore it.
+    pub fn with_max_rss_bytes(mut self, cap: u64) -> Self {
+        self.max_rss_bytes = Some(cap);
         self
     }
 }
@@ -111,6 +195,13 @@ struct Shared {
     condvar: Condvar,
     /// Pool-level per-job timeout (see `JobManagerConfig`).
     processing_timeout: Option<Duration>,
+    /// Pool-level per-job RSS cap for isolated pools (see
+    /// `JobManagerConfig::max_rss_bytes`). `None` in in-process pools.
+    max_rss_bytes: Option<u64>,
+    /// When set, every job runs as a child process built by this
+    /// runner instead of as an in-process `WorkFn` (Phase 8).
+    /// `None` means the classic in-process pool.
+    isolated_runner: Option<Arc<IsolatedRunner>>,
 }
 
 /// Bounded worker pool for batch conversion.
@@ -129,7 +220,38 @@ impl JobManager {
     /// Build a pool running `work` for every job. `config.workers`
     /// must be 1..=`MAX_WORKERS`; 0 (or more than the max) is an
     /// error and no threads are spawned.
+    ///
+    /// This is the classic in-process pool: a slow job is stopped
+    /// by the thread timeout, which *detaches* its worker (see
+    /// `openpixel-security::run_with_timeout`) — it is not killed.
+    /// For true kill semantics use [`JobManager::new_isolated`].
     pub fn new(config: JobManagerConfig, work: Arc<WorkFn>) -> Result<Self> {
+        Self::new_inner(config, Some(work), None)
+    }
+
+    /// Build an *isolated* pool (Phase 8): every job runs as a
+    /// child process built by `runner`, supervised under
+    /// `config.processing_timeout` and `config.max_rss_bytes`. A
+    /// job that overruns its timeout or its RSS cap is **killed**
+    /// (child process terminated and reaped) and recorded `Failed`
+    /// with an error naming the limit — the pool carries on with
+    /// the next job. A child that exits 0 has succeeded; its
+    /// output size is read from `job.output` on disk afterwards
+    /// (0 when the job wrote nothing there).
+    ///
+    /// The runner is the only place that knows what a job *is*:
+    /// the CLI's runner re-execs the `openpixel` binary as
+    /// `__isolated-work` with the job as JSON on stdin. There is
+    /// no `WorkFn` in this mode — the work lives in the child.
+    pub fn new_isolated(config: JobManagerConfig, runner: Arc<IsolatedRunner>) -> Result<Self> {
+        Self::new_inner(config, None, Some(runner))
+    }
+
+    fn new_inner(
+        config: JobManagerConfig,
+        work: Option<Arc<WorkFn>>,
+        isolated_runner: Option<Arc<IsolatedRunner>>,
+    ) -> Result<Self> {
         if config.workers == 0 || config.workers > MAX_WORKERS {
             return Err(JobError::InvalidWorkerCount(config.workers));
         }
@@ -137,6 +259,16 @@ impl JobManager {
             state: Mutex::new(State::new()),
             condvar: Condvar::new(),
             processing_timeout: config.processing_timeout,
+            max_rss_bytes: config.max_rss_bytes,
+            isolated_runner,
+        });
+        // In-process pools always have a `WorkFn`; isolated pools
+        // never call it. The stub keeps `worker_loop` total: it is
+        // only reachable if the runner is `None` and no work was
+        // supplied, which `new` / `new_isolated` never construct.
+        let work = work.unwrap_or_else(|| {
+            Arc::new(|_: &Job| Err("isolated pool has no in-process work function".to_string()))
+                as Arc<WorkFn>
         });
         let mut handles = Vec::with_capacity(config.workers);
         for _ in 0..config.workers {
@@ -169,6 +301,11 @@ impl JobManager {
     /// as `Failed` — the pool keeps going. The engine's
     /// `processing_timeout` (default 300 s) bounds each job unless
     /// the caller set `config.processing_timeout` explicitly.
+    ///
+    /// In-process pool: the timeout detaches the worker thread
+    /// instead of killing it, and `max_rss_bytes` is not enforced
+    /// while a job runs (the engine only pre-flights it). For true
+    /// kill semantics use [`JobManager::for_engine_isolated`].
     pub fn for_engine(config: JobManagerConfig, engine: Arc<Engine>) -> Result<Self> {
         let timeout = config
             .processing_timeout
@@ -186,6 +323,35 @@ impl JobManager {
                     .map_err(|e| e.to_string())
             }),
         )
+    }
+
+    /// Isolated version of [`JobManager::for_engine`] (Phase 8):
+    /// the engine's `processing_timeout` and `max_rss_bytes`
+    /// (defaults 300 s / 2 GiB) fill in whatever the caller left
+    /// unset in `config`, and each job runs as a child process
+    /// built by `runner` — killed on timeout or RSS breach, never
+    /// detached. The `engine` itself is only read for its config;
+    /// the conversion runs in the child, which is why the runner
+    /// (not the engine) is what performs the work.
+    pub fn for_engine_isolated(
+        config: JobManagerConfig,
+        engine: Arc<Engine>,
+        runner: Arc<IsolatedRunner>,
+    ) -> Result<Self> {
+        let config = JobManagerConfig {
+            processing_timeout: Some(
+                config
+                    .processing_timeout
+                    .unwrap_or(engine.config().processing_timeout),
+            ),
+            max_rss_bytes: Some(
+                config
+                    .max_rss_bytes
+                    .unwrap_or(engine.config().max_rss_bytes),
+            ),
+            ..config
+        };
+        Self::new_isolated(config, runner)
     }
 
     /// Worker threads in this pool (the concurrency bound).
@@ -458,31 +624,72 @@ fn worker_loop(shared: &Arc<Shared>, work: &Arc<WorkFn>) {
             }
         };
         let started = Instant::now();
-        // Pool-level timeout (Studio Phase 1, risk A8): when set,
-        // the work runs on a timeout thread and a job that overruns
-        // it fails with a timeout message instead of hanging the
-        // pool. The worker thread is detached on timeout (see
-        // `openpixel-security::run_with_timeout`) — the job is
-        // recorded Failed and the pool carries on.
-        let outcome = match shared.processing_timeout {
-            Some(timeout) => {
-                let work = Arc::clone(work);
-                // The closure owns its copy: `job` itself is still
-                // needed below for the result record.
-                let job_for_work = job.clone();
-                match openpixel_security::run_with_timeout(timeout, move || work(&job_for_work)) {
-                    Ok(result) => result,
-                    Err(openpixel_security::TimeoutError::TimedOut(d)) => Err(format!(
-                        "processing timed out after {}s (limit {}s)",
-                        d.as_secs(),
-                        timeout.as_secs()
-                    )),
-                    Err(openpixel_security::TimeoutError::WorkerPanicked) => {
-                        Err("processing worker panicked".to_string())
+        // Phase 8 isolated pool: the job runs as a child process
+        // built by the runner, supervised under the pool's timeout
+        // and RSS cap. A breach KILLS the child (see
+        // `openpixel-security::run_command_isolated`) — the error
+        // names the limit, and the pool carries on. On success the
+        // output size is read from `job.output` on disk (the child
+        // wrote it); a job that wrote nothing there reports 0.
+        // A runner that panics while building the command fails
+        // this one job, never the worker: the panic is caught here.
+        let outcome = match &shared.isolated_runner {
+            Some(runner) => {
+                let spec = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| runner(&job)));
+                match spec {
+                    Ok(spec) => {
+                        let limits = openpixel_security::IsolationLimits {
+                            timeout: shared.processing_timeout,
+                            max_rss_bytes: shared.max_rss_bytes,
+                            poll_interval: openpixel_security::DEFAULT_POLL_INTERVAL,
+                        };
+                        let temp_file = spec.temp_file.clone();
+                        match openpixel_security::run_command_isolated(
+                            spec.command,
+                            &spec.stdin,
+                            &limits,
+                        ) {
+                            Ok(_) => {
+                                Ok(std::fs::metadata(&job.output).map(|m| m.len()).unwrap_or(0))
+                            }
+                            Err(e) => {
+                                // A killed (or failed) child cannot
+                                // remove its own temp output — the
+                                // pool does it, so a failed job never
+                                // leaves a partial file behind.
+                                if let Some(temp) = &temp_file {
+                                    let _ = std::fs::remove_file(temp);
+                                }
+                                Err(e.to_string())
+                            }
+                        }
                     }
+                    Err(_) => Err(
+                        "isolated job runner panicked while building the child command".to_string(),
+                    ),
                 }
             }
-            None => work(&job),
+            None => match shared.processing_timeout {
+                Some(timeout) => {
+                    let work = Arc::clone(work);
+                    // The closure owns its copy: `job` itself is still
+                    // needed below for the result record.
+                    let job_for_work = job.clone();
+                    match openpixel_security::run_with_timeout(timeout, move || work(&job_for_work))
+                    {
+                        Ok(result) => result,
+                        Err(openpixel_security::TimeoutError::TimedOut(d)) => Err(format!(
+                            "processing timed out after {}s (limit {}s)",
+                            d.as_secs(),
+                            timeout.as_secs()
+                        )),
+                        Err(openpixel_security::TimeoutError::WorkerPanicked) => {
+                            Err("processing worker panicked".to_string())
+                        }
+                    }
+                }
+                None => work(&job),
+            },
         };
         let duration_ms = started.elapsed().as_millis() as u64;
         let mut state = shared.state.lock().expect("job state lock poisoned");
@@ -829,6 +1036,141 @@ mod tests {
         );
         assert_eq!(manager.job(fast).unwrap().status, JobStatus::Done);
         assert_eq!(manager.progress().done, 1);
+    }
+
+    // Phase 8 — isolated pools: the child process is really
+    // killed on timeout / RSS breach (not detached like the
+    // thread timeout above), and the pool carries on.
+
+    fn isolated_test_config(timeout: Duration) -> JobManagerConfig {
+        JobManagerConfig::with_workers(1).with_timeout(timeout)
+    }
+
+    #[test]
+    fn isolated_job_timeout_kills_child_and_pool_continues() {
+        use std::process::Command;
+        let started = Instant::now();
+        let runner: Arc<IsolatedRunner> = Arc::new(|job: &Job| {
+            if job.input.to_string_lossy().contains("slow") {
+                let mut cmd = Command::new("sleep");
+                cmd.arg("60");
+                ChildJobSpec::new(cmd)
+            } else {
+                // Fast job: write 5 bytes to the job's output so
+                // the pool can report its size.
+                let mut cmd = Command::new("sh");
+                cmd.arg("-c")
+                    .arg("printf hello > \"$0\"")
+                    .arg(job.output.clone());
+                ChildJobSpec::new(cmd)
+            }
+        });
+        let manager =
+            JobManager::new_isolated(isolated_test_config(Duration::from_millis(200)), runner)
+                .unwrap();
+        let (i1, o1, t1, c1) = test_job("slow.png");
+        let slow = manager.submit(i1, o1, t1, c1);
+        let (i2, o2, t2, c2) = test_job("fast.png");
+        let fast = manager.submit(i2, o2, t2, c2);
+        manager.wait_all();
+        // A 60 s sleep killed after 200 ms: the whole batch must
+        // finish in seconds, not a minute — proof the child was
+        // killed rather than waited out or detached.
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "isolated timeout kill must return promptly, took {:?}",
+            started.elapsed()
+        );
+        assert_eq!(manager.job(slow).unwrap().status, JobStatus::Failed);
+        let slow_error = manager.results()[0].error.clone().unwrap_or_default();
+        assert!(
+            slow_error.contains("timed out"),
+            "failure must name the timeout: {slow_error}"
+        );
+        assert!(
+            slow_error.contains("killed"),
+            "failure must say the child was killed: {slow_error}"
+        );
+        assert_eq!(manager.job(fast).unwrap().status, JobStatus::Done);
+        assert_eq!(manager.results()[1].bytes, 5);
+        assert_eq!(manager.progress().done, 1);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn isolated_job_rss_cap_fails_loudly() {
+        use std::process::Command;
+        let runner: Arc<IsolatedRunner> = Arc::new(|_: &Job| {
+            let mut cmd = Command::new("python3");
+            cmd.args([
+                "-c",
+                "x = bytearray(256 * 1024 * 1024); import time; time.sleep(60)",
+            ]);
+            ChildJobSpec::new(cmd)
+        });
+        let config =
+            isolated_test_config(Duration::from_secs(30)).with_max_rss_bytes(64 * 1024 * 1024);
+        let manager = JobManager::new_isolated(config, runner).unwrap();
+        let (input, output, target, options) = test_job("greedy.png");
+        let id = manager.submit(input, output, target, options);
+        manager.wait_all();
+        assert_eq!(manager.job(id).unwrap().status, JobStatus::Failed);
+        let error = manager.results()[0].error.clone().unwrap_or_default();
+        assert!(
+            error.contains("RSS cap") && error.contains("67108864"),
+            "failure must name the RSS cap: {error}"
+        );
+        assert!(
+            error.contains("killed"),
+            "failure must say the child was killed: {error}"
+        );
+    }
+
+    #[test]
+    fn isolated_job_success_records_done() {
+        use std::process::Command;
+        let runner: Arc<IsolatedRunner> = Arc::new(|job: &Job| {
+            let mut cmd = Command::new("sh");
+            cmd.arg("-c")
+                .arg("printf hello > \"$0\"")
+                .arg(job.output.clone());
+            ChildJobSpec::new(cmd)
+        });
+        let manager = JobManager::new_isolated(JobManagerConfig::with_workers(1), runner).unwrap();
+        let (input, output, target, options) = test_job("ok.png");
+        let id = manager.submit(input, output, target, options);
+        manager.wait_all();
+        assert_eq!(manager.job(id).unwrap().status, JobStatus::Done);
+        assert_eq!(manager.results()[0].bytes, 5);
+        assert!(manager.results()[0].error.is_none());
+    }
+
+    #[test]
+    fn isolated_job_child_failure_is_recorded_not_a_timeout() {
+        use std::process::Command;
+        let runner: Arc<IsolatedRunner> = Arc::new(|_: &Job| {
+            let mut cmd = Command::new("sh");
+            cmd.args(["-c", "echo bad input >&2; exit 2"]);
+            ChildJobSpec::new(cmd)
+        });
+        let manager = JobManager::new_isolated(
+            JobManagerConfig::with_workers(1).with_timeout(Duration::from_secs(10)),
+            runner,
+        )
+        .unwrap();
+        let (input, output, target, options) = test_job("bad.png");
+        let id = manager.submit(input, output, target, options);
+        manager.wait_all();
+        assert_eq!(manager.job(id).unwrap().status, JobStatus::Failed);
+        let error = manager.results()[0].error.clone().unwrap_or_default();
+        assert!(
+            error.contains("bad input"),
+            "child stderr must be reported: {error}"
+        );
+        assert!(
+            !error.contains("timed out"),
+            "a plain child failure must not be called a timeout: {error}"
+        );
     }
 
     #[test]

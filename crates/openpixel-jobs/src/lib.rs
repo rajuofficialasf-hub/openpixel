@@ -37,6 +37,29 @@
 //! * A failed job never aborts the batch: its error is recorded in
 //!   its [`JobResult`] and the pool carries on with the next job.
 //!
+//! # Phase 8 — isolated pools (true timeout-kill and RSS cap)
+//!
+//! The behaviour above is the *in-process* pool: its timeout
+//! detaches the worker thread instead of killing it, and it has
+//! no RSS enforcement while a job runs. [`JobManager::new_isolated`]
+//! (and [`JobManager::for_engine_isolated`]) change the
+//! enforcement, not the API: each job runs as a **child process**
+//! built by an [`IsolatedRunner`], supervised under
+//! [`JobManagerConfig::processing_timeout`] and
+//! [`JobManagerConfig::max_rss_bytes`]. A job that overruns its
+//! timeout or its RSS cap is **killed** (child terminated and
+//! reaped) and recorded `Failed` with an error naming the limit.
+//! The CLI's batch uses the isolated pool (its runner re-execs the
+//! `openpixel` binary); the desktop app still uses the in-process
+//! pool (`for_engine`), where the old detach behaviour applies —
+//! see `docs/SECURITY.md` for the per-surface table.
+//!
+//! Two limits stay: `cancel()` still cannot stop a *running*
+//! isolated job (the pool has no cancel-to-kill wiring — the
+//! timeout and RSS cap are the kill paths), and RSS enforcement
+//! is Linux-only (on Windows/macOS the cap is accepted and not
+//! enforced; the timeout kill still works).
+//!
 //! # Example
 //!
 //! ```no_run
@@ -62,7 +85,10 @@ pub mod manager;
 pub mod types;
 
 pub use error::JobError;
-pub use manager::{default_workers, JobHandler, JobManager, JobManagerConfig, WorkFn, MAX_WORKERS};
+pub use manager::{
+    default_workers, ChildJobSpec, IsolatedRunner, JobHandler, JobManager, JobManagerConfig,
+    WorkFn, MAX_WORKERS,
+};
 pub use types::{BatchProgress, Job, JobKind, JobResult, JobStatus};
 
 /// Peak resident set size of this process in bytes (Linux only).
