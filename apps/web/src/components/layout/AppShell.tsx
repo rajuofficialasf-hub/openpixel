@@ -56,6 +56,7 @@ import SettingsIcon from '@mui/icons-material/Settings'
 import GridOnIcon from '@mui/icons-material/GridOn'
 import { NAV_GROUPS, ROUTE_TITLES, searchTools, type RouteId, type ToolEntry } from '../../lib/routes'
 import { NotifyContext } from './notify'
+import { translate, useI18n } from '../../lib/i18n'
 import { resolveTheme, saveSettings, type Settings } from '../../lib/settings'
 
 const SIDEBAR_WIDTH = 248
@@ -85,10 +86,11 @@ interface AppShellProps {
 }
 
 function Logo({ onNavigate }: { onNavigate: (route: RouteId) => void }) {
+  const { t } = useI18n()
   return (
     <Button
       onClick={() => onNavigate('home')}
-      aria-label="OpenPixel Studio — go to Overview"
+      aria-label={t('header.logo')}
       sx={{
         display: 'flex',
         alignItems: 'center',
@@ -132,6 +134,7 @@ function Logo({ onNavigate }: { onNavigate: (route: RouteId) => void }) {
 
 export function AppShell({ route, onNavigate, settings, onSettingsChange, children }: AppShellProps) {
   const theme = useTheme()
+  const { t, lang } = useI18n()
   const isDesktop = useMediaQuery(theme.breakpoints.up('lg'))
   const [mobileOpen, setMobileOpen] = useState(false)
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -148,7 +151,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
 
   const mode = resolveTheme(settings.theme)
   const isDark = mode === 'dark'
-  const themeLabel = isDark ? 'Switch to light theme' : 'Switch to dark theme'
+  const themeLabel = isDark ? t('header.themeToLight') : t('header.themeToDark')
 
   const toggleTheme = () => {
     const next: Settings = {
@@ -158,6 +161,19 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
     onSettingsChange(next)
     saveSettings(next)
   }
+
+  const toggleLanguage = () => {
+    const next: Settings = { ...settings, language: settings.language === 'bn' ? 'en' : 'bn' }
+    onSettingsChange(next)
+    saveSettings(next)
+  }
+
+  /** Sidebar label for a nav item — translated, tool names stay English. */
+  const navLabel = (itemRoute: RouteId) => translate(lang, `nav.${itemRoute}`)
+  const groupLabel = (label: string) =>
+    label === 'Workspace' ? t('navGroup.workspace') : label === 'Tools' ? t('navGroup.tools') : t('navGroup.account')
+  /** Breadcrumb / page title for a route — generic pages translate, PDF tool pages keep their English tool name. */
+  const routeLabel = (r: RouteId) => (r.startsWith('pdf-') ? ROUTE_TITLES[r].crumb : translate(lang, `nav.${r}`))
 
   const setCollapsedAndSave = (next: boolean) => {
     setCollapsed(next)
@@ -200,7 +216,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
       >
         <IconButton
           onClick={() => setCollapsedAndSave(!collapsed)}
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-label={collapsed ? t('header.expandSidebar') : t('header.collapseSidebar')}
           size="small"
         >
           {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
@@ -215,7 +231,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                 component="div"
                 sx={{ bgcolor: 'transparent', lineHeight: '32px', fontSize: '0.75rem' }}
               >
-                {group.label}
+                {groupLabel(group.label)}
               </ListSubheader>
             )}
             {group.items.map((item) => {
@@ -233,11 +249,11 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                   sx={collapsed ? { justifyContent: 'center', px: 0 } : undefined}
                 >
                   <ListItemIcon sx={collapsed ? { minWidth: 0 } : undefined}>{ICONS[item.icon]}</ListItemIcon>
-                  {!collapsed && <ListItemText primary={item.label} primaryTypographyProps={{ fontSize: '0.875rem' }} />}
+                  {!collapsed && <ListItemText primary={navLabel(item.route)} primaryTypographyProps={{ fontSize: '0.875rem' }} />}
                 </ListItemButton>
               )
               return collapsed ? (
-                <Tooltip key={item.route} title={item.label} placement="right">
+                <Tooltip key={item.route} title={navLabel(item.route)} placement="right">
                   {button}
                 </Tooltip>
               ) : (
@@ -250,7 +266,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
       {!collapsed && (
         <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
           <Typography variant="caption" color="text.secondary">
-            Local processing — files never leave your device. No account, no upload.
+            {t('header.localNote')}
           </Typography>
         </Box>
       )}
@@ -264,12 +280,12 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
     route === 'home'
       ? []
       : [
-          { label: 'Overview', route: 'home' as RouteId },
+          { label: t('crumb.overview'), route: 'home' as RouteId },
           ...(route === 'convert' || route === 'resize' || route === 'pdf' || route === 'ocr' || route === 'batch' || isPdfTool
-            ? [{ label: 'Tools', route: 'tools' as RouteId }]
+            ? [{ label: t('crumb.tools'), route: 'tools' as RouteId }]
             : []),
-          ...(isPdfTool ? [{ label: 'PDF Tools', route: 'pdf' as RouteId }] : []),
-          { label: ROUTE_TITLES[route].crumb, route },
+          ...(isPdfTool ? [{ label: t('crumb.pdfTools'), route: 'pdf' as RouteId }] : []),
+          { label: routeLabel(route), route },
         ]
 
   return (
@@ -315,7 +331,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                 <IconButton
                   edge="start"
                   color="inherit"
-                  aria-label="Open navigation menu"
+                  aria-label={t('header.navMenu')}
                   onClick={() => setMobileOpen(true)}
                 >
                   <MenuIcon />
@@ -350,10 +366,10 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                       <Typography variant="body2">{option.name}</Typography>
                       <Typography variant="caption" color="text.secondary">
                         {option.status === 'web'
-                          ? 'Available in the browser'
+                          ? t('header.searchAvailable')
                           : option.status === 'cli-only'
-                            ? 'CLI / desktop only'
-                            : 'Coming soon'}
+                            ? t('header.searchCliOnly')
+                            : t('header.searchComingSoon')}
                       </Typography>
                     </Box>
                   </li>
@@ -362,8 +378,8 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                   <TextField
                     {...params}
                     size="small"
-                    placeholder="Search tools…"
-                    aria-label="Search tools"
+                    placeholder={t('header.searchPlaceholder')}
+                    aria-label={t('header.searchTools')}
                     sx={{
                       width: { xs: 140, sm: 220, md: 320 },
                       display: { xs: 'none', sm: 'block' },
@@ -373,21 +389,31 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                 )}
               />
               <IconButton
-                aria-label="Search tools"
+                aria-label={t('header.searchTools')}
                 sx={{ display: { xs: 'inline-flex', sm: 'none' } }}
                 onClick={() => onNavigate('tools')}
               >
                 <GridViewIcon />
               </IconButton>
+              <Button
+                type="button"
+                id="language-toggle"
+                onClick={toggleLanguage}
+                aria-label={lang === 'bn' ? t('header.languageToEn') : t('header.languageToBn')}
+                title={lang === 'bn' ? t('header.languageToEn') : t('header.languageToBn')}
+                sx={{ minWidth: 40, color: 'inherit', fontWeight: 700 }}
+              >
+                {lang === 'bn' ? 'EN' : 'বাং'}
+              </Button>
               <IconButton type="button" onClick={toggleTheme} aria-label={themeLabel} title={themeLabel}>
                 {isDark ? <LightModeIcon /> : <DarkModeIcon />}
               </IconButton>
-              <IconButton aria-label="Help Center" title="Help Center" onClick={() => go('help')}>
+              <IconButton aria-label={t('header.help')} title={t('header.help')} onClick={() => go('help')}>
                 <HelpOutlineIcon />
               </IconButton>
               <IconButton
-                aria-label="Local profile"
-                title="Local profile"
+                aria-label={t('header.profile')}
+                title={t('header.profile')}
                 onClick={(e) => setProfileAnchor(e.currentTarget)}
               >
                 <AccountCircleIcon />
@@ -399,9 +425,9 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                 anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
               >
                 <Box sx={{ px: 2, py: 1, maxWidth: 280 }}>
-                  <Typography variant="subtitle2">Local profile</Typography>
+                  <Typography variant="subtitle2">{t('header.profile')}</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    No account — everything stays on this device. Your files are never uploaded.
+                    {t('header.profileText')}
                   </Typography>
                 </Box>
                 <Divider />
@@ -411,7 +437,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                     go('settings')
                   }}
                 >
-                  Settings
+                  {t('nav.settings')}
                 </MenuItem>
                 <MenuItem
                   onClick={() => {
@@ -419,7 +445,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                     go('help')
                   }}
                 >
-                  Help Center
+                  {t('nav.help')}
                 </MenuItem>
               </Menu>
             </Toolbar>
@@ -497,42 +523,41 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                   OpenPixel Studio
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  One platform. Every file. Complete control. Files are processed locally in your browser — no
-                  server, no upload, no account.
+                  {t('footer.tagline')}
                 </Typography>
               </Box>
               <Box>
                 <Typography variant="overline" color="text.secondary" display="block" gutterBottom>
-                  Tools
+                  {t('footer.tools')}
                 </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start' }}>
                   <Button size="small" onClick={() => onNavigate('tools')} sx={{ px: 0 }}>
-                    All Tools
+                    {t('nav.tools')}
                   </Button>
                   <Button size="small" onClick={() => onNavigate('convert')} sx={{ px: 0 }}>
-                    Convert Image
+                    {t('nav.convert')}
                   </Button>
                   <Button size="small" onClick={() => onNavigate('pdf')} sx={{ px: 0 }}>
-                    PDF Tools
+                    {t('nav.pdf')}
                   </Button>
                   <Button size="small" onClick={() => onNavigate('ocr')} sx={{ px: 0 }}>
-                    OCR
+                    {t('nav.ocr')}
                   </Button>
                 </Box>
               </Box>
               <Box>
                 <Typography variant="overline" color="text.secondary" display="block" gutterBottom>
-                  Resources
+                  {t('footer.resources')}
                 </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start' }}>
                   <Button size="small" onClick={() => onNavigate('formats')} sx={{ px: 0 }}>
-                    Formats
+                    {t('nav.formats')}
                   </Button>
                   <Button size="small" onClick={() => onNavigate('settings')} sx={{ px: 0 }}>
-                    Settings
+                    {t('nav.settings')}
                   </Button>
                   <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0 }}>
-                    Help Center
+                    {t('nav.help')}
                   </Button>
                   <Button
                     size="small"
@@ -548,17 +573,17 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
               </Box>
               <Box>
                 <Typography variant="overline" color="text.secondary" display="block" gutterBottom>
-                  Legal
+                  {t('footer.legal')}
                 </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start' }}>
                   <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0 }}>
-                    Privacy
+                    {t('footer.privacy')}
                   </Button>
                   <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0 }}>
-                    Terms
+                    {t('footer.terms')}
                   </Button>
                   <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0 }}>
-                    About
+                    {t('footer.about')}
                   </Button>
                 </Box>
               </Box>
@@ -570,8 +595,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
               component="p"
               sx={{ maxWidth: 1440, mx: 'auto', textAlign: 'center' }}
             >
-              © 2026 OpenPixel Studio — powered by the OpenPixel Engine. Local processing. No server, no upload, no
-              account.
+              {t('footer.copyright')}
             </Typography>
           </Box>
           )}

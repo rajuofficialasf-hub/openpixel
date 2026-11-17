@@ -49,6 +49,7 @@ import {
   type ActivityEntry,
 } from '../lib/activity'
 import { ROUTE_TITLES, type RouteId } from '../lib/routes'
+import { plural, useI18n } from '../lib/i18n'
 
 interface WorkspaceProps {
   onNavigate: (route: RouteId) => void
@@ -76,6 +77,7 @@ function useEntries() {
 }
 
 export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
+  const { t } = useI18n()
   const { entries, refresh } = useEntries()
   const totalFiles = entries.length
   const toolsUsed = new Set(entries.map((e) => e.tool)).size
@@ -88,20 +90,19 @@ export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
     <Stack spacing={3}>
       <Box>
         <Typography variant="h5" component="h2" id="workspace-heading">
-          Welcome back
+          {t('ws.welcome')}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 720 }}>
-          Your workspace on this device. Everything below comes from files you processed here — nothing is
-          uploaded, and nothing is invented.
+          {t('ws.intro')}
         </Typography>
       </Box>
 
       <Grid container spacing={2}>
         {[
-          { label: 'Total files processed', value: String(totalFiles) },
-          { label: 'Tools used', value: String(toolsUsed) },
-          { label: 'History stored', value: formatBytes(storeBytes) },
-          { label: 'Last activity', value: last ? formatDate(last.at) : '—' },
+          { label: t('ws.statTotal'), value: String(totalFiles) },
+          { label: t('ws.statTools'), value: String(toolsUsed) },
+          { label: t('ws.statHistory'), value: formatBytes(storeBytes) },
+          { label: t('ws.statLast'), value: last ? formatDate(last.at) : '—' },
         ].map((card) => (
           <Grid key={card.label} size={{ xs: 6, lg: 3 }}>
             <Card>
@@ -121,10 +122,10 @@ export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
       <Box component="section" aria-labelledby="workspace-recent-heading">
         <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 1 }}>
           <Typography variant="h6" component="h3" id="workspace-recent-heading">
-            Recent files
+            {t('ws.recentFiles')}
           </Typography>
           <Button size="small" onClick={() => onNavigate('recent')}>
-            View all
+            {t('ws.viewAll')}
           </Button>
         </Box>
         {recent.length === 0 ? (
@@ -134,12 +135,12 @@ export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
             <Table size="small" aria-label="Recent files">
               <TableHead>
                 <TableRow>
-                  <TableCell>File name</TableCell>
-                  <TableCell>Type</TableCell>
-                  <TableCell>Size</TableCell>
-                  <TableCell>Tool</TableCell>
-                  <TableCell>Last modified</TableCell>
-                  <TableCell align="right">Actions</TableCell>
+                  <TableCell>{t('ws.fileName')}</TableCell>
+                  <TableCell>{t('ws.fileType')}</TableCell>
+                  <TableCell>{t('ws.fileSize')}</TableCell>
+                  <TableCell>{t('ws.fileTool')}</TableCell>
+                  <TableCell>{t('ws.lastModified')}</TableCell>
+                  <TableCell align="right">{t('ws.actions')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -152,7 +153,7 @@ export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
                     <TableCell>{formatDate(e.at)}</TableCell>
                     <TableCell align="right">
                       <Button size="small" onClick={() => onNavigate(e.tool as RouteId)}>
-                        Open tool
+                        {t('common.openTool')}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -165,11 +166,11 @@ export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
 
       <Box component="section" aria-labelledby="workspace-activity-heading">
         <Typography variant="h6" component="h3" id="workspace-activity-heading" sx={{ mb: 1 }}>
-          Recent activity
+          {t('ws.recentActivity')}
         </Typography>
         {entries.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
-            No activity yet — process a file and it will show up here.
+            {t('ws.noActivity')}
           </Typography>
         ) : (
           <Stack spacing={1}>
@@ -189,23 +190,22 @@ export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
 
       <Box component="section" aria-labelledby="workspace-storage-heading">
         <Typography variant="h6" component="h3" id="workspace-storage-heading" sx={{ mb: 1 }}>
-          Storage
+          {t('ws.storage')}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Your files are never stored on this device — only their names, sizes and results are remembered, using{' '}
-          {formatBytes(storeBytes)} of browser storage. Clear it any time in Settings.
+          {t('ws.storageText', { bytes: formatBytes(storeBytes) })}
         </Typography>
         <Button
           size="small"
           sx={{ mt: 1 }}
           onClick={() => {
-            if (window.confirm('Clear the whole activity history on this device?')) {
+            if (window.confirm(t('ws.clearConfirm'))) {
               localStorage.removeItem('openpixel.activity.v1')
               refresh()
             }
           }}
         >
-          Clear history
+          {t('common.clearHistory')}
         </Button>
       </Box>
     </Stack>
@@ -213,19 +213,19 @@ export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
 }
 
 function EmptyHistory({ onNavigate }: { onNavigate: (route: RouteId) => void }) {
+  const { t } = useI18n()
   return (
     <Card>
       <CardContent sx={{ textAlign: 'center', py: 5 }}>
         <FolderOpenIcon color="action" sx={{ fontSize: 40 }} />
         <Typography variant="subtitle1" sx={{ mt: 1 }}>
-          No files yet
+          {t('ws.noFiles')}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 420, mx: 'auto', mt: 0.5 }}>
-          Process a file — convert an image, compress a PDF, run OCR — and it will appear here with its name,
-          size and result.
+          {t('ws.noFilesText')}
         </Typography>
         <Button variant="contained" sx={{ mt: 2 }} onClick={() => onNavigate('convert')}>
-          Convert an image
+          {t('ws.convertImage')}
         </Button>
       </CardContent>
     </Card>
@@ -233,6 +233,7 @@ function EmptyHistory({ onNavigate }: { onNavigate: (route: RouteId) => void }) 
 }
 
 export function MyFilesPage({ onNavigate }: WorkspaceProps) {
+  const { t, lang } = useI18n()
   const { entries, refresh } = useEntries()
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [query, setQuery] = useState('')
@@ -266,38 +267,37 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
     <Stack spacing={3}>
       <Box>
         <Typography variant="h5" component="h2" id="files-heading">
-          My Files
+          {t('ws.myFiles')}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 720 }}>
-          Files you processed on this device. Only names, sizes and results are kept — the files themselves are
-          not stored, so open the tool again to process a file once more.
+          {t('ws.myFilesIntro')}
         </Typography>
       </Box>
 
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           size="small"
-          placeholder="Search by file name…"
+          placeholder={t('ws.searchFiles')}
           aria-label="Search files"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           sx={{ flex: 1, minWidth: 200 }}
         />
         <FormControl size="small" sx={{ minWidth: 130 }}>
-          <InputLabel id="files-type-label">Type</InputLabel>
-          <Select labelId="files-type-label" label="Type" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}>
-            <MenuItem value="all">All types</MenuItem>
-            <MenuItem value="image">Images</MenuItem>
-            <MenuItem value="pdf">PDFs</MenuItem>
-            <MenuItem value="other">Other</MenuItem>
+          <InputLabel id="files-type-label">{t('ws.type')}</InputLabel>
+          <Select labelId="files-type-label" label={t('ws.type')} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}>
+            <MenuItem value="all">{t('ws.allTypes')}</MenuItem>
+            <MenuItem value="image">{t('ws.images')}</MenuItem>
+            <MenuItem value="pdf">{t('ws.pdfs')}</MenuItem>
+            <MenuItem value="other">{t('ws.other')}</MenuItem>
           </Select>
         </FormControl>
         <FormControl size="small" sx={{ minWidth: 130 }}>
-          <InputLabel id="files-sort-label">Sort</InputLabel>
-          <Select labelId="files-sort-label" label="Sort" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
-            <MenuItem value="date">Newest first</MenuItem>
-            <MenuItem value="size">Largest first</MenuItem>
-            <MenuItem value="name">Name A–Z</MenuItem>
+          <InputLabel id="files-sort-label">{t('tools.sort')}</InputLabel>
+          <Select labelId="files-sort-label" label={t('tools.sort')} value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
+            <MenuItem value="date">{t('ws.newest')}</MenuItem>
+            <MenuItem value="size">{t('ws.largest')}</MenuItem>
+            <MenuItem value="name">{t('ws.nameAz')}</MenuItem>
           </Select>
         </FormControl>
         <ToggleButtonGroup
@@ -346,10 +346,10 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
                   </Box>
                   <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
                     <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => onNavigate(e.tool as RouteId)}>
-                      Open tool
+                      {t('common.openTool')}
                     </Button>
                     <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => remove(e.id)}>
-                      Remove
+                      {t('common.remove')}
                     </Button>
                   </Box>
                 </CardContent>
@@ -362,12 +362,12 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
           <Table size="small" aria-label="My files">
             <TableHead>
               <TableRow>
-                <TableCell>File name</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Size</TableCell>
-                <TableCell>Tool</TableCell>
-                <TableCell>Last modified</TableCell>
-                <TableCell align="right">Actions</TableCell>
+                <TableCell>{t('ws.fileName')}</TableCell>
+                <TableCell>{t('ws.fileType')}</TableCell>
+                <TableCell>{t('ws.fileSize')}</TableCell>
+                <TableCell>{t('ws.fileTool')}</TableCell>
+                <TableCell>{t('ws.lastModified')}</TableCell>
+                <TableCell align="right">{t('ws.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -394,7 +394,7 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
       )}
       {filtered.length > 0 && (
         <Typography variant="caption" color="text.secondary">
-          {filtered.length} file{filtered.length === 1 ? '' : 's'} · starred files are marked with a star.
+          {t('ws.filesCount', { n: filtered.length, s: plural(lang, filtered.length) })}
         </Typography>
       )}
     </Stack>
@@ -402,6 +402,7 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
 }
 
 export function RecentFilesPage({ onNavigate }: WorkspaceProps) {
+  const { t } = useI18n()
   const { entries } = useEntries()
   const [query, setQuery] = useState('')
 
@@ -414,15 +415,15 @@ export function RecentFilesPage({ onNavigate }: WorkspaceProps) {
     <Stack spacing={3}>
       <Box>
         <Typography variant="h5" component="h2" id="recent-heading">
-          Recent Files
+          {t('ws.recentTitle')}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 720 }}>
-          Everything you processed recently, newest first.
+          {t('ws.recentIntro')}
         </Typography>
       </Box>
       <TextField
         size="small"
-        placeholder="Search files or tools…"
+        placeholder={t('ws.searchRecent')}
         aria-label="Search recent files"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
@@ -435,13 +436,13 @@ export function RecentFilesPage({ onNavigate }: WorkspaceProps) {
           <Table size="small" aria-label="Recent files">
             <TableHead>
               <TableRow>
-                <TableCell>File name</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Size</TableCell>
-                <TableCell>Tool</TableCell>
-                <TableCell>Result</TableCell>
-                <TableCell>Last modified</TableCell>
-                <TableCell align="right">Actions</TableCell>
+                <TableCell>{t('ws.fileName')}</TableCell>
+                <TableCell>{t('ws.fileType')}</TableCell>
+                <TableCell>{t('ws.fileSize')}</TableCell>
+                <TableCell>{t('ws.fileTool')}</TableCell>
+                <TableCell>{t('ws.fileResult')}</TableCell>
+                <TableCell>{t('ws.lastModified')}</TableCell>
+                <TableCell align="right">{t('ws.actions')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -455,7 +456,7 @@ export function RecentFilesPage({ onNavigate }: WorkspaceProps) {
                   <TableCell>{formatDate(e.at)}</TableCell>
                   <TableCell align="right">
                     <Button size="small" onClick={() => onNavigate(e.tool as RouteId)}>
-                      Open tool
+                      {t('common.openTool')}
                     </Button>
                   </TableCell>
                 </TableRow>

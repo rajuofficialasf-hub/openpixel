@@ -21,6 +21,7 @@ import { formatBytes } from '../../lib/capabilities'
 import { DropZone } from '../DropZone'
 import { ToolPageHeader } from '../ToolPage'
 import { downloadBlob, type UsePdfFile } from './usePdfFile'
+import { useI18n } from '../../lib/i18n'
 
 export function WasmWarning() {
   return (
@@ -44,6 +45,7 @@ export function WasmWarning() {
 
 /** File name, size and page count, with the "different file" switch. */
 export function PdfFileSummary({ pdf }: { pdf: UsePdfFile }) {
+  const { t } = useI18n()
   if (!pdf.file) return null
   return (
     <Card>
@@ -56,10 +58,10 @@ export function PdfFileSummary({ pdf }: { pdf: UsePdfFile }) {
             {formatBytes(pdf.file.size)}
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Pages: <Box component="span" id="pdf-page-count" sx={{ color: 'text.primary', fontWeight: 500 }}>{pdf.pageCount}</Box>
+            {t('common.pages')}: <Box component="span" id="pdf-page-count" sx={{ color: 'text.primary', fontWeight: 500 }}>{pdf.pageCount}</Box>
           </Typography>
           <Button type="button" variant="outlined" size="small" onClick={pdf.clearFile}>
-            Choose a different file
+            {t('common.chooseDifferentFile')}
           </Button>
         </Stack>
       </CardContent>
@@ -69,6 +71,7 @@ export function PdfFileSummary({ pdf }: { pdf: UsePdfFile }) {
 
 /** Status line + download buttons + error — the shared result state. */
 export function PdfResultBoxes({ pdf }: { pdf: UsePdfFile }) {
+  const { t } = useI18n()
   return (
     <>
       {pdf.status && pdf.results.length > 0 && (
@@ -96,7 +99,7 @@ export function PdfResultBoxes({ pdf }: { pdf: UsePdfFile }) {
                 startIcon={<DownloadIcon />}
                 onClick={() => downloadBlob(r.blob, r.filename)}
               >
-                Download {r.filename}
+                {t('common.download')} {r.filename}
               </Button>
             ))}
           </Stack>
@@ -194,12 +197,13 @@ export function PdfToolPage({
   summary,
   ready,
   beforeSettings,
-  settingsLabel = 'Settings',
+  settingsLabel,
   children,
   primary,
   secondaryActions,
   extra,
 }: PdfToolPageProps) {
+  const { t } = useI18n()
   const loaded = ready ?? pdf.file !== null
   return (
     <Box
@@ -237,7 +241,7 @@ export function PdfToolPage({
 
         {pdf.loading && (
           <Typography role="status" variant="body2" color="text.secondary">
-            Reading PDF…
+            {t('common.readingPdf')}
           </Typography>
         )}
 
@@ -249,7 +253,7 @@ export function PdfToolPage({
           <Card>
             <CardContent>
               <Typography variant="overline" color="text.secondary">
-                {settingsLabel}
+                {settingsLabel ?? t('common.settings')}
               </Typography>
               <Stack spacing={2} sx={{ mt: 1 }}>
                 {children}

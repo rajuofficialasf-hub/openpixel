@@ -16,9 +16,9 @@ export interface ResizeSettings {
 
 export interface Settings {
   theme: Theme
-  /** Interface language. 'bn' is stored now; the interface itself
-   *  stays English until the Bengali strings land (Phase 6 prep —
-   *  the Noto Sans Bengali font is already bundled). */
+  /** Interface language. 'bn' switches the interface chrome
+   *  (navigation, headings, buttons) to Bengali — see
+   *  `lib/i18n.ts`. Tool names stay English in both. */
   language: 'en' | 'bn'
   defaultQuality: number // JPEG/WebP quality 1–100
   defaultFormat: string // engine format id, e.g. 'webp'

@@ -281,6 +281,22 @@ check('Settings tab renders', setText.length > 20, setText.replace(/\n/g, ' | ')
 await shot('09-settings-dark.png');
 await page.locator('button[aria-label="Switch to light theme"]').click();
 
+// --- 10b. Language switch EN -> BN -> EN (Phase 7 i18n) ---
+await page.locator('#language-toggle').click();
+await sleep(400);
+const navBn = await page.locator('#tab-tools').innerText();
+const langBn = await page.evaluate(() => document.documentElement.lang);
+check('language toggle switches nav label to Bengali', navBn.trim() === 'সব টুল', `tab-tools text: ${navBn.trim()}`);
+check('document lang becomes bn', langBn === 'bn', `lang=${langBn}`);
+await page.reload({ waitUntil: 'networkidle' });
+await sleep(400);
+const navBnAfterReload = await page.locator('#tab-tools').innerText();
+check('Bengali persists across reload (localStorage)', navBnAfterReload.trim() === 'সব টুল', `tab-tools text: ${navBnAfterReload.trim()}`);
+await page.locator('#language-toggle').click();
+await sleep(400);
+const navEn = await page.locator('#tab-tools').innerText();
+check('language toggle restores English nav label', navEn.trim() === 'All Tools', `tab-tools text: ${navEn.trim()}`);
+
 // --- 11. keyboard-only: tab to drop zone, Enter opens picker ---
 // NOTE (16 Nov 2026): headless Chromium's file-chooser interception
 // is racy in this VM — the chooser sometimes does not fire even

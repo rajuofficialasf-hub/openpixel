@@ -23,6 +23,7 @@ import {
 import { browserEncodableFormats, formatLabel } from '../lib/capabilities'
 import { DEFAULT_SETTINGS, type Settings } from '../lib/settings'
 import { useWasmSupport } from '../lib/wasm-engine'
+import { plural, useI18n } from '../lib/i18n'
 
 interface SettingsPanelProps {
   settings: Settings
@@ -34,6 +35,7 @@ interface SettingsPanelProps {
  * Every control here does a real operation (including Reset and Clear).
  */
 export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps) {
+  const { t, lang } = useI18n()
   const update = (patch: Partial<Settings>) => onSettingsChange({ ...settings, ...patch })
 
   // Privacy / Storage cards read the local history store directly —
@@ -60,10 +62,10 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
       <Stack spacing={3}>
         <Box>
           <Typography variant="h5" component="h2" id="settings-heading">
-            Settings
+            {t('settings.title')}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
-            Saved on this device only — no account, no server.
+            {t('settings.savedNote')}
           </Typography>
         </Box>
 
@@ -78,12 +80,12 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
         <Card>
           <CardContent>
             <Typography variant="overline" color="text.secondary">
-              Preferences
+              {t('settings.preferences')}
             </Typography>
             <Stack spacing={2.5} sx={{ mt: 1 }}>
               <Box>
                 <Typography variant="subtitle2" component="label" htmlFor="theme">
-                  Theme
+                  {t('settings.theme')}
                 </Typography>
                 <Select
                   native
@@ -93,15 +95,15 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                   onChange={(e) => update({ theme: e.target.value as Settings['theme'] })}
                   sx={{ mt: 0.5 }}
                 >
-                  <option value="system">System (follow your OS)</option>
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
+                  <option value="system">{t('settings.themeSystem')}</option>
+                  <option value="light">{t('settings.themeLight')}</option>
+                  <option value="dark">{t('settings.themeDark')}</option>
                 </Select>
               </Box>
 
               <Box>
                 <Typography variant="subtitle2" component="label" htmlFor="language">
-                  Language
+                  {t('settings.language')}
                 </Typography>
                 <Select
                   native
@@ -111,18 +113,17 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                   onChange={(e) => update({ language: e.target.value as Settings['language'] })}
                   sx={{ mt: 0.5 }}
                 >
-                  <option value="en">English</option>
-                  <option value="bn">বাংলা (Bengali)</option>
+                  <option value="en">{t('settings.languageEn')}</option>
+                  <option value="bn">{t('settings.languageBn')}</option>
                 </Select>
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                  Bengali is saved as your preference now — the interface itself stays in English until the
-                  Bengali strings land. The Bengali font is already bundled.
+                  {t('settings.languageNote')}
                 </Typography>
               </Box>
 
               <Box>
                 <Typography variant="subtitle2" component="label">
-                  Default JPEG / WebP quality: {settings.defaultQuality}
+                  {t('settings.quality', { n: settings.defaultQuality })}
                 </Typography>
                 <Slider
                   aria-label="Default JPEG / WebP quality"
@@ -132,13 +133,13 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                   onChange={(_, value) => update({ defaultQuality: value as number })}
                 />
                 <Typography variant="caption" color="text.secondary">
-                  Used as the starting quality in the Convert and Batch views. The engine default is 85.
+                  {t('settings.qualityNote')}
                 </Typography>
               </Box>
 
               <Box>
                 <Typography variant="subtitle2" component="label" htmlFor="default-format">
-                  Default output format
+                  {t('settings.defaultFormat')}
                 </Typography>
                 <Select
                   native
@@ -155,13 +156,13 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                   ))}
                 </Select>
                 <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                  Only formats this browser can encode are offered here.
+                  {t('settings.defaultFormatNote')}
                 </Typography>
               </Box>
 
               <Box>
                 <Typography variant="subtitle2" component="label">
-                  Default background colour (flattens transparency for JPEG/BMP)
+                  {t('settings.defaultBg')}
                 </Typography>
                 <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
                   <TextField
@@ -184,8 +185,7 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
 
               <Box>
                 <Typography variant="subtitle2" component="label">
-                  Batch concurrency: {settings.batchWorkers} file{settings.batchWorkers === 1 ? '' : 's'} at a
-                  time
+                  {t('settings.batch', { n: settings.batchWorkers, s: plural(lang, settings.batchWorkers) })}
                 </Typography>
                 <Slider
                   aria-label="Batch concurrency"
@@ -196,8 +196,7 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                   onChange={(_, value) => update({ batchWorkers: value as number })}
                 />
                 <Typography variant="caption" color="text.secondary">
-                  The native CLI allows up to 8 workers; the browser is capped at 4 so a batch cannot
-                  exhaust tab memory. Conversion itself runs in a Web Worker, so the UI stays responsive.
+                  {t('settings.batchNote')}
                 </Typography>
               </Box>
 
@@ -210,17 +209,16 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                       inputProps={{ 'aria-label': '3D background' }}
                     />
                   }
-                  label="3D background"
+                  label={t('settings.bg3d')}
                 />
                 <Typography variant="caption" color="text.secondary" display="block">
-                  Animated Three.js backdrop behind the header. Turn it off for a static page, or if
-                  motion is distracting — the setting is saved on this device.
+                  {t('settings.bg3dNote')}
                 </Typography>
               </Box>
 
               <Stack direction="row" flexWrap="wrap" spacing={1.5} sx={{ pt: 0.5 }}>
                 <Button type="button" variant="outlined" onClick={() => onSettingsChange({ ...DEFAULT_SETTINGS })}>
-                  Reset to defaults
+                  {t('settings.reset')}
                 </Button>
                 <Button
                   type="button"
@@ -230,7 +228,7 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                     onSettingsChange({ ...DEFAULT_SETTINGS })
                   }}
                 >
-                  Clear saved settings
+                  {t('settings.clearSaved')}
                 </Button>
               </Stack>
             </Stack>
@@ -240,10 +238,10 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
         <Card>
           <CardContent>
             <Typography variant="overline" color="text.secondary">
-              About
+              {t('settings.about')}
             </Typography>
             <Typography variant="subtitle1" fontWeight={600} sx={{ mt: 1 }}>
-              About this app
+              {t('settings.aboutTitle')}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               OpenPixel web (Phase 7) — React + TypeScript + Vite + Material UI, with a Three.js
@@ -269,7 +267,7 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
         <Card>
           <CardContent>
             <Typography variant="overline" color="text.secondary">
-              Privacy
+              {t('settings.privacy')}
             </Typography>
             <Stack spacing={2} sx={{ mt: 1 }}>
               <Box>
@@ -284,18 +282,15 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                       inputProps={{ 'aria-label': 'Record processed files in My Files' }}
                     />
                   }
-                  label="Record processed files in My Files"
+                  label={t('settings.record')}
                 />
                 <Typography variant="caption" color="text.secondary" display="block">
-                  When on, the file name, size, tool and result of each file you process are saved on this
-                  device (My Files, Recent Files, dashboard). File contents are never stored. Turning it off
-                  stops new entries — existing history stays until you clear it.
+                  {t('settings.recordNote')}
                 </Typography>
               </Box>
               <Box>
                 <Typography variant="body2">
-                  {historyCount} file{historyCount === 1 ? '' : 's'} in history ·{' '}
-                  {formatActivityBytes(historyBytes)}
+                  {t('settings.historyCount', { n: historyCount, s: plural(lang, historyCount), bytes: formatActivityBytes(historyBytes) })}
                 </Typography>
                 <Button
                   type="button"
@@ -306,7 +301,7 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                     refreshHistory()
                   }}
                 >
-                  Clear history
+                  {t('common.clearHistory')}
                 </Button>
               </Box>
             </Stack>
@@ -316,21 +311,19 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
         <Card>
           <CardContent>
             <Typography variant="overline" color="text.secondary">
-              Storage
+              {t('settings.storage')}
             </Typography>
             <Stack spacing={1.5} sx={{ mt: 1 }}>
               <Typography variant="body2">
-                History: {formatActivityBytes(historyBytes)} ({historyCount} of max 200 entries)
+                {t('settings.storageHistory', { bytes: formatActivityBytes(historyBytes), n: historyCount })}
               </Typography>
               <Typography variant="body2">
-                WASM engine:{' '}
                 {wasmSupport
-                  ? `loaded — decodes ${wasmSupport.decode.length} formats, encodes ${wasmSupport.encode.length}`
-                  : 'not loaded — still loading, or the module was not built (npm run build:wasm)'}
+                  ? t('settings.wasmLoaded', { d: wasmSupport.decode.length, e: wasmSupport.encode.length })
+                  : t('settings.wasmMissing')}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Your files themselves are never stored on this device — only the history above. Results download
-                straight to your Downloads folder.
+                {t('settings.filesNeverStored')}
               </Typography>
             </Stack>
           </CardContent>

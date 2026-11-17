@@ -22,6 +22,7 @@ import { EditTool } from './components/pdf/EditTool'
 import { FlattenTool, MetadataTool, RedactTool, RepairTool, SanitizeTool } from './components/pdf/CleanUpTools'
 import { AppShell } from './components/layout/AppShell'
 import { loadSettings, resolveTheme, saveSettings, type Settings } from './lib/settings'
+import { I18nProvider } from './lib/i18n'
 import { getTheme } from './theme/theme'
 import { ROUTE_PATHS, routeFromPath, type RouteId, type ToolCategory } from './lib/routes'
 
@@ -59,6 +60,7 @@ function App() {
     // `documentElement.classList.contains('dark')`); the MUI theme
     // itself does not need it.
     document.documentElement.classList.toggle('dark', mode === 'dark')
+    document.documentElement.lang = settings.language === 'bn' ? 'bn' : 'en'
     saveSettings(settings)
   }, [settings, mode])
 
@@ -126,6 +128,7 @@ function App() {
       )}
       {/* The content sits above the (optional) 3D backdrop. */}
       <Box sx={{ position: 'relative', zIndex: 1 }}>
+        <I18nProvider language={settings.language}>
         <AppShell route={route} onNavigate={navigate} settings={settings} onSettingsChange={setSettings}>
           {route === 'home' && <HomePage onNavigate={navigate} />}
           {route === 'overview' && <WorkspaceDashboard onNavigate={navigate} />}
@@ -188,6 +191,7 @@ function App() {
           {route === 'settings' && <SettingsPanel settings={settings} onSettingsChange={setSettings} />}
           {route === 'help' && <HelpPage />}
         </AppShell>
+        </I18nProvider>
       </Box>
     </ThemeProvider>
   )

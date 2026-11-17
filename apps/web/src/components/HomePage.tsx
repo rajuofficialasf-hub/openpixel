@@ -20,6 +20,7 @@ import FolderZipIcon from '@mui/icons-material/FolderZip'
 import FormatShapesIcon from '@mui/icons-material/FormatShapes'
 import NoAccountsIcon from '@mui/icons-material/NoAccounts'
 import { CATEGORIES, POPULAR_TOOLS, type RouteId, type ToolCategory } from '../lib/routes'
+import { translate, useI18n } from '../lib/i18n'
 import { detectFileFormat } from '../lib/detect'
 import { DropZone } from './DropZone'
 import { ToolCard } from './ToolCard'
@@ -29,57 +30,22 @@ interface HomePageProps {
 }
 
 const HOW_IT_WORKS = [
-  {
-    icon: <UploadFileIcon color="primary" />,
-    title: 'Upload your file',
-    text: 'Drag it in or browse — images, PDFs and more. Nothing is uploaded to a server.',
-  },
-  {
-    icon: <MouseIcon color="primary" />,
-    title: 'Select your operation',
-    text: 'Convert, resize, compress, merge, OCR — the tool opens with your file already loaded.',
-  },
-  {
-    icon: <DownloadIcon color="primary" />,
-    title: 'Download your file',
-    text: 'The result downloads straight from your browser, with a clear summary of what changed.',
-  },
+  { icon: <UploadFileIcon color="primary" />, key: 'how1' },
+  { icon: <MouseIcon color="primary" />, key: 'how2' },
+  { icon: <DownloadIcon color="primary" />, key: 'how3' },
 ]
 
 const BENEFITS = [
-  {
-    icon: <FormatShapesIcon color="primary" />,
-    title: 'Many formats',
-    text: '20+ image formats, full PDF tooling, Office documents and OCR in one place.',
-  },
-  {
-    icon: <SpeedIcon color="primary" />,
-    title: 'Simple workflows',
-    text: 'Every tool follows the same pattern — upload, set options, download. No learning curve per tool.',
-  },
-  {
-    icon: <ShieldIcon color="primary" />,
-    title: 'Secure by design',
-    text: 'Processing happens in your browser. Files never leave your device.',
-  },
-  {
-    icon: <FolderZipIcon color="primary" />,
-    title: 'Batch operations',
-    text: 'Convert or resize whole folders at once, with a zip of the results.',
-  },
-  {
-    icon: <DevicesIcon color="primary" />,
-    title: 'Same engine everywhere',
-    text: 'The web app, the CLI and the desktop app run the same OpenPixel Engine.',
-  },
-  {
-    icon: <NoAccountsIcon color="primary" />,
-    title: 'No account',
-    text: 'No sign-up, no subscription, no tracking. Open the site and start working.',
-  },
+  { icon: <FormatShapesIcon color="primary" />, key: 'benefit1' },
+  { icon: <SpeedIcon color="primary" />, key: 'benefit2' },
+  { icon: <ShieldIcon color="primary" />, key: 'benefit3' },
+  { icon: <FolderZipIcon color="primary" />, key: 'benefit4' },
+  { icon: <DevicesIcon color="primary" />, key: 'benefit5' },
+  { icon: <NoAccountsIcon color="primary" />, key: 'benefit6' },
 ]
 
 export function HomePage({ onNavigate }: HomePageProps) {
+  const { t, lang } = useI18n()
   const [notice, setNotice] = useState<string | null>(null)
   const [routing, setRouting] = useState(false)
   const uploadRef = useRef<HTMLDivElement>(null)
@@ -123,41 +89,41 @@ export function HomePage({ onNavigate }: HomePageProps) {
       {/* 1. Hero */}
       <Box component="section" aria-labelledby="home-hero-heading" sx={{ textAlign: 'center', py: { xs: 2, md: 4 } }}>
         <Typography variant="h1" component="h1" id="home-hero-heading" sx={{ maxWidth: 760, mx: 'auto' }}>
-          Everything You Need to Work With Files
+          {t('home.heroTitle')}
         </Typography>
         <Typography
           variant="body1"
           color="text.secondary"
           sx={{ maxWidth: 640, mx: 'auto', mt: 2, fontSize: '1.0625rem' }}
         >
-          Convert, edit, compress, organize, and optimize your files in one powerful workspace.
+          {t('home.heroSub')}
         </Typography>
         <Stack direction="row" spacing={2} justifyContent="center" sx={{ mt: 3, flexWrap: 'wrap' }}>
           <Button variant="contained" size="large" onClick={() => onNavigate('tools')}>
-            Explore All Tools
+            {t('home.exploreTools')}
           </Button>
           <Button
             variant="outlined"
             size="large"
             onClick={() => uploadRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
           >
-            Get Started
+            {t('home.getStarted')}
           </Button>
         </Stack>
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-          100% local — files never leave your browser. No account, no upload.
+          {t('home.localNote')}
         </Typography>
       </Box>
 
       {/* 2. Main upload area */}
       <Box component="section" aria-labelledby="home-upload-heading" ref={uploadRef}>
         <Typography variant="h5" component="h2" id="home-upload-heading" sx={{ mb: 2 }}>
-          Start with a file
+          {t('home.startWithFile')}
         </Typography>
         <DropZone
           onFiles={(files) => void routeFiles(files)}
-          label={routing ? 'Reading your file…' : 'Drop your files here'}
-          hint="Images go to Convert, PDFs go to PDF Tools, several images go to Batch. Multiple files supported."
+          label={routing ? t('home.readingFile') : t('home.dropLabel')}
+          hint={t('home.dropHint')}
           inputId="home-file"
         />
         {notice && (
@@ -167,13 +133,13 @@ export function HomePage({ onNavigate }: HomePageProps) {
         )}
       </Box>
 
-      {/* 3. Popular tools */}
+      {/* 3. {t('home.popularTitle')} */}
       <Box component="section" aria-labelledby="home-popular-heading">
         <Typography variant="h5" component="h2" id="home-popular-heading" sx={{ mb: 1 }}>
-          Popular tools
+          {t('home.popularTitle')}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          The tools people reach for first — every one of them works in your browser.
+          {t('home.popularSub')}
         </Typography>
         <Grid container spacing={2}>
           {POPULAR_TOOLS.map((tool) => (
@@ -187,10 +153,10 @@ export function HomePage({ onNavigate }: HomePageProps) {
       {/* 4. Categories */}
       <Box component="section" aria-labelledby="home-categories-heading">
         <Typography variant="h5" component="h2" id="home-categories-heading" sx={{ mb: 1 }}>
-          Explore categories
+          {t('home.categoriesTitle')}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Browse by what you are working with.
+          {t('home.categoriesSub')}
         </Typography>
         <Grid container spacing={2}>
           {CATEGORIES.map((cat) => (
@@ -209,9 +175,9 @@ export function HomePage({ onNavigate }: HomePageProps) {
                   }}
                 >
                   <CardContent>
-                    <Typography variant="subtitle1">{cat.label}</Typography>
+                    <Typography variant="subtitle1">{translate(lang, `cat.${cat.id}`)}</Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {cat.blurb}
+                      {translate(lang, `cat.${cat.id}.blurb`)}
                     </Typography>
                   </CardContent>
                 </Button>
@@ -221,25 +187,25 @@ export function HomePage({ onNavigate }: HomePageProps) {
         </Grid>
       </Box>
 
-      {/* 5. How it works */}
+      {/* 5. {t('home.howTitle')} */}
       <Box component="section" aria-labelledby="home-how-heading">
         <Typography variant="h5" component="h2" id="home-how-heading" sx={{ mb: 2 }}>
-          How it works
+          {t('home.howTitle')}
         </Typography>
         <Grid container spacing={2}>
           {HOW_IT_WORKS.map((step, i) => (
-            <Grid key={step.title} size={{ xs: 12, md: 4 }}>
+            <Grid key={step.key} size={{ xs: 12, md: 4 }}>
               <Card sx={{ height: '100%' }}>
                 <CardContent>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                     {step.icon}
                     <Typography variant="overline" color="text.secondary">
-                      Step {i + 1}
+                      {t('home.howStep', { n: i + 1 })}
                     </Typography>
                   </Box>
-                  <Typography variant="subtitle1">{step.title}</Typography>
+                  <Typography variant="subtitle1">{t(`home.${step.key}Title`)}</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {step.text}
+                    {t(`home.${step.key}Text`)}
                   </Typography>
                 </CardContent>
               </Card>
@@ -251,17 +217,17 @@ export function HomePage({ onNavigate }: HomePageProps) {
       {/* 6. Benefits */}
       <Box component="section" aria-labelledby="home-benefits-heading">
         <Typography variant="h5" component="h2" id="home-benefits-heading" sx={{ mb: 2 }}>
-          Why OpenPixel Studio
+          {t('home.whyTitle')}
         </Typography>
         <Grid container spacing={2}>
           {BENEFITS.map((b) => (
-            <Grid key={b.title} size={{ xs: 12, sm: 6, lg: 4 }}>
+            <Grid key={b.key} size={{ xs: 12, sm: 6, lg: 4 }}>
               <Card sx={{ height: '100%' }}>
                 <CardContent>
                   <Box sx={{ mb: 1 }}>{b.icon}</Box>
-                  <Typography variant="subtitle1">{b.title}</Typography>
+                  <Typography variant="subtitle1">{t(`home.${b.key}Title`)}</Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {b.text}
+                    {t(`home.${b.key}Text`)}
                   </Typography>
                 </CardContent>
               </Card>
@@ -275,14 +241,10 @@ export function HomePage({ onNavigate }: HomePageProps) {
         <Card>
           <CardContent>
             <Typography variant="h6" component="h2" id="home-privacy-heading">
-              Your files stay yours
+              {t('home.privacyTitle')}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Every tool on this site runs in your browser — conversion, PDF work and OCR included. Files are
-              read with the File API on your device and never sent to a server, because there is no server. The
-              only thing stored on this device is a short list of file names you processed (My Files), which you
-              can clear at any time in Settings. The CLI and desktop app use the same engine on your own
-              machine.
+              {t('home.privacyText')}
             </Typography>
           </CardContent>
         </Card>

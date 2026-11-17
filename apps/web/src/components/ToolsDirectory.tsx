@@ -21,6 +21,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import { CATEGORIES, ROUTE_TITLES, searchTools, TOOLS, type RouteId, type ToolCategory } from '../lib/routes'
 import { formatDate, loadActivity } from '../lib/activity'
 import { ToolCard } from './ToolCard'
+import { plural, translate, useI18n } from '../lib/i18n'
 
 export type ToolsCategoryFilter = ToolCategory | 'all'
 
@@ -33,6 +34,7 @@ interface ToolsDirectoryProps {
 }
 
 export function ToolsDirectory({ query, onQueryChange, category, onCategoryChange, onNavigate }: ToolsDirectoryProps) {
+  const { t, lang } = useI18n()
   const [sort, setSort] = useState<'recommended' | 'name'>('recommended')
   const activity = useMemo(() => loadActivity(), [])
 
@@ -65,18 +67,17 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
     <Stack spacing={3}>
       <Box>
         <Typography variant="h5" component="h2" id="tools-heading">
-          All Tools
+          {t('tools.title')}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 720 }}>
-          Discover everything you can do with OpenPixel Studio. Tools that run in the browser open straight away;
-          tools that need the CLI or desktop app say so — and show the exact command.
+          {t('tools.intro')}
         </Typography>
       </Box>
 
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
         <TextField
           size="small"
-          placeholder="Search by tool name or what it does…"
+          placeholder={t('tools.searchPlaceholder')}
           aria-label="Search tools"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
@@ -84,22 +85,22 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
           sx={{ flex: 1, minWidth: 240 }}
         />
         <FormControl size="small" sx={{ minWidth: 180 }}>
-          <InputLabel id="tools-sort-label">Sort</InputLabel>
+          <InputLabel id="tools-sort-label">{t('tools.sort')}</InputLabel>
           <Select
             labelId="tools-sort-label"
-            label="Sort"
+            label={t('tools.sort')}
             value={sort}
             onChange={(e) => setSort(e.target.value as 'recommended' | 'name')}
           >
-            <MenuItem value="recommended">Recommended</MenuItem>
-            <MenuItem value="name">Name A–Z</MenuItem>
+            <MenuItem value="recommended">{t('tools.sortRecommended')}</MenuItem>
+            <MenuItem value="name">{t('tools.sortName')}</MenuItem>
           </Select>
         </FormControl>
       </Box>
 
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }} role="group" aria-label="Filter by category">
         <Chip
-          label="All"
+          label={t('tools.all')}
           clickable
           color={category === 'all' ? 'primary' : 'default'}
           onClick={() => onCategoryChange('all')}
@@ -107,7 +108,7 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
         {CATEGORIES.map((c) => (
           <Chip
             key={c.id}
-            label={c.label}
+            label={translate(lang, `cat.${c.id}`)}
             clickable
             color={category === c.id ? 'primary' : 'default'}
             onClick={() => onCategoryChange(c.id)}
@@ -118,7 +119,7 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
       {recentUsed.length > 0 && !query.trim() && category === 'all' && (
         <Box component="section" aria-labelledby="tools-recent-heading">
           <Typography variant="overline" color="text.secondary" id="tools-recent-heading">
-            Recently used
+            {t('tools.recentlyUsed')}
           </Typography>
           <Stack spacing={1} sx={{ mt: 1 }}>
             {recentUsed.map((r) => (
@@ -145,7 +146,7 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
                     {formatDate(r.at)}
                   </Typography>
                 </Box>
-                <Chip size="small" label="Open tool" color="primary" clickable onClick={() => onNavigate(r.route)} />
+                <Chip size="small" label={t('common.openTool')} color="primary" clickable onClick={() => onNavigate(r.route)} />
               </Box>
             ))}
           </Stack>
@@ -158,15 +159,14 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
           return (
             <Box key={cat.id} component="section" aria-labelledby={`tools-cat-${cat.id}`}>
               <Typography variant="h6" component="h3" id={`tools-cat-${cat.id}`}>
-                {cat.label}
+                {translate(lang, `cat.${cat.id}`)}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                {cat.blurb}
+                {translate(lang, `cat.${cat.id}.blurb`)}
               </Typography>
               {tools.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">
-                  No {cat.label.toLowerCase()} tools yet — audio and video conversion are not built. The tools
-                  above are the ones that exist today.
+                  {t('tools.noToolsYet', { category: translate(lang, `cat.${cat.id}`).toLowerCase() })}
                 </Typography>
               ) : (
                 <Grid container spacing={2}>
@@ -183,13 +183,13 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
       ) : (
         <Box>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {sorted.length} tool{sorted.length === 1 ? '' : 's'}
-            {query.trim() ? ` matching “${query.trim()}”` : ''}
-            {category !== 'all' ? ` in ${CATEGORIES.find((c) => c.id === category)?.label}` : ''}.
+            {t('tools.count', { n: sorted.length, s: plural(lang, sorted.length) })}
+            {query.trim() ? t('tools.matching', { q: query.trim() }) : ''}
+            {category !== 'all' ? t('tools.inCategory', { category: translate(lang, `cat.${category}`) }) : ''}.
           </Typography>
           {sorted.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              No tools match that search. Try a different word — or browse all tools above.
+              {t('tools.noMatch')}
             </Typography>
           ) : (
             <Grid container spacing={2}>

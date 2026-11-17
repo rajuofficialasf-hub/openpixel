@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { Box, Typography } from '@mui/material'
 import { alpha } from '@mui/material/styles'
 import { visuallyHidden } from '@mui/utils'
+import { useI18n } from '../lib/i18n'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 
 interface DropZoneProps {
@@ -24,6 +25,7 @@ interface DropZoneProps {
  * file picker — the e2e suite asserts on this behaviour.
  */
 export function DropZone({ onFiles, accept, multiple = true, label, hint, inputId, compact = false }: DropZoneProps) {
+  const { t } = useI18n()
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -93,7 +95,7 @@ export function DropZone({ onFiles, accept, multiple = true, label, hint, inputI
         {hint}
       </Typography>
       <Typography variant="body2" color="primary" fontWeight={600} sx={{ mt: compact ? 1.5 : 2 }}>
-        Choose files or drag them here
+        {t('common.chooseFiles')}
       </Typography>
       <Box
         component="input"
