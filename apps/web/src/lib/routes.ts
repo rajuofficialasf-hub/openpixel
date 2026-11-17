@@ -24,6 +24,38 @@ export type RouteId =
   | 'settings'
   | 'help'
 
+/**
+ * Clean history-API URLs — one shareable link per page, no router
+ * dependency. The app reads the path on load, `navigate()` pushes
+ * the new path, and the browser back/forward buttons change the
+ * route via popstate. Cloudflare Pages serves index.html for every
+ * path (public/_redirects), so deep links load directly.
+ */
+export const ROUTE_PATHS: Record<RouteId, string> = {
+  home: '/',
+  overview: '/overview',
+  tools: '/tools',
+  convert: '/convert',
+  resize: '/resize',
+  pdf: '/pdf',
+  ocr: '/ocr',
+  batch: '/batch',
+  formats: '/formats',
+  files: '/files',
+  recent: '/recent',
+  settings: '/settings',
+  help: '/help',
+}
+
+/** Map a URL pathname to a route. Unknown paths fall back to home. */
+export function routeFromPath(pathname: string): RouteId {
+  const clean = pathname.replace(/\/+$/, '') || '/'
+  for (const [id, path] of Object.entries(ROUTE_PATHS) as [RouteId, string][]) {
+    if (path === clean) return id
+  }
+  return 'home'
+}
+
 export type ToolCategory =
   | 'image'
   | 'pdf'

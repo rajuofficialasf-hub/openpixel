@@ -550,6 +550,37 @@ No environment variables are needed. After the first deploy the site
 is live at `https://<project>.pages.dev`; a custom domain can be
 added under the project's Custom domains tab.
 
+**URL routing.** Every page has its own shareable link — clean
+history-API URLs, no router dependency (`src/lib/routes.ts`
+`ROUTE_PATHS`, `App.tsx` reads the path on load, `navigate()`
+pushes, `popstate` drives back/forward):
+
+| Path | Page | Path | Page |
+| --- | --- | --- | --- |
+| `/` | Home | `/ocr` | OCR |
+| `/overview` | Workspace Overview | `/batch` | Batch Convert |
+| `/tools` | All Tools | `/formats` | Formats |
+| `/convert` | Convert Image | `/files` | My Files |
+| `/resize` | Resize Image | `/recent` | Recent Files |
+| `/pdf` | PDF Tools | `/settings` | Settings |
+| | | `/help` | Help Center |
+
+Deep links work because `apps/web/public/_redirects` (copied to
+`dist/` by the build) tells Pages to serve `index.html` for every
+path:
+
+```
+/* /index.html 200
+```
+
+An unknown path renders the home page and the address bar is
+corrected to `/` — there is no 404 page. Local e2e servers must
+provide the same fallback: use `apps/web/e2e/spa-server.mjs`
+(`node apps/web/e2e/spa-server.mjs 8321`), NOT
+`python3 -m http.server`, which 404s deep links and breaks any
+suite that reloads on a routed page (web-e2e reloads on
+`/formats`).
+
 **What the hosted app can and cannot do** (see also
 `apps/web/src/lib/capabilities.ts`): conversion covers PNG, JPEG,
 WebP (canvas) plus BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM,

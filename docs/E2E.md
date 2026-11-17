@@ -327,6 +327,43 @@ the All Tools nav item.
   The live-matrix fixtures live in `/tmp/op-e2e/live-in`
   (CLI-generated from the same sources).
 
+### 2.23 URL routing (17 Nov 2026) — PASS
+
+Clean history-API URLs, no router dependency: `ROUTE_PATHS` in
+`src/lib/routes.ts` maps the 13 routes (`/` home, `/overview`,
+`/tools`, `/convert`, `/resize`, `/pdf`, `/ocr`, `/batch`,
+`/formats`, `/files`, `/recent`, `/settings`, `/help`);
+`App.tsx` reads the path on load, `navigate()` pushes it, and a
+`popstate` listener drives back/forward. Re-clicking the current
+sidebar item does not push a duplicate history entry (one back
+press leaves the page). Unknown paths render home and the address
+bar is corrected to `/` via `replaceState` — no 404 page.
+`apps/web/public/_redirects` (`/* /index.html 200`, verified in
+`dist/` after build) gives Cloudflare Pages the SPA fallback.
+
+- New suite `apps/web/e2e/routing-e2e.mjs` (**9/9**): deep link
+  `/pdf` and `/convert` load directly; sidebar PDF click pushes
+  `/pdf`; back returns to `/convert`; forward returns to `/pdf`;
+  refresh on `/ocr` stays on OCR; sidebar Settings click pushes
+  `/settings`; unknown `/nope` lands on home with the URL
+  corrected to `/`; no console/page errors.
+- **Real bug found by the run:** `web-e2e.mjs` reloads on the
+  Formats tab (theme-persistence check), and with routing the
+  reload goes to `/formats` — `python3 -m http.server` 404s that
+  (dark theme "did not persist", `#tab-settings` timed out).
+  That is a test-server gap, not an app bug: live Pages serves
+  the fallback. Fixed with the shared `apps/web/e2e/spa-server.mjs`
+  (Node static server with SPA fallback, runnable as
+  `node apps/web/e2e/spa-server.mjs <port> [dist-dir]` and
+  importable — routing-e2e uses it on :8325); all suites now
+  serve from it. The README's serving instructions were updated.
+- Regression after the fix: web-e2e **36/37** (only the known
+  keyboard-focus flake), resize-e2e **16/16**, pdf-e2e **24/24**,
+  ocr-e2e **14/14**, viewport QA **15/15**, no-WASM **9/9**,
+  routing-e2e **9/9**; web npm test **84/84** (5 new
+  `routes.test.ts` checks: path map coverage, round-trip,
+  trailing slash, unknown → home), lint **0**.
+
 ### 2.16 WASM-absent fallback — PASS (9/9, SVG fix run 16 Nov 2026)
 
 A copy of `dist/` with `public/wasm/` removed, served on port 8322

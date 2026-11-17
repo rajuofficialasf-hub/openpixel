@@ -15,7 +15,7 @@ import { MyFilesPage, RecentFilesPage, WorkspaceDashboard } from './components/W
 import { AppShell } from './components/layout/AppShell'
 import { loadSettings, resolveTheme, saveSettings, type Settings } from './lib/settings'
 import { getTheme } from './theme/theme'
-import type { RouteId, ToolCategory } from './lib/routes'
+import { ROUTE_PATHS, routeFromPath, type RouteId, type ToolCategory } from './lib/routes'
 
 // Lazy: the 3D backdrop is decoration — it must never block first
 // paint. The chunk loads only when the setting is on.
@@ -33,7 +33,9 @@ interface NavigateOpts {
 }
 
 function App() {
-  const [route, setRoute] = useState<RouteId>('home')
+  // Deep links open the matching page; an unknown path renders home
+  // (the address bar is corrected to '/' on mount, below).
+  const [route, setRoute] = useState<RouteId>(() => routeFromPath(window.location.pathname))
   const [settings, setSettings] = useState<Settings>(() => loadSettings())
   const [toolsFilter, setToolsFilter] = useState<{ query: string; category: ToolsCategoryFilter }>({
     query: '',
@@ -52,6 +54,24 @@ function App() {
     saveSettings(settings)
   }, [settings, mode])
 
+  useEffect(() => {
+    // Unknown deep link: the route is home, so correct the address
+    // bar instead of leaving a bogus path in place.
+    if (routeFromPath(window.location.pathname) === 'home' && window.location.pathname !== '/') {
+      window.history.replaceState(null, '', '/')
+    }
+    // Browser back/forward: the URL drives the route.
+    const onPopState = () => {
+      setRoute(routeFromPath(window.location.pathname))
+      window.scrollTo({ top: 0 })
+      if (routeFromPath(window.location.pathname) === 'home' && window.location.pathname !== '/') {
+        window.history.replaceState(null, '', '/')
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
+
   const navigate = useCallback((next: RouteId, opts?: NavigateOpts) => {
     if (opts?.toolsQuery !== undefined || opts?.toolsCategory !== undefined) {
       setToolsFilter((prev) => ({
@@ -61,6 +81,13 @@ function App() {
     }
     if (opts?.files) setPending({ files: opts.files, route: next })
     setRoute(next)
+    // Shareable URL: push the route's path, unless we are already
+    // there (re-clicking the current sidebar item must not add a
+    // duplicate history entry — one back press must leave the page).
+    const path = ROUTE_PATHS[next]
+    if (window.location.pathname !== path) {
+      window.history.pushState(null, '', path)
+    }
     window.scrollTo({ top: 0 })
   }, [])
 

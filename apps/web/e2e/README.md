@@ -16,8 +16,22 @@ npm install playwright-core@1.55.0 --no-audit --no-fund
 
 # build + serve the production web app (from the repo root)
 cd apps/web && npm run build
-cd dist && python3 -m http.server 8321 --bind 127.0.0.1
+node e2e/spa-server.mjs 8321   # SPA fallback — see below
 ```
+
+> **Do NOT serve with `python3 -m http.server`.** The app is a
+> single-page app: deep links (`/pdf`, `/formats`, …) must serve
+> `index.html`, and python's server 404s them. That breaks any
+> suite that reloads on a routed page (web-e2e reloads on
+> `/formats` for the theme-persistence check — with python it
+> "failed" and `#tab-settings` timed out, 17 Nov 2026). Use
+> `apps/web/e2e/spa-server.mjs` instead — same fallback rule as
+> `public/_redirects` on Cloudflare Pages. It also runs from
+> `/tmp/op-e2e/pw/` (the copied scripts live there), but then the
+> dist dir must be passed explicitly:
+> `node spa-server.mjs 8321 /home/hatch/workspace/openpixel-engine/apps/web/dist`.
+> routing-e2e.mjs starts its own instance on 8325 and needs no
+> external server.
 
 Fixtures live in `/tmp/op-e2e/cli/in/` and are wiped with /tmp —
 regenerate them with Pillow + the CLI (17 Nov 2026 recipe):
@@ -58,11 +72,13 @@ node apps/web/e2e/web-nowasm.mjs     # 9 checks, WASM-absent fallback vs :8322
 node apps/web/e2e/resize-e2e.mjs     # 16 checks, Resize tab vs :8321
 node apps/web/e2e/pdf-e2e.mjs        # 24 checks, PDF tab vs :8323
 node apps/web/e2e/ocr-e2e.mjs        # 14 checks, OCR tab vs :8324
+node apps/web/e2e/routing-e2e.mjs    # 9 checks, URL routing; starts its own SPA server on :8325
+node apps/web/e2e/viewport-qa.mjs    # 15 checks, no horizontal overflow vs :8321
 ```
 
 Serve `apps/web/dist` on port 8323 for the PDF run the same way
-as 8321 above (`python3 -m http.server 8323 --bind 127.0.0.1` in
-`apps/web/dist`). Its fixtures are two real PDFs in
+as 8321 above (`node apps/web/e2e/spa-server.mjs 8323` from the
+repo root). Its fixtures are two real PDFs in
 `/tmp/op-e2e/pdf-in/` (`doc4.pdf`, 4 pages; `doc2.pdf`, 2 pages),
 generated with the debug CLI (`openpixel pdf from-images` on the
 `/tmp/op-e2e/cli/in/` PNG/JPEG fixtures) — regenerate them with
@@ -82,7 +98,7 @@ removed on port 8322 first:
 ```bash
 rm -rf /tmp/op-e2e/web-nowasm && cp -r apps/web/dist /tmp/op-e2e/web-nowasm
 rm -rf /tmp/op-e2e/web-nowasm/wasm
-cd /tmp/op-e2e/web-nowasm && python3 -m http.server 8322 --bind 127.0.0.1
+node apps/web/e2e/spa-server.mjs 8322 /tmp/op-e2e/web-nowasm
 ```
 
 ## What each script checks
@@ -157,6 +173,17 @@ exactly (85.0%, 16 words — lines 2–3 have errors with
 tessdata_fast, see docs/OCR.md); no request leaves the local
 origin (any CDN fetch fails the run); zero console/page errors.
 Screenshots `24-ocr-tab.png` … `26-ocr-dark.png`.
+
+`routing-e2e.mjs` — URL routing (17 Nov 2026; see docs/E2E.md
+§2.23): deep links `/pdf` and `/convert` load directly; sidebar
+navigation pushes the URL; browser back/forward change the page;
+refresh on `/ocr` stays on OCR; sidebar Settings click pushes
+`/settings`; unknown `/nope` lands on home with the URL corrected
+to `/`. Starts its own SPA-fallback server on :8325 — no external
+server needed, no fixtures.
+
+`viewport-qa.mjs` — no horizontal overflow at 360×800 / 768×1024 /
+1440×900 on Home, All Tools, Convert, PDF tab and Settings.
 
 ## Known notes (see docs/E2E.md)
 
