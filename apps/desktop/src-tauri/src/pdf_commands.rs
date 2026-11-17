@@ -1465,8 +1465,8 @@ mod tests {
                 pages[0].text
             );
             let engine = Engine::new(openpixel_core::EngineConfig::default());
-            let images = do_pdf_to_images(&engine, &pdf, None, 1.0, "png")
-                .expect("render to images");
+            let images =
+                do_pdf_to_images(&engine, &pdf, None, 1.0, "png").expect("render to images");
             assert_eq!(images.len(), 1);
             assert!(images[0].1.starts_with(b"\x89PNG"));
         } else {

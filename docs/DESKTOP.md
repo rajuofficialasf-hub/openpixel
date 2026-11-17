@@ -625,3 +625,64 @@ cfg-gating + docs`):
   desktop with a display and a GUI-driving tool — the Tauri
   commands behind all of it are unit-tested (backend cargo
   test 28/28).
+
+### Phase 8 libpdfium verification (17–18 Nov 2026, Rust 1.100.0, Node v24.22.1 / npm 10.9.4)
+
+- **Resolver fix, found empirically:** the first build guessed
+  the resource at `/usr/lib/openpixel-desktop/libpdfium.so`, but
+  `dpkg-deb -c` on the real `.deb` showed
+  `usr/lib/OpenPixel/resources/libpdfium.so` — the Tauri resource
+  dir uses the **product name** (`OpenPixel`), not the binary
+  name, and the bundler preserves the source `resources/`
+  subdir. The resolver now scans `<exe_dir>/../lib/` for the
+  library (see `docs/PDF.md`); a regression test builds that
+  exact layout in a tempdir, and a fake installed layout
+  (`usr/bin/openpixel` +
+  `usr/lib/OpenPixel/resources/libpdfium.so`, dev cache hidden,
+  env vars unset) renders and extracts text in a real process.
+- **Tauri build:** release binary
+  `src-tauri/target/release/openpixel-desktop` (42 935 336 B) +
+  `.deb`
+  `src-tauri/target/release/bundle/deb/OpenPixel_0.1.0_amd64.deb`
+  (18 073 834 B, was 9 665 496 B — the +8.4 MB is libpdfium)
+  built by `npm run tauri build` (20m 41s for the release
+  profile; the AppImage step again failed inside `tauri build`
+  with `failed to run linuxdeploy`, no FUSE). The `.AppImage`
+  `src-tauri/target/release/bundle/appimage/OpenPixel_0.1.0_amd64.AppImage`
+  (95 148 536 B) was produced by the manual `linuxdeploy`
+  workaround, same as Phase 7.
+- **Install + launch:** the `.deb` was installed (`open-pixel`
+  0.1.0, `/usr/bin/openpixel-desktop`,
+  `/usr/lib/OpenPixel/resources/libpdfium.so`, `ldd` clean) and
+  smoke-tested under Xvfb (main process +
+  WebKitNetworkProcess + WebKitWebProcess alive at 12 s, startup
+  line `2026-11-17T22:56:32Z [INFO] OpenPixel desktop started
+  (offline mode)` in the log; only the expected Xvfb DRI3
+  software-rendering warnings).
+- **Installed library renders:** with the dev `target/pdfium`
+  cache hidden and `OPENPIXEL_PDFIUM_DIR=/usr/lib/OpenPixel/resources`,
+  the backend `pdf_commands` tests pass 11/11 — including
+  `pdf_extract_text_and_to_images_use_pdfium_or_fail_honestly`
+  on its success branch (extracts "Hello", renders a real PNG).
+  That proves the *installed lib file* renders through the
+  desktop-built engine; the resolver finding that exact path in
+  a real process is proven by the fake-install CLI test above
+  (same resolver code, same crate). Clicking Extract text /
+  PDF to images in the installed GUI itself is still unrun (no
+  GUI-driving tool on this VM — same open item as Phase 7).
+- **CLI tarball (same phase):**
+  `dist/openpixel-0.1.0-linux-x86_64.tar.gz` (13 437 901 B)
+  ships `libpdfium.so` beside the binary; the clean-path check
+  (cache hidden, env unset) renders + extracts text from a real
+  tarball extraction, and fails honestly (exit 1, names
+  libpdfium) with the library removed. Full CLI e2e:
+  `scripts/test/cli-e2e.sh` exit 0 (132 commands exit 0; the 8
+  non-zero exits are the intentional §8 error cases).
+- **VM reset during this work:** a runtime restart wiped
+  `/tmp` (fixtures regenerated) and the Tesseract provisioning
+  (`/usr/local` headers + `.pc` files + symlinks; the apt
+  packages were reinstalled by the system replay). Re-provisioned
+  per `docs/OCR.md` §Provisioning before rebuilding (`pkg-config
+  --modversion tesseract lept` → 5.3.4 / 1.82.0; the `.pc`
+  `includedir` lines needed the literal `/usr/local/include`,
+  not `${prefix}/include` with `prefix=/usr`).
