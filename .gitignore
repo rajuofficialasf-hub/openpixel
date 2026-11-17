@@ -12,3 +12,8 @@ crates/openpixel-codecs/fuzz/target/
 crates/openpixel-codecs/fuzz/artifacts/
 # Phase 9: release packaging output (rebuilt by scripts/release/package-cli.sh).
 dist/
+# Phase 8: libpdfium staged for the Tauri bundle (fetched binary,
+# never committed — scripts/pdfium/stage-for-tauri.sh regenerates it).
+apps/desktop/src-tauri/resources/libpdfium.so
+apps/desktop/src-tauri/resources/libpdfium.dylib
+apps/desktop/src-tauri/resources/pdfium.dll

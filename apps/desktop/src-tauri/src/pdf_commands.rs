@@ -6,11 +6,12 @@
 //! state lookup and logging.
 //!
 //! Honesty rules, carried over from the CLI:
-//! * `openpixel-pdf` is built WITHOUT the `pdfium` feature, so
-//!   `pdf_extract_text` and `pdf_to_images` (and PDF-input
-//!   `pdf_ocr_searchable`) return the engine's clear
-//!   "needs libpdfium" error — never an empty result. Phase 8
-//!   ships the libpdfium binary.
+//! * `openpixel-pdf` is built WITH the `pdfium` feature (Phase 8)
+//!   and the desktop bundle ships libpdfium as a Tauri resource,
+//!   so `pdf_extract_text` and `pdf_to_images` (and PDF-input
+//!   `pdf_ocr_searchable`) work out of the box. On a machine where
+//!   the bundled library is missing they still return the engine's
+//!   clear "needs libpdfium" error — never an empty result.
 //! * Tesseract and LibreOffice are runtime probes, never
 //!   compile-time claims: see `get_desktop_capabilities`.
 
@@ -1238,9 +1239,14 @@ mod tests {
     #[test]
     fn capabilities_report_the_real_machine() {
         let caps = do_desktop_capabilities();
-        // This VM has LibreOffice 24.2.7.2 installed; pdfium stays
-        // OFF by design. Tesseract is asserted in the cfg-gated
-        // test below (it is absent when `native-ocr` is off).
+        // This VM has LibreOffice 24.2.7.2 installed. pdfium is a
+        // runtime probe, not a compile-time claim: the capability
+        // must agree with openpixel_pdf::pdfium_available() — true
+        // here (Phase 8 ships the bundled library and the dev
+        // target/pdfium cache exists), false on a machine with no
+        // library at any resolution step. Tesseract is asserted in
+        // the cfg-gated test below (it is absent when `native-ocr`
+        // is off).
         assert!(
             caps.libreoffice_present,
             "libreoffice should be present on this VM"
@@ -1253,7 +1259,11 @@ mod tests {
             "libreoffice version: {:?}",
             caps.libreoffice_version
         );
-        assert!(!caps.pdfium_present, "pdfium feature is off in this build");
+        assert_eq!(
+            caps.pdfium_present,
+            openpixel_pdf::pdfium_available(),
+            "pdfium_present must agree with pdfium_available()"
+        );
     }
 
     #[test]
@@ -1437,20 +1447,41 @@ mod tests {
     }
 
     #[test]
-    fn pdf_extract_text_and_to_images_need_pdfium_honestly() {
+    fn pdf_extract_text_and_to_images_use_pdfium_or_fail_honestly() {
+        // Phase 8: the `pdfium` feature is on and the dev
+        // target/pdfium cache exists, so both commands succeed on
+        // this VM. On a machine with no libpdfium at any resolution
+        // step they must still fail with the clear "needs libpdfium"
+        // error — never an empty result. The branch is decided by
+        // the same probe the UI reads, not by the test's wishes.
         let dir = tempfile::tempdir().expect("tempdir");
         let pdf = fixture_pdf(dir.path(), "a.pdf", 1, "Hello");
-        let err = do_pdf_extract_text(&pdf, None).unwrap_err();
-        assert!(
-            err.to_ascii_lowercase().contains("pdfium"),
-            "extract-text error: {err}"
-        );
-        let engine = Engine::new(openpixel_core::EngineConfig::default());
-        let err = do_pdf_to_images(&engine, &pdf, None, 1.0, "png").unwrap_err();
-        assert!(
-            err.to_ascii_lowercase().contains("pdfium"),
-            "to-images error: {err}"
-        );
+        if openpixel_pdf::pdfium_available() {
+            let pages = do_pdf_extract_text(&pdf, None).expect("extract text");
+            assert_eq!(pages.len(), 1);
+            assert!(
+                pages[0].text.contains("Hello"),
+                "extracted text: {:?}",
+                pages[0].text
+            );
+            let engine = Engine::new(openpixel_core::EngineConfig::default());
+            let images = do_pdf_to_images(&engine, &pdf, None, 1.0, "png")
+                .expect("render to images");
+            assert_eq!(images.len(), 1);
+            assert!(images[0].1.starts_with(b"\x89PNG"));
+        } else {
+            let err = do_pdf_extract_text(&pdf, None).unwrap_err();
+            assert!(
+                err.to_ascii_lowercase().contains("pdfium"),
+                "extract-text error: {err}"
+            );
+            let engine = Engine::new(openpixel_core::EngineConfig::default());
+            let err = do_pdf_to_images(&engine, &pdf, None, 1.0, "png").unwrap_err();
+            assert!(
+                err.to_ascii_lowercase().contains("pdfium"),
+                "to-images error: {err}"
+            );
+        }
     }
 
     #[test]

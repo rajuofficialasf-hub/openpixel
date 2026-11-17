@@ -46,10 +46,12 @@ serde_json = "=1.0.154"
 openpixel-core = { path = "../../../crates/openpixel-core", version = "=0.1.0", default-features = false }
 openpixel-formats = { path = "../../../crates/openpixel-formats", version = "=0.1.0" }
 openpixel-jobs = { path = "../../../crates/openpixel-jobs", version = "=0.1.0" }
-# Studio Phase 7: PDF / OCR / document engines. openpixel-pdf keeps
-# its default features — the `pdfium` feature stays OFF (rendering
-# and PDFium text extraction need a libpdfium binary, shipped in
-# Phase 8; commands that need it report honestly when absent).
+# Studio Phase 7: PDF / OCR / document engines. openpixel-pdf has
+# the `pdfium` feature ON (Phase 8: the desktop bundle ships
+# libpdfium as a Tauri resource, so rendering and PDFium text
+# extraction work out of the box; the resolver in
+# crates/openpixel-pdf/src/render.rs finds it in the Tauri resource
+# dir).
 # openpixel-ocr enables `native-ocr` (Tesseract — needs
 # libtesseract + tessdata at build and runtime, see docs/OCR.md).
 # NOTE on openpixel-core `default-features = false` (Android):
@@ -58,7 +60,7 @@ openpixel-jobs = { path = "../../../crates/openpixel-jobs", version = "=0.1.0" }
 # feature unification re-enables native-avif for this build (the
 # desktop keeps AVIF decode). Removing dav1d for Android needs
 # the workspace-level jobs change; see docs/DESKTOP.md.
-openpixel-pdf = { path = "../../../crates/openpixel-pdf", version = "=0.1.0" }
+openpixel-pdf = { path = "../../../crates/openpixel-pdf", version = "=0.1.0", features = ["pdfium"] }
 openpixel-ocr = { path = "../../../crates/openpixel-ocr", version = "=0.1.0" }
 openpixel-documents = { path = "../../../crates/openpixel-documents", version = "=0.1.0" }
 
