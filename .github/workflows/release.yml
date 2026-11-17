@@ -69,6 +69,19 @@ jobs:
   cli:
     name: CLI (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # The vcpkg Rust crate (used by leptonica-sys and tesseract-sys
+    # build scripts) defaults on MSVC targets to the triplet
+    # x64-windows-static-md — but this job installs the DYNAMIC
+    # triplet (tesseract:x64-windows, which pulls in
+    # leptonica:x64-windows). Without this, the leptonica-sys
+    # build script panics with LibNotFound("package leptonica is
+    # not installed for vcpkg triplet x64-windows-static-md") —
+    # run 43968513223, Windows CLI job, before any test ran.
+    # VCPKGRS_TRIPLET is the crate's own override (it does NOT
+    # read vcpkg's VCPKG_DEFAULT_TRIPLET). Harmless on Linux/macOS
+    # (the crate is Windows-only there).
+    env:
+      VCPKGRS_TRIPLET: x64-windows
     strategy:
       fail-fast: false
       matrix:

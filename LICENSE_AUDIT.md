@@ -124,6 +124,17 @@ and only enabled by the CLI (and desktop later).
   `/releases/latest` HTML redirect instead — no API quota used.
 - SHA-256 of the downloaded archive:
   `384ab5c51882408a143a21f9c14dcd2caf1f75280ae41c554d0489b46c3dba9f`
+- Windows archive (same pinned release, fetched by CI run
+  43968513223, job 133654217782, 17 Nov 2026):
+  `pdfium-win-x64.tgz`
+  `cee2b0e9990bc67c0721774932961b9dbf2766046c10eec925acd4cfba6fdfe3`
+- macOS archive (same pinned release, fetched by CI run
+  43968513223, job 133654218085, 17 Nov 2026 — macos-latest is
+  arm64):
+  `pdfium-mac-arm64.tgz`
+  `30b0c3f55448840f0947b54bedbe35185bbaccbadd35b8cd960270d6fa6caf80`
+  (the x64 macOS archive `pdfium-mac-x64.tgz` has no recorded sha
+  yet — it is only fetched on Intel runners.)
 - The archive also bundles third-party code inside PDFium
   (freetype, harfbuzz, libjpeg-turbo, libpng, zlib, ICU, lcms,
   abseil, …); their licence texts ship in the archive's
