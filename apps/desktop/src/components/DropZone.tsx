@@ -1,3 +1,4 @@
+import { Box, Typography } from '@mui/material'
 import { useState } from 'react'
 
 interface DropZoneProps {
@@ -17,15 +18,10 @@ export function DropZone({ onPick, label, hint }: DropZoneProps) {
   const [dragging, setDragging] = useState(false)
 
   return (
-    <div
+    <Box
       role="button"
       tabIndex={0}
       aria-label={label}
-      className={`cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
-        dragging
-          ? 'border-blue-600 bg-blue-50 dark:bg-blue-950'
-          : 'border-slate-300 bg-slate-50 hover:border-slate-400 dark:border-slate-600 dark:bg-slate-800/50 dark:hover:border-slate-500'
-      }`}
       onClick={onPick}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
@@ -42,12 +38,25 @@ export function DropZone({ onPick, label, hint }: DropZoneProps) {
         event.preventDefault()
         setDragging(false)
       }}
+      sx={(theme) => ({
+        cursor: 'pointer',
+        borderRadius: 3,
+        border: '2px dashed',
+        borderColor: dragging ? theme.palette.primary.main : theme.palette.divider,
+        backgroundColor: dragging
+          ? theme.palette.action.hover
+          : theme.palette.background.paper,
+        p: 4,
+        textAlign: 'center',
+      })}
     >
-      <p className="text-lg font-medium text-slate-900 dark:text-slate-100">{label}</p>
-      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{hint}</p>
-      <p className="mt-3 text-sm font-medium text-blue-700 dark:text-blue-400">
+      <Typography variant="h6">{label}</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+        {hint}
+      </Typography>
+      <Typography variant="body2" color="primary" fontWeight={600} sx={{ mt: 2 }}>
         Choose a file or drag one onto the window
-      </p>
-    </div>
+      </Typography>
+    </Box>
   )
 }

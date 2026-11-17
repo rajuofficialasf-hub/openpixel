@@ -1,5 +1,22 @@
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { open, save } from '@tauri-apps/plugin-dialog'
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Checkbox,
+  FormControl,
+  FormControlLabel,
+  Grid,
+  InputLabel,
+  MenuItem,
+  Select,
+  Slider,
+  TextField,
+  Typography,
+} from '@mui/material'
 import { useCallback, useEffect, useState } from 'react'
 import type { Settings } from '../lib/settings'
 import {
@@ -84,31 +101,28 @@ export function ConvertWorkspace({
   const encodable = encodableFormats(capabilities)
   const targetCap = capabilities.find((c) => c.format_id === target)
 
-  const loadFile = useCallback(
-    async (path: string) => {
-      setInputPath(path)
-      setInfo(null)
-      setMetadata(null)
-      setFrames(null)
-      setResult(null)
-      setError(null)
-      setPreviewFailed(false)
-      setSelectedFrame(0)
-      try {
-        const [i, m, f] = await Promise.all([
-          fetchImageInfo(path),
-          fetchMetadata(path).catch(() => null),
-          fetchFrames(path).catch(() => null),
-        ])
-        setInfo(i)
-        setMetadata(m)
-        setFrames(f)
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
-      }
-    },
-    [],
-  )
+  const loadFile = useCallback(async (path: string) => {
+    setInputPath(path)
+    setInfo(null)
+    setMetadata(null)
+    setFrames(null)
+    setResult(null)
+    setError(null)
+    setPreviewFailed(false)
+    setSelectedFrame(0)
+    try {
+      const [i, m, f] = await Promise.all([
+        fetchImageInfo(path),
+        fetchMetadata(path).catch(() => null),
+        fetchFrames(path).catch(() => null),
+      ])
+      setInfo(i)
+      setMetadata(m)
+      setFrames(f)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }, [])
 
   const pickFile = useCallback(async () => {
     const picked = await open({
@@ -201,317 +215,327 @@ export function ConvertWorkspace({
   const targetHasNoAlpha = targetCap !== undefined && !targetCap.supports_alpha
 
   return (
-    <div className="space-y-6">
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <DropZone
         onPick={() => void pickFile()}
         label="Convert an image"
         hint="The native engine converts it — PNG, JPEG, WebP, TIFF, AVIF, JXL, SVG and more. Files never leave your device."
       />
 
-      {error && (
-        <div role="alert" className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
-          {error}
-        </div>
-      )}
+      {error && <Alert severity="error">{error}</Alert>}
 
       {inputPath && (
-        <div className="grid gap-6 md:grid-cols-2">
-          <section aria-label="Source image" className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-            <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400">SOURCE</h2>
-            <p className="mt-1 break-all text-sm font-medium">{fileName(inputPath)}</p>
-            <p className="break-all text-xs text-slate-500 dark:text-slate-400">{inputPath}</p>
-            {info ? (
-              <div className="mt-3">
-                <img
-                  src={convertFileSrc(inputPath)}
-                  alt={`Preview of ${fileName(inputPath)}`}
-                  className="max-h-64 w-auto max-w-full rounded-lg border border-slate-200 dark:border-slate-700"
-                  onError={() => setPreviewFailed(true)}
-                />
-                {previewFailed && (
-                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    No preview in the app window for this format — the info below comes from the engine.
-                  </p>
+        <Grid container spacing={3}>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Card>
+              <CardContent>
+                <Typography variant="overline" color="text.secondary">
+                  Source
+                </Typography>
+                <Typography variant="body2" fontWeight={600} sx={{ mt: 1, wordBreak: 'break-all' }}>
+                  {fileName(inputPath)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
+                  {inputPath}
+                </Typography>
+                {info ? (
+                  <Box sx={{ mt: 2 }}>
+                    <Box
+                      component="img"
+                      src={convertFileSrc(inputPath)}
+                      alt={`Preview of ${fileName(inputPath)}`}
+                      onError={() => setPreviewFailed(true)}
+                      sx={{
+                        maxHeight: 256,
+                        maxWidth: '100%',
+                        borderRadius: 2,
+                        border: 1,
+                        borderColor: 'divider',
+                      }}
+                    />
+                    {previewFailed && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                        No preview in the app window for this format — the info below comes from the engine.
+                      </Typography>
+                    )}
+                    <Grid container spacing={1} sx={{ mt: 2 }}>
+                      <Grid size={6}><Typography variant="body2" color="text.secondary">Detected format</Typography></Grid>
+                      <Grid size={6}><Typography variant="body2">{info.format.toUpperCase()}</Typography></Grid>
+                      <Grid size={6}><Typography variant="body2" color="text.secondary">Dimensions</Typography></Grid>
+                      <Grid size={6}><Typography variant="body2">{info.width} × {info.height}</Typography></Grid>
+                      <Grid size={6}><Typography variant="body2" color="text.secondary">Colour</Typography></Grid>
+                      <Grid size={6}><Typography variant="body2">{info.color_type}{info.has_alpha ? ' · alpha' : ''}</Typography></Grid>
+                      <Grid size={6}><Typography variant="body2" color="text.secondary">File size</Typography></Grid>
+                      <Grid size={6}><Typography variant="body2">{formatBytes(info.file_size_bytes)}</Typography></Grid>
+                      {info.is_animated && (
+                        <>
+                          <Grid size={6}><Typography variant="body2" color="text.secondary">Frames</Typography></Grid>
+                          <Grid size={6}><Typography variant="body2">{info.frame_count ?? frames?.frame_count ?? '?'} {frames?.is_multi_page ? '(multi-page)' : '(animated)'}</Typography></Grid>
+                        </>
+                      )}
+                      {info.orientation !== null && (
+                        <>
+                          <Grid size={6}><Typography variant="body2" color="text.secondary">EXIF orientation</Typography></Grid>
+                          <Grid size={6}><Typography variant="body2">{info.orientation}</Typography></Grid>
+                        </>
+                      )}
+                      <Grid size={6}><Typography variant="body2" color="text.secondary">Metadata</Typography></Grid>
+                      <Grid size={6}><Typography variant="body2">
+                        {[
+                          info.has_exif ? 'EXIF' : null,
+                          info.has_icc ? 'ICC' : null,
+                          info.has_xmp ? 'XMP' : null,
+                        ]
+                          .filter(Boolean)
+                          .join(', ') || 'none'}
+                      </Typography></Grid>
+                    </Grid>
+                    {metadata?.camera_make && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                        {metadata.camera_make} {metadata.camera_model ?? ''} · {metadata.date_time ?? ''}
+                        {metadata.gps ? ` · GPS ${metadata.gps[0].toFixed(5)}, ${metadata.gps[1].toFixed(5)}` : ''}
+                      </Typography>
+                    )}
+                    {metadata && metadata.warnings.length > 0 && (
+                      <Typography variant="caption" color="warning.main" sx={{ mt: 1, display: 'block' }}>
+                        Metadata warnings: {metadata.warnings.join('; ')}
+                      </Typography>
+                    )}
+                    {info.note && (
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                        {info.note}
+                      </Typography>
+                    )}
+                  </Box>
+                ) : (
+                  <Typography variant="body2" color="text.secondary" role="status" sx={{ mt: 2 }}>
+                    Reading image info…
+                  </Typography>
                 )}
-                <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                  <dt className="text-slate-500 dark:text-slate-400">Detected format</dt>
-                  <dd>{info.format.toUpperCase()}</dd>
-                  <dt className="text-slate-500 dark:text-slate-400">Dimensions</dt>
-                  <dd>
-                    {info.width} × {info.height}
-                  </dd>
-                  <dt className="text-slate-500 dark:text-slate-400">Colour</dt>
-                  <dd>
-                    {info.color_type}
-                    {info.has_alpha ? ' · alpha' : ''}
-                  </dd>
-                  <dt className="text-slate-500 dark:text-slate-400">File size</dt>
-                  <dd>{formatBytes(info.file_size_bytes)}</dd>
-                  {info.is_animated && (
-                    <>
-                      <dt className="text-slate-500 dark:text-slate-400">Frames</dt>
-                      <dd>
-                        {info.frame_count ?? frames?.frame_count ?? '?'} {frames?.is_multi_page ? '(multi-page)' : '(animated)'}
-                      </dd>
-                    </>
-                  )}
-                  {info.orientation !== null && (
-                    <>
-                      <dt className="text-slate-500 dark:text-slate-400">EXIF orientation</dt>
-                      <dd>{info.orientation}</dd>
-                    </>
-                  )}
-                  <dt className="text-slate-500 dark:text-slate-400">Metadata</dt>
-                  <dd>
-                    {[
-                      info.has_exif ? 'EXIF' : null,
-                      info.has_icc ? 'ICC' : null,
-                      info.has_xmp ? 'XMP' : null,
-                    ]
-                      .filter(Boolean)
-                      .join(', ') || 'none'}
-                  </dd>
-                </dl>
-                {metadata?.camera_make && (
-                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    {metadata.camera_make} {metadata.camera_model ?? ''} · {metadata.date_time ?? ''}
-                    {metadata.gps ? ` · GPS ${metadata.gps[0].toFixed(5)}, ${metadata.gps[1].toFixed(5)}` : ''}
-                  </p>
-                )}
-                {metadata && metadata.warnings.length > 0 && (
-                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">
-                    Metadata warnings: {metadata.warnings.join('; ')}
-                  </p>
-                )}
-                {info.note && <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{info.note}</p>}
-              </div>
-            ) : (
-              <p className="mt-3 text-sm text-slate-500" role="status">
-                Reading image info…
-              </p>
-            )}
-          </section>
+              </CardContent>
+            </Card>
+          </Grid>
 
-          <section aria-label="Conversion settings" className="space-y-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-            <h2 className="text-sm font-semibold text-slate-500 dark:text-slate-400">OUTPUT</h2>
-            <div>
-              <label htmlFor="target-format" className="block text-sm font-medium">
-                Output format
-              </label>
-              <select
-                id="target-format"
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-700"
-              >
-                {encodable.map((c) => (
-                  <option key={c.format_id} value={c.format_id}>
-                    {formatLabel(capabilities, c.format_id)}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {encodable.length} encodable formats, from the engine registry. SVG is decode-only;
-                HEIC / HEIF / APNG / RAW / PSD are not convertible in this build.
-              </p>
-            </div>
-
-            <div>
-              <label htmlFor="quality" className="block text-sm font-medium">
-                Quality: {quality}
-              </label>
-              <input
-                id="quality"
-                type="range"
-                min={1}
-                max={100}
-                value={quality}
-                disabled={!qualityApplies}
-                onChange={(e) => setQuality(Number(e.target.value))}
-                className="w-full"
-              />
-              {!qualityApplies && (
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Quality applies to JPEG, WebP and AVIF only; {target.toUpperCase()} ignores it.
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label htmlFor="background" className="block text-sm font-medium">
-                Background colour (flattens transparency)
-              </label>
-              <div className="mt-1 flex items-center gap-2">
-                <input
-                  id="background"
-                  type="color"
-                  value={background}
-                  onChange={(e) => setBackground(e.target.value)}
-                  className="h-10 w-12 rounded border border-slate-300 dark:border-slate-600"
-                />
-                <span className="text-sm">{background}</span>
-              </div>
-              {targetHasNoAlpha && (
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  {target.toUpperCase()} has no alpha channel — transparent pixels become {background}.
-                </p>
-              )}
-            </div>
-
-            <div>
-              <label htmlFor="metadata-policy" className="block text-sm font-medium">
-                Metadata
-              </label>
-              <select
-                id="metadata-policy"
-                value={metadataPolicy}
-                onChange={(e) => setMetadataPolicy(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 dark:border-slate-600 dark:bg-slate-700"
-              >
-                <option value="strip">Strip (default)</option>
-                <option value="preserve">Preserve (EXIF / ICC / XMP)</option>
-                <option value="preserve-color-profiles">Preserve colour profiles only</option>
-                <option value="normalize-orientation">Normalise orientation</option>
-              </select>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Preservation is byte-exact for JPEG and PNG targets only; other targets drop
-                metadata and the result says so.
-              </p>
-            </div>
-
-            <fieldset>
-              <legend className="text-sm font-medium">Processing (optional)</legend>
-              <div className="mt-2 space-y-2 text-sm">
-                <label className="flex items-center gap-2">
-                  <span>Resize to fit</span>
-                  <input
-                    type="text"
-                    value={resizeFit}
-                    onChange={(e) => setResizeFit(e.target.value)}
-                    placeholder="800x600"
-                    aria-label="Resize to fit, width x height"
-                    className="w-28 rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-700"
-                  />
-                  <span className="text-xs text-slate-500 dark:text-slate-400">never upscales</span>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={grayscale} onChange={(e) => setGrayscale(e.target.checked)} />
-                  Grayscale
-                </label>
-                <label className="flex items-center gap-2">
-                  <span>Rotate</span>
-                  <select
-                    value={rotate}
-                    onChange={(e) => setRotate(e.target.value)}
-                    className="rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-700"
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Card>
+              <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Typography variant="overline" color="text.secondary">
+                  Output
+                </Typography>
+                <FormControl fullWidth>
+                  <InputLabel id="target-format-label">Output format</InputLabel>
+                  <Select
+                    labelId="target-format-label"
+                    id="target-format"
+                    label="Output format"
+                    value={target}
+                    onChange={(e) => setTarget(e.target.value)}
                   >
-                    <option value="0">None</option>
-                    <option value="90">90°</option>
-                    <option value="180">180°</option>
-                    <option value="270">270°</option>
-                  </select>
-                </label>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={flipH} onChange={(e) => setFlipH(e.target.checked)} />
-                  Flip horizontal
-                </label>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" checked={flipV} onChange={(e) => setFlipV(e.target.checked)} />
-                  Flip vertical
-                </label>
-              </div>
-              {hasPipeline && (
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  Processing is on — this runs <code>Engine::process</code> instead of plain convert.
-                </p>
-              )}
-            </fieldset>
-
-            {frames && frames.frame_count > 1 && (
-              <div>
-                <label htmlFor="frame-select" className="block text-sm font-medium">
-                  Frame / page to extract ({frames.frame_count}{' '}
-                  {frames.is_multi_page ? 'pages' : 'frames'})
-                </label>
-                <div className="mt-1 flex items-center gap-2">
-                  <select
-                    id="frame-select"
-                    value={selectedFrame}
-                    onChange={(e) => setSelectedFrame(Number(e.target.value))}
-                    className="rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-600 dark:bg-slate-700"
-                  >
-                    {frames.frames.map((f) => (
-                      <option key={f.index} value={f.index}>
-                        Frame {f.index} — {f.width}×{f.height}
-                        {f.delay_ms !== null ? ` · ${f.delay_ms} ms` : ''}
-                      </option>
+                    {encodable.map((c) => (
+                      <MenuItem key={c.format_id} value={c.format_id}>
+                        {formatLabel(capabilities, c.format_id)}
+                      </MenuItem>
                     ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={() => void runExtractFrame()}
-                    disabled={busy}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700"
-                  >
-                    Extract frame
-                  </button>
-                </div>
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                  GIF and multi-page TIFF extract any frame; APNG / animated WebP only report frame
-                  info — extracting a later frame fails honestly.
-                </p>
-              </div>
-            )}
+                  </Select>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                    {encodable.length} encodable formats, from the engine registry. SVG is decode-only;
+                    HEIC / HEIF / APNG / RAW / PSD are not convertible in this build.
+                  </Typography>
+                </FormControl>
 
-            <button
-              type="button"
-              onClick={() => void runConvert()}
-              disabled={busy || !info}
-              className="w-full rounded-lg bg-blue-600 px-4 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              {busy ? busyLabel : `Convert to ${target.toUpperCase()}`}
-            </button>
-            {busy && (
-              <p role="status" className="text-sm text-slate-500 dark:text-slate-400">
-                {busyLabel} The engine runs on this machine; large files (up to 100 MiB / 100 MP)
-                can take a few seconds.
-              </p>
-            )}
-          </section>
-        </div>
+                <Box>
+                  <Typography id="quality-label" gutterBottom>
+                    Quality: {quality}
+                  </Typography>
+                  <Slider
+                    id="quality"
+                    aria-labelledby="quality-label"
+                    min={1}
+                    max={100}
+                    value={quality}
+                    disabled={!qualityApplies}
+                    onChange={(_e, value) => setQuality(value as number)}
+                  />
+                  {!qualityApplies && (
+                    <Typography variant="caption" color="text.secondary">
+                      Quality applies to JPEG, WebP and AVIF only; {target.toUpperCase()} ignores it.
+                    </Typography>
+                  )}
+                </Box>
+
+                <Box>
+                  <Typography id="background-label" gutterBottom>
+                    Background colour (flattens transparency)
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <input
+                      id="background"
+                      aria-labelledby="background-label"
+                      type="color"
+                      value={background}
+                      onChange={(e) => setBackground(e.target.value)}
+                      style={{ height: 40, width: 48 }}
+                    />
+                    <Typography variant="body2">{background}</Typography>
+                  </Box>
+                  {targetHasNoAlpha && (
+                    <Typography variant="caption" color="text.secondary">
+                      {target.toUpperCase()} has no alpha channel — transparent pixels become {background}.
+                    </Typography>
+                  )}
+                </Box>
+
+                <FormControl fullWidth>
+                  <InputLabel id="metadata-policy-label">Metadata</InputLabel>
+                  <Select
+                    labelId="metadata-policy-label"
+                    id="metadata-policy"
+                    label="Metadata"
+                    value={metadataPolicy}
+                    onChange={(e) => setMetadataPolicy(e.target.value)}
+                  >
+                    <MenuItem value="strip">Strip (default)</MenuItem>
+                    <MenuItem value="preserve">Preserve (EXIF / ICC / XMP)</MenuItem>
+                    <MenuItem value="preserve-color-profiles">Preserve colour profiles only</MenuItem>
+                    <MenuItem value="normalize-orientation">Normalise orientation</MenuItem>
+                  </Select>
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+                    Preservation is byte-exact for JPEG and PNG targets only; other targets drop
+                    metadata and the result says so.
+                  </Typography>
+                </FormControl>
+
+                <Box>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Processing (optional)
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="body2">Resize to fit</Typography>
+                      <TextField
+                        value={resizeFit}
+                        onChange={(e) => setResizeFit(e.target.value)}
+                        placeholder="800x600"
+                        aria-label="Resize to fit, width x height"
+                        size="small"
+                        sx={{ width: 120 }}
+                      />
+                      <Typography variant="caption" color="text.secondary">never upscales</Typography>
+                    </Box>
+                    <FormControlLabel
+                      control={<Checkbox checked={grayscale} onChange={(e) => setGrayscale(e.target.checked)} />}
+                      label="Grayscale"
+                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="body2">Rotate</Typography>
+                      <Select value={rotate} onChange={(e) => setRotate(e.target.value)} size="small">
+                        <MenuItem value="0">None</MenuItem>
+                        <MenuItem value="90">90°</MenuItem>
+                        <MenuItem value="180">180°</MenuItem>
+                        <MenuItem value="270">270°</MenuItem>
+                      </Select>
+                    </Box>
+                    <FormControlLabel
+                      control={<Checkbox checked={flipH} onChange={(e) => setFlipH(e.target.checked)} />}
+                      label="Flip horizontal"
+                    />
+                    <FormControlLabel
+                      control={<Checkbox checked={flipV} onChange={(e) => setFlipV(e.target.checked)} />}
+                      label="Flip vertical"
+                    />
+                  </Box>
+                  {hasPipeline && (
+                    <Typography variant="caption" color="text.secondary">
+                      Processing is on — this runs <code>Engine::process</code> instead of plain convert.
+                    </Typography>
+                  )}
+                </Box>
+
+                {frames && frames.frame_count > 1 && (
+                  <Box>
+                    <Typography variant="subtitle2" gutterBottom>
+                      Frame / page to extract ({frames.frame_count}{' '}
+                      {frames.is_multi_page ? 'pages' : 'frames'})
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <FormControl sx={{ flexGrow: 1 }}>
+                        <InputLabel id="frame-select-label">Frame</InputLabel>
+                        <Select
+                          labelId="frame-select-label"
+                          id="frame-select"
+                          label="Frame"
+                          value={selectedFrame}
+                          onChange={(e) => setSelectedFrame(Number(e.target.value))}
+                        >
+                          {frames.frames.map((f) => (
+                            <MenuItem key={f.index} value={f.index}>
+                              Frame {f.index} — {f.width}×{f.height}
+                              {f.delay_ms !== null ? ` · ${f.delay_ms} ms` : ''}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      <Button type="button" variant="outlined" onClick={() => void runExtractFrame()} disabled={busy}>
+                        Extract frame
+                      </Button>
+                    </Box>
+                    <Typography variant="caption" color="text.secondary">
+                      GIF and multi-page TIFF extract any frame; APNG / animated WebP only report frame
+                      info — extracting a later frame fails honestly.
+                    </Typography>
+                  </Box>
+                )}
+
+                <Button
+                  type="button"
+                  variant="contained"
+                  size="large"
+                  onClick={() => void runConvert()}
+                  disabled={busy || !info}
+                >
+                  {busy ? busyLabel : `Convert to ${target.toUpperCase()}`}
+                </Button>
+                {busy && (
+                  <Typography variant="body2" color="text.secondary" role="status">
+                    {busyLabel} The engine runs on this machine; large files (up to 100 MiB / 100 MP)
+                    can take a few seconds.
+                  </Typography>
+                )}
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
       )}
 
       {result && (
-        <section
-          aria-label="Conversion result"
-          role="status"
-          className="rounded-xl border border-green-300 bg-green-50 p-4 text-sm dark:border-green-700 dark:bg-green-950"
-        >
-          <h2 className="font-semibold text-green-800 dark:text-green-200">Converted</h2>
-          <p className="mt-1 break-all">
+        <Alert severity="success" role="status">
+          <Typography variant="subtitle2">Converted</Typography>
+          <Typography variant="body2">
             {result.source_format.toUpperCase()} → {result.target_format.toUpperCase()} ·{' '}
             {result.width}×{result.height} · {formatBytes(result.input_bytes)} →{' '}
             {formatBytes(result.output_bytes)}
-          </p>
-          <p className="mt-1 break-all text-xs text-slate-600 dark:text-slate-400">{result.output_path}</p>
+          </Typography>
+          <Typography variant="caption" sx={{ wordBreak: 'break-all' }}>
+            {result.output_path}
+          </Typography>
           {result.warnings.length > 0 && (
-            <ul className="mt-2 list-disc pl-5 text-amber-700 dark:text-amber-400">
+            <ul>
               {result.warnings.map((w) => (
                 <li key={w}>{w}</li>
               ))}
             </ul>
           )}
           {result.metadata_preserved.length > 0 && (
-            <p className="mt-1 text-xs">Metadata preserved: {result.metadata_preserved.join(', ')}</p>
+            <Typography variant="caption">Metadata preserved: {result.metadata_preserved.join(', ')}</Typography>
           )}
           {result.metadata_dropped.length > 0 && (
-            <p className="mt-1 text-xs">Metadata dropped: {result.metadata_dropped.join(', ')}</p>
+            <Typography variant="caption">Metadata dropped: {result.metadata_dropped.join(', ')}</Typography>
           )}
           {result.orientation_applied && (
-            <p className="mt-1 text-xs">Orientation applied: {result.orientation_applied}</p>
+            <Typography variant="caption">Orientation applied: {result.orientation_applied}</Typography>
           )}
-        </section>
+        </Alert>
       )}
-    </div>
+    </Box>
   )
 }

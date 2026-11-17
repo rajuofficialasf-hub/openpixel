@@ -1,4 +1,22 @@
 import { open } from '@tauri-apps/plugin-dialog'
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  FormControl,
+  IconButton,
+  InputLabel,
+  List,
+  ListItem,
+  MenuItem,
+  Select,
+  TextField,
+  Typography,
+} from '@mui/material'
+import CloseIcon from '@mui/icons-material/Close'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Settings } from '../lib/settings'
 import {
@@ -52,8 +70,6 @@ export function BatchWorkspace({
   const [results, setResults] = useState<JobResult[]>([])
   const [error, setError] = useState<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const filesRef = useRef(files)
-  filesRef.current = files
 
   const encodable = encodableFormats(capabilities)
   const resultByJob = new Map(results.map((r) => [r.job_id, r]))
@@ -171,175 +187,161 @@ export function BatchWorkspace({
   const done = progress !== null && progress.done + progress.failed + progress.cancelled >= progress.total
 
   return (
-    <div className="space-y-6">
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
       <DropZone
         onPick={() => void pickFiles()}
         label="Batch convert"
         hint={`Add files (or a whole folder) — the engine worker pool converts up to ${settings.batchWorkers} at a time. A failed file never stops the batch.`}
       />
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => void pickFolder()}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
-        >
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+        <Button type="button" variant="outlined" onClick={() => void pickFolder()}>
           Open folder…
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          variant="outlined"
           onClick={() => setFiles([])}
           disabled={files.length === 0 || running}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700"
         >
           Clear list
-        </button>
-      </div>
+        </Button>
+      </Box>
 
-      {error && (
-        <div role="alert" className="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-700 dark:bg-red-950 dark:text-red-200">
-          {error}
-        </div>
-      )}
+      {error && <Alert severity="error">{error}</Alert>}
 
       {files.length > 0 && (
-        <section aria-label="Batch files" className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold">
-              {files.length} file{files.length === 1 ? '' : 's'}
-            </h2>
-            <label className="flex items-center gap-2 text-sm">
-              Output folder
-              <input
-                type="text"
+        <Card>
+          <CardContent>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+              <Typography variant="subtitle1">
+                {files.length} file{files.length === 1 ? '' : 's'}
+              </Typography>
+              <TextField
+                label="Output folder"
                 value={outDir}
                 onChange={(e) => setOutDir(e.target.value)}
                 aria-label="Output folder"
-                className="w-72 rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-700"
+                size="small"
+                sx={{ width: 320 }}
               />
-            </label>
-          </div>
+            </Box>
 
-          <ul className="mt-3 space-y-2">
-            {files.map((f, i) => {
-              const job = jobs.find((j) => j.input === f.input)
-              const result = job ? resultByJob.get(job.id) : undefined
-              return (
-                <li
-                  key={f.input}
-                  className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
-                >
-                  <span className="min-w-0 flex-1 break-all">{fileName(f.input)}</span>
-                  <select
-                    value={f.target}
-                    disabled={running}
-                    aria-label={`Target format for ${fileName(f.input)}`}
-                    onChange={(e) =>
-                      setFiles((prev) => prev.map((x, j) => (j === i ? { ...x, target: e.target.value } : x)))
-                    }
-                    className="rounded-lg border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-700"
+            <List>
+              {files.map((f, i) => {
+                const job = jobs.find((j) => j.input === f.input)
+                const result = job ? resultByJob.get(job.id) : undefined
+                return (
+                  <ListItem
+                    key={f.input}
+                    sx={{ border: 1, borderColor: 'divider', borderRadius: 2, mb: 1, flexWrap: 'wrap', gap: 1 }}
                   >
-                    {encodable.map((c) => (
-                      <option key={c.format_id} value={c.format_id}>
-                        {c.format_id.toUpperCase()}
-                      </option>
-                    ))}
-                  </select>
-                  <span
-                    role="status"
-                    className={`rounded px-2 py-0.5 text-xs font-medium ${
-                      job?.status === 'Done'
-                        ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                        : job?.status === 'Failed'
-                          ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                          : job?.status === 'Running'
-                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                            : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    {job?.status ?? 'Queued'}
-                    {result && result.status === 'Done' ? ` · ${formatBytes(result.bytes)}` : ''}
-                  </span>
-                  {result?.error && (
-                    <span className="w-full text-xs text-red-700 dark:text-red-400">{result.error}</span>
-                  )}
-                  {!running && (
-                    <button
-                      type="button"
-                      aria-label={`Remove ${fileName(f.input)}`}
-                      onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
-                      className="rounded px-2 py-1 text-xs hover:bg-slate-100 dark:hover:bg-slate-700"
-                    >
-                      ✕
-                    </button>
-                  )}
-                  {job && job.status === 'Queued' && running && (
-                    <button
-                      type="button"
-                      onClick={() => void batchCancel(job.id).then(() => void refresh())}
-                      className="rounded px-2 py-1 text-xs hover:bg-slate-100 dark:hover:bg-slate-700"
-                    >
-                      Cancel
-                    </button>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
+                    <Typography variant="body2" sx={{ flexGrow: 1, wordBreak: 'break-all' }}>
+                      {fileName(f.input)}
+                    </Typography>
+                    <FormControl size="small" sx={{ minWidth: 110 }}>
+                      <InputLabel id={`batch-target-${i}-label`}>Format</InputLabel>
+                      <Select
+                        labelId={`batch-target-${i}-label`}
+                        value={f.target}
+                        disabled={running}
+                        aria-label={`Target format for ${fileName(f.input)}`}
+                        label="Format"
+                        onChange={(e) =>
+                          setFiles((prev) => prev.map((x, j) => (j === i ? { ...x, target: e.target.value } : x)))
+                        }
+                      >
+                        {encodable.map((c) => (
+                          <MenuItem key={c.format_id} value={c.format_id}>
+                            {c.format_id.toUpperCase()}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <Chip
+                      role="status"
+                      size="small"
+                      label={
+                        `${job?.status ?? 'Queued'}` +
+                        (result && result.status === 'Done' ? ` · ${formatBytes(result.bytes)}` : '')
+                      }
+                      color={
+                        job?.status === 'Done'
+                          ? 'success'
+                          : job?.status === 'Failed'
+                            ? 'error'
+                            : job?.status === 'Running'
+                              ? 'info'
+                              : 'default'
+                      }
+                    />
+                    {result?.error && (
+                      <Typography variant="caption" color="error" sx={{ width: '100%' }}>
+                        {result.error}
+                      </Typography>
+                    )}
+                    {!running && (
+                      <IconButton
+                        type="button"
+                        size="small"
+                        aria-label={`Remove ${fileName(f.input)}`}
+                        onClick={() => setFiles((prev) => prev.filter((_, j) => j !== i))}
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    )}
+                    {job && job.status === 'Queued' && running && (
+                      <Button
+                        type="button"
+                        size="small"
+                        onClick={() => void batchCancel(job.id).then(() => void refresh())}
+                      >
+                        Cancel
+                      </Button>
+                    )}
+                  </ListItem>
+                )
+              })}
+            </List>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void start()}
-              disabled={running || files.length === 0}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              Start batch ({settings.batchWorkers} worker{settings.batchWorkers === 1 ? '' : 's'})
-            </button>
-            {running && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => void batchPause().then(() => void refresh())}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
-                >
-                  Pause queue
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void batchResume().then(() => void refresh())}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
-                >
-                  Resume
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void batchCancelAll().then(() => void refresh())}
-                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
-                >
-                  Cancel all queued
-                </button>
-              </>
-            )}
-            {done && progress !== null && progress.failed > 0 && (
-              <button
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 2 }}>
+              <Button
                 type="button"
-                onClick={() => void batchRetryFailed().then(() => void refresh())}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
+                variant="contained"
+                onClick={() => void start()}
+                disabled={running || files.length === 0}
               >
-                Retry {progress.failed} failed
-              </button>
-            )}
-          </div>
+                Start batch ({settings.batchWorkers} worker{settings.batchWorkers === 1 ? '' : 's'})
+              </Button>
+              {running && (
+                <>
+                  <Button type="button" variant="outlined" onClick={() => void batchPause().then(() => void refresh())}>
+                    Pause queue
+                  </Button>
+                  <Button type="button" variant="outlined" onClick={() => void batchResume().then(() => void refresh())}>
+                    Resume
+                  </Button>
+                  <Button type="button" variant="outlined" onClick={() => void batchCancelAll().then(() => void refresh())}>
+                    Cancel all queued
+                  </Button>
+                </>
+              )}
+              {done && progress !== null && progress.failed > 0 && (
+                <Button type="button" variant="outlined" onClick={() => void batchRetryFailed().then(() => void refresh())}>
+                  Retry {progress.failed} failed
+                </Button>
+              )}
+            </Box>
 
-          {progress && (
-            <p role="status" className="mt-3 text-sm text-slate-600 dark:text-slate-400">
-              {progress.done} done · {progress.failed} failed · {progress.running} running ·{' '}
-              {progress.queued} queued · {progress.cancelled} cancelled · {progress.paused} paused
-              (total {progress.total})
-            </p>
-          )}
-        </section>
+            {progress && (
+              <Typography variant="body2" color="text.secondary" role="status" sx={{ mt: 2 }}>
+                {progress.done} done · {progress.failed} failed · {progress.running} running ·{' '}
+                {progress.queued} queued · {progress.cancelled} cancelled · {progress.paused} paused
+                (total {progress.total})
+              </Typography>
+            )}
+          </CardContent>
+        </Card>
       )}
-    </div>
+    </Box>
   )
 }

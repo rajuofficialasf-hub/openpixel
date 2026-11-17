@@ -1,6 +1,6 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* OpenPixel desktop — global styles (MUI carries the design
+ * system; this file only holds what MUI does not: the colour-scheme
+ * hint and the visible-focus rule). No Tailwind here. */
 
 :root {
   color-scheme: light;
@@ -13,6 +13,8 @@
 body {
   margin: 0;
   font-family:
+    'Inter',
+    'Noto Sans Bengali',
     system-ui,
     'Segoe UI',
     Roboto,
@@ -21,6 +23,6 @@ body {
 
 /* Visible keyboard focus everywhere — accessibility requirement. */
 :focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid #3157d5;
   outline-offset: 2px;
 }

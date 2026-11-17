@@ -330,3 +330,432 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
   return `${(bytes / (1024 * 1024)).toFixed(2)} MiB`
 }
+
+// ---- PDF / OCR / document types + invoke wrappers (Phase 7) ----
+
+export interface PdfInfo {
+  page_count: number
+  version: string
+  title: string | null
+  author: string | null
+  subject: string | null
+  keywords: string | null
+  creator: string | null
+  producer: string | null
+  encrypted: boolean
+  encryption: {
+    algorithm: string
+    revision: number | null
+    print: boolean
+    modify: boolean
+    copy: boolean
+    annotate: boolean
+  } | null
+  page_sizes: [number, number][]
+}
+
+export interface PdfThreats {
+  javascript: string[]
+  embedded_files: string[]
+  launch_actions: string[]
+  auto_actions: string[]
+  warnings: string[]
+}
+
+export interface DesktopCapabilities {
+  pdfium_present: boolean
+  tesseract_present: boolean
+  tesseract_version: string | null
+  tesseract_languages: string[]
+  libreoffice_present: boolean
+  libreoffice_version: string | null
+}
+
+export interface PdfFileResult {
+  output: string
+  page_count: number
+  input_bytes: number
+  output_bytes: number
+}
+
+export interface PdfSplitResult {
+  outputs: string[]
+  page_counts: number[]
+}
+
+export interface CompressOutcome {
+  mode: string
+  input_bytes: number
+  output_bytes: number
+  compressed_bytes: number
+  saved_bytes: number
+  saved_percent: number
+  images_total: number
+  images_recompressed: number
+  images_skipped: number
+  skipped_reasons: string[]
+  metadata_stripped: boolean
+  note: string | null
+}
+
+export interface PdfCompressResult {
+  output: string
+  outcome: CompressOutcome
+}
+
+export interface EditOutcome {
+  ops_applied: number
+  pages_touched: number
+  comments_added: number
+  warnings: string[]
+}
+
+export interface PdfEditResult {
+  output: string
+  outcome: EditOutcome
+}
+
+export interface RedactOutcome {
+  pages_touched: number
+  runs_removed: number
+  characters_removed: number
+  annotations_removed: number
+  redacted_texts: string[]
+  warnings: string[]
+}
+
+export interface PdfRedactResult {
+  output: string
+  outcome: RedactOutcome
+}
+
+export interface FlattenOutcome {
+  annotations_flattened: number
+  annotations_dropped: number
+  form_fields_removed: number
+  warnings: string[]
+}
+
+export interface PdfFlattenResult {
+  output: string
+  outcome: FlattenOutcome
+}
+
+export interface SanitizeOutcome {
+  javascript_removed: number
+  embedded_files_removed: number
+  launch_actions_removed: number
+  auto_actions_removed: number
+  warnings: string[]
+}
+
+export interface PdfSanitizeResult {
+  output: string
+  outcome: SanitizeOutcome
+}
+
+export interface RepairOutcome {
+  recovery: string
+  warnings: string[]
+}
+
+export interface PdfRepairResult {
+  output: string
+  outcome: RepairOutcome
+}
+
+export interface PageText {
+  page: number
+  text: string
+  lines: { text: string; x: number; y_top: number; width: number; height: number }[]
+}
+
+export interface PdfTextResult {
+  pages: PageText[]
+  text: string
+  output: string | null
+}
+
+export interface PdfImagesResult {
+  outputs: string[]
+}
+
+export interface OcrWord {
+  text: string
+  confidence: number
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface OcrResult {
+  text: string
+  words: OcrWord[]
+  mean_confidence: number
+  language: string
+  engine: string
+  width: number
+  height: number
+  duration_ms: number
+  preprocessed: string[]
+}
+
+export interface OcrSearchableResult {
+  output: string
+  page_count: number
+  results: OcrResult[]
+}
+
+export interface ConversionOutcome {
+  source: string
+  target: string
+  engine: string
+  input_bytes: number
+  output_bytes: number
+  fidelity: string
+}
+
+export interface DocumentConversion {
+  source: string
+  target: string
+  engine: string
+  runs_where: string
+  fidelity: string
+}
+
+export interface PdfPageOpRequest {
+  op: string
+  pages: number[] | null
+  degrees: number | null
+  order: number[] | null
+  cols: number | null
+  rows: number | null
+}
+
+export interface PdfEditRequest {
+  text: string | null
+  text_page: number | null
+  text_x: number | null
+  text_y: number | null
+  text_size: number | null
+  page_numbers: boolean
+  page_number_position: string | null
+  header: string | null
+  footer: string | null
+}
+
+export interface PdfRedactRequest {
+  texts: string[]
+  rects: { page: number; x: number; y: number; width: number; height: number }[]
+}
+
+export interface OcrRequest {
+  languages: string[]
+  psm: number | null
+  preprocess: string | null
+}
+
+export interface MetadataEdit {
+  title: string | null
+  author: string | null
+  subject: string | null
+  keywords: string | null
+  creator: string | null
+  producer: string | null
+}
+
+export function fetchDesktopCapabilities(): Promise<DesktopCapabilities> {
+  return invoke<DesktopCapabilities>('get_desktop_capabilities')
+}
+
+export function fetchPdfInfo(path: string): Promise<PdfInfo> {
+  return invoke<PdfInfo>('pdf_info', { path })
+}
+
+export function fetchPdfThreats(path: string): Promise<PdfThreats> {
+  return invoke<PdfThreats>('pdf_inspect', { path })
+}
+
+export function pdfMerge(inputs: string[], output: string): Promise<PdfFileResult> {
+  return invoke<PdfFileResult>('pdf_merge', { inputs, output })
+}
+
+export function pdfSplit(
+  input: string,
+  ranges: [number, number][],
+  outputDir: string,
+): Promise<PdfSplitResult> {
+  return invoke<PdfSplitResult>('pdf_split', { input, ranges, outputDir })
+}
+
+export function pdfPageOp(
+  input: string,
+  output: string,
+  request: PdfPageOpRequest,
+): Promise<PdfFileResult> {
+  return invoke<PdfFileResult>('pdf_page_op', { input, output, request })
+}
+
+export function pdfCompress(
+  input: string,
+  output: string,
+  mode: string,
+  stripMetadata: boolean,
+): Promise<PdfCompressResult> {
+  return invoke<PdfCompressResult>('pdf_compress', { input, output, mode, stripMetadata })
+}
+
+export function pdfEdit(
+  input: string,
+  output: string,
+  request: PdfEditRequest,
+): Promise<PdfEditResult> {
+  return invoke<PdfEditResult>('pdf_edit', { input, output, request })
+}
+
+export function pdfRedact(
+  input: string,
+  output: string,
+  request: PdfRedactRequest,
+): Promise<PdfRedactResult> {
+  return invoke<PdfRedactResult>('pdf_redact', { input, output, request })
+}
+
+export function pdfFlatten(input: string, output: string): Promise<PdfFlattenResult> {
+  return invoke<PdfFlattenResult>('pdf_flatten', { input, output })
+}
+
+export function pdfSetMetadata(
+  input: string,
+  output: string,
+  edit: MetadataEdit,
+): Promise<PdfFileResult> {
+  return invoke<PdfFileResult>('pdf_set_metadata', { input, output, edit })
+}
+
+export function pdfSanitize(input: string, output: string): Promise<PdfSanitizeResult> {
+  return invoke<PdfSanitizeResult>('pdf_sanitize', { input, output })
+}
+
+export function pdfRepair(input: string, output: string): Promise<PdfRepairResult> {
+  return invoke<PdfRepairResult>('pdf_repair', { input, output })
+}
+
+export function pdfExtractText(
+  input: string,
+  pages: number[] | null,
+  format: string,
+  output: string | null,
+): Promise<PdfTextResult> {
+  return invoke<PdfTextResult>('pdf_extract_text', { input, pages, format, output })
+}
+
+export function pdfFromImages(
+  inputs: string[],
+  output: string,
+  pageSize: string | null,
+): Promise<PdfFileResult> {
+  return invoke<PdfFileResult>('pdf_from_images', { inputs, output, pageSize })
+}
+
+export function pdfToImages(
+  input: string,
+  outputDir: string,
+  pages: number[] | null,
+  scale: number,
+  format: string,
+): Promise<PdfImagesResult> {
+  return invoke<PdfImagesResult>('pdf_to_images', { input, outputDir, pages, scale, format })
+}
+
+export function ocrRecognize(input: string, request: OcrRequest): Promise<OcrResult> {
+  return invoke<OcrResult>('ocr_recognize', { input, request })
+}
+
+export function pdfOcrSearchable(
+  inputs: string[],
+  output: string,
+  request: OcrRequest,
+  title: string,
+): Promise<OcrSearchableResult> {
+  return invoke<OcrSearchableResult>('pdf_ocr_searchable', { inputs, output, request, title })
+}
+
+export function docConvert(
+  input: string,
+  output: string,
+  target: string,
+  sourceHint: string | null,
+): Promise<ConversionOutcome> {
+  return invoke<ConversionOutcome>('doc_convert', { input, output, target, sourceHint })
+}
+
+export function fetchDocFormats(): Promise<DocumentConversion[]> {
+  return invoke<DocumentConversion[]>('doc_formats')
+}
+
+// ---- Pure PDF helpers (no Tauri dependency — covered by unit tests) ----
+
+/**
+ * Parse a page list like "1, 3-5, 8" into 1-based page numbers.
+ * Returns null for empty input; throws on a bad token or a
+ * reversed range. Duplicates are kept (extract/reorder allow them);
+ * callers that need a set de-duplicate.
+ */
+export function parsePageList(spec: string): number[] | null {
+  const trimmed = spec.trim()
+  if (trimmed === '') return null
+  const out: number[] = []
+  for (const part of trimmed.split(',')) {
+    const token = part.trim()
+    if (token === '') throw new Error(`empty entry in page list "${spec}"`)
+    const dash = token.indexOf('-')
+    if (dash >= 0) {
+      const start = Number(token.slice(0, dash).trim())
+      const end = Number(token.slice(dash + 1).trim())
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
+        throw new Error(`bad page range "${token}" — use e.g. 3-5`)
+      }
+      for (let p = start; p <= end; p++) out.push(p)
+    } else {
+      const page = Number(token)
+      if (!Number.isInteger(page) || page < 1) {
+        throw new Error(`bad page number "${token}" — pages start at 1`)
+      }
+      out.push(page)
+    }
+  }
+  return out
+}
+
+/** Parse a split spec like "1-2, 3-5" into inclusive ranges. */
+export function parseRanges(spec: string): [number, number][] {
+  const trimmed = spec.trim()
+  if (trimmed === '') throw new Error('split needs at least one range, e.g. 1-2, 3-5')
+  const out: [number, number][] = []
+  for (const part of trimmed.split(',')) {
+    const token = part.trim()
+    const dash = token.indexOf('-')
+    if (dash < 0) {
+      const page = Number(token)
+      if (!Number.isInteger(page) || page < 1) {
+        throw new Error(`bad split range "${token}" — use e.g. 1-2`)
+      }
+      out.push([page, page])
+    } else {
+      const start = Number(token.slice(0, dash).trim())
+      const end = Number(token.slice(dash + 1).trim())
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start) {
+        throw new Error(`bad split range "${token}" — use e.g. 1-2`)
+      }
+      out.push([start, end])
+    }
+  }
+  return out
+}
+
+/** Clamp a split/extract page list to the document's page count. */
+export function clampPages(pages: number[], pageCount: number): number[] {
+  return pages.filter((p) => p >= 1 && p <= pageCount)
+}

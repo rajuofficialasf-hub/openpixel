@@ -1,3 +1,13 @@
+import {
+  Box,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Typography,
+} from '@mui/material'
 import type { FormatCapability } from '../lib/tauri'
 
 interface CapabilitiesTableProps {
@@ -14,47 +24,47 @@ export function CapabilitiesTable({ capabilities }: CapabilitiesTableProps) {
   const encodable = capabilities.filter((c) => c.can_encode).length
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-slate-600 dark:text-slate-400">
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Typography variant="body2" color="text.secondary">
         {capabilities.length} formats known to the engine · {decodable} decodable · {encodable}{' '}
         encodable. This list is read from the engine registry when the app starts, so it always
         matches the CLI (<code>openpixel formats</code>).
-      </p>
-      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-slate-100 dark:bg-slate-800">
-            <tr>
-              <th scope="col" className="px-3 py-2">Format</th>
-              <th scope="col" className="px-3 py-2">Extensions</th>
-              <th scope="col" className="px-3 py-2">Decode</th>
-              <th scope="col" className="px-3 py-2">Encode</th>
-              <th scope="col" className="px-3 py-2">Alpha</th>
-              <th scope="col" className="px-3 py-2">Animation</th>
-              <th scope="col" className="px-3 py-2">Status</th>
-            </tr>
-          </thead>
-          <tbody>
+      </Typography>
+      <TableContainer>
+        <Table size="small">
+          <TableHead>
+            <TableRow>
+              <TableCell>Format</TableCell>
+              <TableCell>Extensions</TableCell>
+              <TableCell>Decode</TableCell>
+              <TableCell>Encode</TableCell>
+              <TableCell>Alpha</TableCell>
+              <TableCell>Animation</TableCell>
+              <TableCell>Status</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
             {capabilities.map((c) => (
-              <tr key={c.format_id} className="border-t border-slate-200 dark:border-slate-700">
-                <td className="px-3 py-2 font-medium">{c.format_id.toUpperCase()}</td>
-                <td className="px-3 py-2">.{c.extensions.join(', .')}</td>
-                <td className="px-3 py-2">{c.can_decode ? '✓' : '—'}</td>
-                <td className="px-3 py-2">{c.can_encode ? '✓' : '—'}</td>
-                <td className="px-3 py-2">{c.supports_alpha ? '✓' : '—'}</td>
-                <td className="px-3 py-2">{c.supports_animation ? '✓' : '—'}</td>
-                <td className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
+              <TableRow key={c.format_id}>
+                <TableCell sx={{ fontWeight: 600 }}>{c.format_id.toUpperCase()}</TableCell>
+                <TableCell>.{c.extensions.join(', .')}</TableCell>
+                <TableCell>{c.can_decode ? '✓' : '—'}</TableCell>
+                <TableCell>{c.can_encode ? '✓' : '—'}</TableCell>
+                <TableCell>{c.supports_alpha ? '✓' : '—'}</TableCell>
+                <TableCell>{c.supports_animation ? '✓' : '—'}</TableCell>
+                <TableCell sx={{ fontSize: '0.75rem', color: 'text.secondary' }}>
                   {c.status}
                   {c.native_dependency ? ` · needs ${c.native_dependency}` : ''}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-xs text-slate-500 dark:text-slate-400">
+          </TableBody>
+        </Table>
+      </TableContainer>
+      <Typography variant="caption" color="text.secondary">
         Not convertible anywhere yet: HEIC / HEIF, APNG, RAW, PSD (planned in the engine, reported
         as such by the CLI and by this app). SVG rasterises to an image but cannot be an output.
-      </p>
-    </div>
+      </Typography>
+    </Box>
   )
 }
