@@ -179,7 +179,16 @@ pub struct OcrRequest {
     pub preprocess: Option<String>,
 }
 
+/// Read a whole file, refusing oversized inputs BEFORE allocating
+/// (audit finding B7b — the CLI's `check_input_size` equivalent).
+/// The 100 MiB engine limit applies to every PDF/image/key file
+/// read here; a larger file fails with a clear limit error instead
+/// of an unbounded allocation.
 fn read_bytes(path: &Path) -> Result<Vec<u8>, String> {
+    if let Ok(meta) = std::fs::metadata(path) {
+        openpixel_core::security::check_file_size(meta.len(), &Default::default())
+            .map_err(|e| e.to_string())?;
+    }
     std::fs::read(path).map_err(|e| format!("cannot read '{}': {e}", path.display()))
 }
 
@@ -1556,6 +1565,20 @@ mod tests {
         assert!(err.contains("native-ocr"), "ocr error: {err}");
         let err = do_pdf_ocr_searchable(&[fixture], &ocr_req(), "x").unwrap_err();
         assert!(err.contains("native-ocr"), "searchable-pdf error: {err}");
+    }
+
+    /// Audit finding B7b: an oversized file is refused by the
+    /// metadata pre-check before any bytes are read (sparse file —
+    /// no 100 MiB is actually written).
+    #[test]
+    fn read_bytes_refuses_oversized_files_before_reading() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let big = dir.path().join("big.pdf");
+        let file = std::fs::File::create(&big).unwrap();
+        file.set_len(100 * 1024 * 1024 + 1).unwrap();
+        drop(file);
+        let err = read_bytes(&big).unwrap_err();
+        assert!(err.contains("limit"), "oversized error: {err}");
     }
 
     #[test]
