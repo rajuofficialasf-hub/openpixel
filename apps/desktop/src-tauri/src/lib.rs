@@ -7,6 +7,7 @@
 
 pub mod commands;
 pub mod logging;
+pub mod pdf_commands;
 
 pub use commands::AppState;
 
@@ -47,6 +48,26 @@ pub fn run() {
             commands::batch_cancel,
             commands::batch_retry_failed,
             commands::read_logs,
+            pdf_commands::get_desktop_capabilities,
+            pdf_commands::pdf_info,
+            pdf_commands::pdf_inspect,
+            pdf_commands::pdf_merge,
+            pdf_commands::pdf_split,
+            pdf_commands::pdf_page_op,
+            pdf_commands::pdf_compress,
+            pdf_commands::pdf_edit,
+            pdf_commands::pdf_redact,
+            pdf_commands::pdf_flatten,
+            pdf_commands::pdf_set_metadata,
+            pdf_commands::pdf_sanitize,
+            pdf_commands::pdf_repair,
+            pdf_commands::pdf_extract_text,
+            pdf_commands::pdf_from_images,
+            pdf_commands::pdf_to_images,
+            pdf_commands::ocr_recognize,
+            pdf_commands::pdf_ocr_searchable,
+            pdf_commands::doc_convert,
+            pdf_commands::doc_formats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenPixel desktop");

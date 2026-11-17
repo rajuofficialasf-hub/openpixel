@@ -36,8 +36,18 @@ serde_json = "=1.0.154"
 openpixel-core = { path = "../../../crates/openpixel-core", version = "=0.1.0" }
 openpixel-formats = { path = "../../../crates/openpixel-formats", version = "=0.1.0" }
 openpixel-jobs = { path = "../../../crates/openpixel-jobs", version = "=0.1.0" }
+# Studio Phase 7: PDF / OCR / document engines. openpixel-pdf keeps
+# its default features — the `pdfium` feature stays OFF (rendering
+# and PDFium text extraction need a libpdfium binary, shipped in
+# Phase 8; commands that need it report honestly when absent).
+# openpixel-ocr enables `native-ocr` (Tesseract — needs
+# libtesseract + tessdata at build and runtime, see docs/OCR.md).
+openpixel-pdf = { path = "../../../crates/openpixel-pdf", version = "=0.1.0" }
+openpixel-ocr = { path = "../../../crates/openpixel-ocr", version = "=0.1.0", features = ["native-ocr"] }
+openpixel-documents = { path = "../../../crates/openpixel-documents", version = "=0.1.0" }
 
 [dev-dependencies]
 # Fixture generation in tests only (same pinned version as the workspace).
 image = { version = "=0.25.10", default-features = false, features = ["png", "jpeg"] }
+lopdf = "=0.47.0"
 tempfile = "=3.27.0"

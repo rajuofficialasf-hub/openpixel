@@ -119,7 +119,7 @@ impl AppState {
         }
     }
 
-    fn log(&self, level: &str, message: &str) {
+    pub(crate) fn log(&self, level: &str, message: &str) {
         logging::append(&self.log_dir, level, message);
     }
 
