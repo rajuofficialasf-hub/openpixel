@@ -7,11 +7,19 @@ import { ConvertWorkspace } from './components/ConvertWorkspace'
 import { HelpPage } from './components/HelpPage'
 import { HomePage } from './components/HomePage'
 import { OcrWorkspace } from './components/OcrWorkspace'
-import { PdfWorkspace } from './components/PdfWorkspace'
 import { ResizeWorkspace } from './components/ResizeWorkspace'
 import { SettingsPanel } from './components/SettingsPanel'
 import { ToolsDirectory, type ToolsCategoryFilter } from './components/ToolsDirectory'
 import { MyFilesPage, RecentFilesPage, WorkspaceDashboard } from './components/Workspace'
+import { PdfPicker } from './components/pdf/PdfPicker'
+import { BookletTool, DuplicateTool, ExtractTool, NupTool, RemoveTool, ReorderTool, ReverseTool, RotateTool, SplitTool } from './components/pdf/PageOpsTools'
+import { CompressTool } from './components/pdf/CompressTool'
+import { MergeTool } from './components/pdf/MergeTool'
+import { ImagesToPdfTool } from './components/pdf/ImagesToPdfTool'
+import { PdfToImageTool } from './components/pdf/PdfToImageTool'
+import { ExtractTextTool } from './components/pdf/ExtractTextTool'
+import { EditTool } from './components/pdf/EditTool'
+import { FlattenTool, MetadataTool, RedactTool, RepairTool, SanitizeTool } from './components/pdf/CleanUpTools'
 import { AppShell } from './components/layout/AppShell'
 import { loadSettings, resolveTheme, saveSettings, type Settings } from './lib/settings'
 import { getTheme } from './theme/theme'
@@ -55,18 +63,24 @@ function App() {
   }, [settings, mode])
 
   useEffect(() => {
-    // Unknown deep link: the route is home, so correct the address
-    // bar instead of leaving a bogus path in place.
-    if (routeFromPath(window.location.pathname) === 'home' && window.location.pathname !== '/') {
-      window.history.replaceState(null, '', '/')
+    // Unknown deep link: correct the address bar instead of
+    // leaving a bogus path in place. An unknown /pdf/* path was
+    // clearly meant for a PDF tool, so it lands on the picker.
+    const fixPath = () => {
+      const path = window.location.pathname
+      const route = routeFromPath(path)
+      if (route === 'home' && path !== '/') {
+        window.history.replaceState(null, '', '/')
+      } else if (route === 'pdf' && path !== '/pdf') {
+        window.history.replaceState(null, '', '/pdf')
+      }
     }
+    fixPath()
     // Browser back/forward: the URL drives the route.
     const onPopState = () => {
       setRoute(routeFromPath(window.location.pathname))
       window.scrollTo({ top: 0 })
-      if (routeFromPath(window.location.pathname) === 'home' && window.location.pathname !== '/') {
-        window.history.replaceState(null, '', '/')
-      }
+      fixPath()
     }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
@@ -92,6 +106,16 @@ function App() {
   }, [])
 
   const clearPending = useCallback(() => setPending(null), [])
+
+  // A handed-over file only ever goes to the route it was sent
+  // for — a file meant for the picker must not leak into a tool
+  // page the user opened directly, and vice versa.
+  const pendingFor = (route: RouteId) => (pending?.route === route ? pending.files : undefined)
+
+  const pdfToolProps = (route: RouteId) => ({
+    initialFiles: pendingFor(route),
+    onInitialFilesConsumed: clearPending,
+  })
 
   return (
     <ThemeProvider theme={theme}>
@@ -124,11 +148,32 @@ function App() {
           )}
           {route === 'resize' && <ResizeWorkspace settings={settings} onSettingsChange={setSettings} />}
           {route === 'pdf' && (
-            <PdfWorkspace
-              initialFiles={pending?.route === 'pdf' ? pending.files : undefined}
+            <PdfPicker
+              initialFiles={pendingFor('pdf')}
               onInitialFilesConsumed={clearPending}
+              onNavigate={navigate}
             />
           )}
+          {route === 'pdf-merge' && <MergeTool {...pdfToolProps('pdf-merge')} />}
+          {route === 'pdf-split' && <SplitTool {...pdfToolProps('pdf-split')} />}
+          {route === 'pdf-rotate' && <RotateTool {...pdfToolProps('pdf-rotate')} />}
+          {route === 'pdf-extract' && <ExtractTool {...pdfToolProps('pdf-extract')} />}
+          {route === 'pdf-remove' && <RemoveTool {...pdfToolProps('pdf-remove')} />}
+          {route === 'pdf-reorder' && <ReorderTool {...pdfToolProps('pdf-reorder')} />}
+          {route === 'pdf-duplicate' && <DuplicateTool {...pdfToolProps('pdf-duplicate')} />}
+          {route === 'pdf-reverse' && <ReverseTool {...pdfToolProps('pdf-reverse')} />}
+          {route === 'pdf-booklet' && <BookletTool {...pdfToolProps('pdf-booklet')} />}
+          {route === 'pdf-nup' && <NupTool {...pdfToolProps('pdf-nup')} />}
+          {route === 'pdf-compress' && <CompressTool {...pdfToolProps('pdf-compress')} />}
+          {route === 'pdf-edit' && <EditTool {...pdfToolProps('pdf-edit')} />}
+          {route === 'pdf-redact' && <RedactTool {...pdfToolProps('pdf-redact')} />}
+          {route === 'pdf-metadata' && <MetadataTool {...pdfToolProps('pdf-metadata')} />}
+          {route === 'pdf-sanitize' && <SanitizeTool {...pdfToolProps('pdf-sanitize')} />}
+          {route === 'pdf-flatten' && <FlattenTool {...pdfToolProps('pdf-flatten')} />}
+          {route === 'pdf-repair' && <RepairTool {...pdfToolProps('pdf-repair')} />}
+          {route === 'pdf-to-image' && <PdfToImageTool {...pdfToolProps('pdf-to-image')} />}
+          {route === 'pdf-images-to-pdf' && <ImagesToPdfTool {...pdfToolProps('pdf-images-to-pdf')} />}
+          {route === 'pdf-extract-text' && <ExtractTextTool {...pdfToolProps('pdf-extract-text')} />}
           {route === 'ocr' && <OcrWorkspace />}
           {route === 'batch' && (
             <BatchWorkspace

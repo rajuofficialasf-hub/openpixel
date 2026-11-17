@@ -193,16 +193,22 @@ a working-looking button.
   never-upscale, target-size mode, batch + zip, Before/After),
   Batch convert (up to 4 concurrent), metadata read (EXIF/ICC/
   XMP detection; web conversion always strips metadata).
-- **PDF (web, real):** info, pdf.js preview, PDF→image
-  download, page ops (rotate/extract/remove/reorder/duplicate/
-  insert/replace/reverse/booklet/N-up), compress (screen/ebook/
-  printer), edit overlays (text/images/shapes/highlight/draw/
-  comments/page numbers/header-footer), redaction (within one
-  Tj/TJ run only), flatten, metadata edit, repair, sanitise,
-  threat inspection, text extraction (txt/html), image→PDF.
+- **PDF (web, real — one tool per page since 17 Nov 2026):**
+  `/pdf` is the picker; each tool has its own route under
+  `/pdf/*` and shares the `PdfToolPage` shell: Merge, Split,
+  Rotate, Extract, Remove, Reorder, Duplicate, Reverse, Booklet,
+  N-up, Compress (screen/ebook/printer), Edit (text overlays,
+  highlights, page numbers, headers/footers — images/shapes/
+  comments are engine-only), Redact (within one Tj/TJ run
+  only), Metadata, Clean up (threat inspection + sanitise),
+  Flatten, Repair, PDF to Image (pdf.js preview + PNG/JPEG
+  download), Images to PDF, Extract Text (pdf.js, TXT download
+  + on-screen text). Info (version, page sizes, encryption) is
+  shown on the PDF-to-image and Edit pages.
 - **PDF (CLI/desktop only — label as such on the web):**
   protect/unlock/watermark, digital signatures, searchable-PDF
-  OCR, PDFium rendering, extract-text to EPUB/DOCX.
+  OCR, PDFium rendering, insert/replace pages, extract-text to
+  EPUB/DOCX.
 - **Document conversion (CLI/desktop only, LibreOffice):**
   DOCX/XLSX/PPTX/ODT/ODS/ODP/RTF/TXT/CSV/HTML ↔ PDF and
   between Office formats. No Office conversion runs in the

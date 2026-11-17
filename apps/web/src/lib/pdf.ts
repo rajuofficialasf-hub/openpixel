@@ -666,3 +666,46 @@ export async function renderPdfPageBlob(
   if (!blob) throw new Error(`This browser could not encode the rendered page as ${format.toUpperCase()}.`)
   return { blob, width, height }
 }
+
+export interface PdfExtractedText {
+  /** Plain text, pages separated by a blank line. */
+  text: string
+  pages: number
+}
+
+/**
+ * Extract the text layer of a PDF with pdf.js — the same library
+ * the preview uses, so no new engine is needed. Items on a line
+ * are joined with a space, pages with a blank line. Returns
+ * `null` when pdf.js cannot open the document. Scanned (image)
+ * pages have no text layer and come back empty — that is an
+ * honest empty result, not an error; the caller says so and
+ * points at OCR instead.
+ */
+export async function pdfExtractText(bytes: Uint8Array): Promise<PdfExtractedText | null> {
+  let lib: PdfJsLib
+  try {
+    lib = await loadPdfJs()
+  } catch {
+    return null
+  }
+  const task = lib.getDocument({ data: new Uint8Array(bytes) })
+  try {
+    const doc = await task.promise
+    const pages: string[] = []
+    for (let n = 1; n <= doc.numPages; n++) {
+      const page = await doc.getPage(n)
+      const content = await page.getTextContent()
+      const line: string[] = []
+      for (const item of content.items) {
+        if ('str' in item && item.str !== '') line.push(item.str)
+      }
+      pages.push(line.join(' '))
+    }
+    return { text: pages.join('\n\n'), pages: doc.numPages }
+  } catch {
+    return null
+  } finally {
+    await task.destroy()
+  }
+}

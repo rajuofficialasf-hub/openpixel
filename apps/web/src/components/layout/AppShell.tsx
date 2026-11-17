@@ -177,12 +177,15 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
 
   const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH
 
-  // The PDF route is a viewport-height workspace (like Acrobat /
-  // Figma): its three columns scroll internally and the page itself
-  // never scrolls. Desktop only — below lg the page keeps its
-  // normal stacked scrolling layout. Every other route is
-  // untouched.
-  const fitViewport = route === 'pdf' && isDesktop
+  // Every PDF tool page is a viewport-height workspace (like
+  // Acrobat / Figma): the page itself never scrolls on desktop —
+  // the Edit editor's three columns scroll internally, and the
+  // simple tool pages scroll inside their own container when
+  // they are taller than the viewport (e.g. Merge at 1366x768).
+  // Desktop only — below lg the pages keep their normal stacked
+  // scrolling layout. The /pdf picker is a directory, not a
+  // workspace, so it keeps normal page scrolling.
+  const fitViewport = route.startsWith('pdf-') && isDesktop
 
   const sidebar = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -216,7 +219,9 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
               </ListSubheader>
             )}
             {group.items.map((item) => {
-              const selected = route === item.route
+              // A PDF tool page (e.g. /pdf/merge) still selects the
+              // "PDF Tools" sidebar item — it is a PDF page.
+              const selected = route === item.route || (item.route === 'pdf' && route.startsWith('pdf-'))
               const button = (
                 <ListItemButton
                   key={item.route}
@@ -252,14 +257,18 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
     </Box>
   )
 
+  // One tool = one page: a PDF tool page crumbs as
+  // Overview / Tools / PDF Tools / <tool>.
+  const isPdfTool = route !== 'pdf' && route.startsWith('pdf-')
   const crumbs =
     route === 'home'
       ? []
       : [
           { label: 'Overview', route: 'home' as RouteId },
-          ...(route === 'convert' || route === 'resize' || route === 'pdf' || route === 'ocr' || route === 'batch'
+          ...(route === 'convert' || route === 'resize' || route === 'pdf' || route === 'ocr' || route === 'batch' || isPdfTool
             ? [{ label: 'Tools', route: 'tools' as RouteId }]
             : []),
+          ...(isPdfTool ? [{ label: 'PDF Tools', route: 'pdf' as RouteId }] : []),
           { label: ROUTE_TITLES[route].crumb, route },
         ]
 

@@ -16,6 +16,26 @@ export type RouteId =
   | 'convert'
   | 'resize'
   | 'pdf'
+  | 'pdf-merge'
+  | 'pdf-split'
+  | 'pdf-rotate'
+  | 'pdf-extract'
+  | 'pdf-remove'
+  | 'pdf-reorder'
+  | 'pdf-duplicate'
+  | 'pdf-reverse'
+  | 'pdf-booklet'
+  | 'pdf-nup'
+  | 'pdf-compress'
+  | 'pdf-edit'
+  | 'pdf-redact'
+  | 'pdf-metadata'
+  | 'pdf-sanitize'
+  | 'pdf-flatten'
+  | 'pdf-repair'
+  | 'pdf-to-image'
+  | 'pdf-images-to-pdf'
+  | 'pdf-extract-text'
   | 'ocr'
   | 'batch'
   | 'formats'
@@ -38,6 +58,26 @@ export const ROUTE_PATHS: Record<RouteId, string> = {
   convert: '/convert',
   resize: '/resize',
   pdf: '/pdf',
+  'pdf-merge': '/pdf/merge',
+  'pdf-split': '/pdf/split',
+  'pdf-rotate': '/pdf/rotate',
+  'pdf-extract': '/pdf/extract',
+  'pdf-remove': '/pdf/remove',
+  'pdf-reorder': '/pdf/reorder',
+  'pdf-duplicate': '/pdf/duplicate',
+  'pdf-reverse': '/pdf/reverse',
+  'pdf-booklet': '/pdf/booklet',
+  'pdf-nup': '/pdf/n-up',
+  'pdf-compress': '/pdf/compress',
+  'pdf-edit': '/pdf/edit',
+  'pdf-redact': '/pdf/redact',
+  'pdf-metadata': '/pdf/metadata',
+  'pdf-sanitize': '/pdf/sanitize',
+  'pdf-flatten': '/pdf/flatten',
+  'pdf-repair': '/pdf/repair',
+  'pdf-to-image': '/pdf/pdf-to-image',
+  'pdf-images-to-pdf': '/pdf/images-to-pdf',
+  'pdf-extract-text': '/pdf/extract-text',
   ocr: '/ocr',
   batch: '/batch',
   formats: '/formats',
@@ -47,12 +87,17 @@ export const ROUTE_PATHS: Record<RouteId, string> = {
   help: '/help',
 }
 
-/** Map a URL pathname to a route. Unknown paths fall back to home. */
+/**
+ * Map a URL pathname to a route. Unknown paths fall back to home —
+ * except unknown /pdf/* paths, which fall back to the PDF tools
+ * picker (the user was clearly looking for a PDF tool).
+ */
 export function routeFromPath(pathname: string): RouteId {
   const clean = pathname.replace(/\/+$/, '') || '/'
   for (const [id, path] of Object.entries(ROUTE_PATHS) as [RouteId, string][]) {
     if (path === clean) return id
   }
+  if (clean === '/pdf' || clean.startsWith('/pdf/')) return 'pdf'
   return 'home'
 }
 
@@ -172,25 +217,101 @@ export const TOOLS: ToolEntry[] = [
     status: 'coming-soon',
     keywords: ['background', 'remove', 'transparent', 'cutout', 'image'],
   },
-  // ---- PDF (web) ----
+  // ---- PDF (web) — one tool, one page, one route each.
+  // The old "Organize PDF Pages" grouping is gone: rotate,
+  // extract, remove, reorder, duplicate, reverse, booklet and
+  // N-up are separate tools with separate pages, exactly as the
+  // user asked (select the tool first, then see its page).
   {
     id: 'pdf-merge',
     name: 'Merge PDF',
     description: 'Combine several PDFs into one, in the order you choose.',
     categories: ['pdf'],
     status: 'web',
-    route: 'pdf',
+    route: 'pdf-merge',
     keywords: ['merge', 'combine', 'join', 'pdf'],
     popular: true,
   },
   {
     id: 'pdf-split',
     name: 'Split PDF',
-    description: 'Split a PDF into separate files by page ranges.',
+    description: 'Split a PDF into separate files by page ranges — one document per range.',
     categories: ['pdf'],
     status: 'web',
-    route: 'pdf',
-    keywords: ['split', 'separate', 'pages', 'extract', 'pdf'],
+    route: 'pdf-split',
+    keywords: ['split', 'separate', 'pages', 'pdf'],
+  },
+  {
+    id: 'pdf-rotate',
+    name: 'Rotate PDF Pages',
+    description: 'Rotate pages 90°, 180° or 270° — all pages, or just the ones you pick.',
+    categories: ['pdf'],
+    status: 'web',
+    route: 'pdf-rotate',
+    keywords: ['rotate', 'pages', 'orientation', 'pdf'],
+  },
+  {
+    id: 'pdf-extract',
+    name: 'Extract PDF Pages',
+    description: 'Pull pages out of a PDF into a new document.',
+    categories: ['pdf'],
+    status: 'web',
+    route: 'pdf-extract',
+    keywords: ['extract', 'pages', 'pull out', 'pdf'],
+  },
+  {
+    id: 'pdf-remove',
+    name: 'Remove PDF Pages',
+    description: 'Delete pages from a PDF — the rest stays exactly as it was.',
+    categories: ['pdf'],
+    status: 'web',
+    route: 'pdf-remove',
+    keywords: ['remove', 'delete', 'pages', 'pdf'],
+  },
+  {
+    id: 'pdf-reorder',
+    name: 'Reorder PDF Pages',
+    description: 'Put the pages in a new order — list every page exactly once.',
+    categories: ['pdf'],
+    status: 'web',
+    route: 'pdf-reorder',
+    keywords: ['reorder', 'pages', 'order', 'arrange', 'pdf'],
+  },
+  {
+    id: 'pdf-duplicate',
+    name: 'Duplicate PDF Pages',
+    description: 'Copy pages inside a PDF — the copies go right after the originals.',
+    categories: ['pdf'],
+    status: 'web',
+    route: 'pdf-duplicate',
+    keywords: ['duplicate', 'copy', 'pages', 'pdf'],
+  },
+  {
+    id: 'pdf-reverse',
+    name: 'Reverse PDF Pages',
+    description: 'Flip the page order — last page first.',
+    categories: ['pdf'],
+    status: 'web',
+    route: 'pdf-reverse',
+    keywords: ['reverse', 'flip', 'pages', 'order', 'pdf'],
+  },
+  {
+    id: 'pdf-booklet',
+    name: 'Booklet Layout',
+    description: 'Reorder pages into a booklet layout, ready to print and fold.',
+    categories: ['pdf'],
+    status: 'web',
+    route: 'pdf-booklet',
+    keywords: ['booklet', 'print', 'fold', 'pages', 'pdf'],
+  },
+  {
+    id: 'pdf-nup',
+    name: 'N-up Layout',
+    description: 'Put several pages on one sheet — pick the columns and rows.',
+    categories: ['pdf'],
+    status: 'web',
+    route: 'pdf-nup',
+    keywords: ['n-up', 'layout', 'grid', 'pages', 'pdf'],
   },
   {
     id: 'pdf-compress',
@@ -198,9 +319,63 @@ export const TOOLS: ToolEntry[] = [
     description: 'Shrink a PDF — screen, ebook or printer quality. Images are downsampled and re-encoded.',
     categories: ['pdf', 'compression'],
     status: 'web',
-    route: 'pdf',
+    route: 'pdf-compress',
     keywords: ['compress', 'smaller', 'size', 'optimize', 'pdf'],
     popular: true,
+  },
+  {
+    id: 'pdf-edit',
+    name: 'Edit PDF',
+    description: 'Add text, highlights, page numbers and headers to a PDF.',
+    categories: ['pdf'],
+    status: 'web',
+    route: 'pdf-edit',
+    keywords: ['edit', 'annotate', 'text', 'overlay', 'pdf'],
+  },
+  {
+    id: 'pdf-redact',
+    name: 'Redact PDF',
+    description: 'Permanently remove text from a PDF — deleted from the file, not covered up.',
+    categories: ['pdf'],
+    status: 'web',
+    route: 'pdf-redact',
+    keywords: ['redact', 'remove', 'black out', 'sensitive', 'pdf'],
+  },
+  {
+    id: 'pdf-metadata',
+    name: 'PDF Metadata',
+    description: 'Edit a PDF’s title, author, subject and keywords.',
+    categories: ['pdf'],
+    status: 'web',
+    route: 'pdf-metadata',
+    keywords: ['metadata', 'title', 'author', 'info', 'pdf'],
+  },
+  {
+    id: 'pdf-sanitize',
+    name: 'Clean up PDF',
+    description: 'Check a PDF for JavaScript, embedded files and launch actions — then strip them out.',
+    categories: ['pdf'],
+    status: 'web',
+    route: 'pdf-sanitize',
+    keywords: ['sanitize', 'clean', 'safe', 'threat', 'javascript', 'pdf'],
+  },
+  {
+    id: 'pdf-flatten',
+    name: 'Flatten PDF',
+    description: 'Flatten annotations into the page content and remove form fields.',
+    categories: ['pdf'],
+    status: 'web',
+    route: 'pdf-flatten',
+    keywords: ['flatten', 'annotations', 'forms', 'pdf'],
+  },
+  {
+    id: 'pdf-repair',
+    name: 'Repair PDF',
+    description: 'Rebuild the cross-reference table of a damaged PDF so it opens again.',
+    categories: ['pdf'],
+    status: 'web',
+    route: 'pdf-repair',
+    keywords: ['repair', 'fix', 'damaged', 'corrupt', 'pdf'],
   },
   {
     id: 'pdf-to-image',
@@ -208,7 +383,7 @@ export const TOOLS: ToolEntry[] = [
     description: 'Render PDF pages to PNG or JPEG and download them.',
     categories: ['pdf', 'conversion'],
     status: 'web',
-    route: 'pdf',
+    route: 'pdf-to-image',
     keywords: ['pdf', 'image', 'png', 'jpeg', 'render', 'page'],
     popular: true,
   },
@@ -218,62 +393,17 @@ export const TOOLS: ToolEntry[] = [
     description: 'Turn one or more images into a PDF document.',
     categories: ['pdf', 'conversion'],
     status: 'web',
-    route: 'pdf',
+    route: 'pdf-images-to-pdf',
     keywords: ['image', 'pdf', 'create', 'photo'],
     popular: true,
   },
   {
-    id: 'pdf-edit',
-    name: 'Edit PDF',
-    description: 'Add text, images, shapes, highlights, comments, page numbers and headers to a PDF.',
-    categories: ['pdf'],
-    status: 'web',
-    route: 'pdf',
-    keywords: ['edit', 'annotate', 'text', 'overlay', 'pdf'],
-  },
-  {
-    id: 'pdf-redact',
-    name: 'Redact PDF',
-    description: 'Permanently remove text from a PDF — deleted from the file, not covered up.',
-    categories: ['pdf'],
-    status: 'web',
-    route: 'pdf',
-    keywords: ['redact', 'remove', 'black out', 'sensitive', 'pdf'],
-  },
-  {
-    id: 'pdf-pages',
-    name: 'Organize PDF Pages',
-    description: 'Rotate, extract, remove, reorder, duplicate, reverse, booklet and N-up page layouts.',
-    categories: ['pdf'],
-    status: 'web',
-    route: 'pdf',
-    keywords: ['pages', 'reorder', 'rotate', 'extract', 'delete', 'duplicate', 'pdf'],
-  },
-  {
-    id: 'pdf-metadata',
-    name: 'PDF Metadata',
-    description: 'Read and edit a PDF’s title, author and other document information.',
-    categories: ['pdf'],
-    status: 'web',
-    route: 'pdf',
-    keywords: ['metadata', 'title', 'author', 'info', 'pdf'],
-  },
-  {
-    id: 'pdf-repair',
-    name: 'Repair & Sanitize PDF',
-    description: 'Fix a damaged PDF and strip JavaScript, launch actions, embedded files and other threats.',
-    categories: ['pdf'],
-    status: 'web',
-    route: 'pdf',
-    keywords: ['repair', 'fix', 'sanitize', 'clean', 'safe', 'pdf'],
-  },
-  {
     id: 'pdf-text',
     name: 'Extract PDF Text',
-    description: 'Extract the text of a PDF as TXT or HTML in the browser. EPUB/DOCX export runs in the CLI.',
+    description: 'Read the text out of a PDF — shown on the page and downloadable as TXT. EPUB/DOCX export runs in the CLI.',
     categories: ['pdf', 'conversion'],
     status: 'web',
-    route: 'pdf',
+    route: 'pdf-extract-text',
     keywords: ['extract', 'text', 'copy', 'content', 'pdf'],
   },
   // ---- PDF (CLI-only / coming soon) ----
@@ -497,6 +627,26 @@ export const ROUTE_TITLES: Record<RouteId, { title: string; crumb: string }> = {
   convert: { title: 'Convert Image', crumb: 'Convert Image' },
   resize: { title: 'Resize Image', crumb: 'Resize Image' },
   pdf: { title: 'PDF Tools', crumb: 'PDF Tools' },
+  'pdf-merge': { title: 'Merge PDF', crumb: 'Merge PDF' },
+  'pdf-split': { title: 'Split PDF', crumb: 'Split PDF' },
+  'pdf-rotate': { title: 'Rotate PDF Pages', crumb: 'Rotate PDF Pages' },
+  'pdf-extract': { title: 'Extract PDF Pages', crumb: 'Extract PDF Pages' },
+  'pdf-remove': { title: 'Remove PDF Pages', crumb: 'Remove PDF Pages' },
+  'pdf-reorder': { title: 'Reorder PDF Pages', crumb: 'Reorder PDF Pages' },
+  'pdf-duplicate': { title: 'Duplicate PDF Pages', crumb: 'Duplicate PDF Pages' },
+  'pdf-reverse': { title: 'Reverse PDF Pages', crumb: 'Reverse PDF Pages' },
+  'pdf-booklet': { title: 'Booklet Layout', crumb: 'Booklet Layout' },
+  'pdf-nup': { title: 'N-up Layout', crumb: 'N-up Layout' },
+  'pdf-compress': { title: 'Compress PDF', crumb: 'Compress PDF' },
+  'pdf-edit': { title: 'Edit PDF', crumb: 'Edit PDF' },
+  'pdf-redact': { title: 'Redact PDF', crumb: 'Redact PDF' },
+  'pdf-metadata': { title: 'PDF Metadata', crumb: 'PDF Metadata' },
+  'pdf-sanitize': { title: 'Clean up PDF', crumb: 'Clean up PDF' },
+  'pdf-flatten': { title: 'Flatten PDF', crumb: 'Flatten PDF' },
+  'pdf-repair': { title: 'Repair PDF', crumb: 'Repair PDF' },
+  'pdf-to-image': { title: 'PDF to Image', crumb: 'PDF to Image' },
+  'pdf-images-to-pdf': { title: 'Image to PDF', crumb: 'Image to PDF' },
+  'pdf-extract-text': { title: 'Extract PDF Text', crumb: 'Extract PDF Text' },
   ocr: { title: 'OCR', crumb: 'OCR' },
   batch: { title: 'Batch Convert', crumb: 'Batch Convert' },
   formats: { title: 'Formats', crumb: 'Formats' },

@@ -402,6 +402,65 @@ Below lg the page keeps its normal stacked scrolling layout.
   screenshots `p6-fit-live-1366x768.png`,
   `p6-fit-live-1440x900.png`.
 
+### 2.25 Per-tool PDF pages (17 Nov 2026) — PASS
+
+User correction: the /pdf page crammed every operation onto one
+long page — "the user should first select what they want". The
+PDF section is now one focused page per tool (21 routes: the
+`/pdf` picker + 20 tools under `/pdf/*`), each built on the
+shared `PdfToolPage` shell + `usePdfFile` hook
+(`apps/web/src/components/pdf/`; the 1861-line `PdfWorkspace.tsx`
+is deleted). `/convert`, `/resize`, `/ocr`, `/batch` already
+were one tool per page and are untouched. Reverse / Booklet /
+N-up each got their own page (distinct CLI ops, distinct
+outputs); Inspect is not a standalone tool — it lives on the
+Clean up page (`/pdf/sanitize`) as the "Check for threats" step.
+Extract text is a NEW web tool on `/pdf/extract-text` (pdf.js
+`getTextContent`, TXT download + on-screen text) — the routes
+registry already advertised it as a web tool, so it was built
+for real rather than demoted; EPUB/DOCX export stays CLI-only.
+No working capability was dropped; every element id the suites
+rely on was preserved on the new pages.
+
+- pdf-e2e **31/31** (was 24/24 — reworked to the new pages,
+  plus NEW coverage: remove, reorder, duplicate, reverse,
+  booklet, N-up, extract-text, and the picker hand-off
+  test — a PDF uploaded on the picker travels to the picked
+  tool). Every check verifies a real downloaded file with
+  `file(1)` + the CLI (`pdf info` / `info` / `pdf extract-text`);
+  redaction is byte-proof (SECRET-123 absent from the file
+  bytes AND the text layer, PUBLIC line survives). The suite
+  generates its own 2-page text fixture (`text2.pdf`) in JS.
+- routing-e2e **12/12** (was 9/9): + deep link `/pdf/merge`,
+  + deep link `/pdf/compress`, + unknown `/pdf/nope` → the
+  `/pdf` picker (URL corrected).
+- viewport-qa **31/31** (was 27/27): the fit contract moved
+  from `/pdf` to `/pdf/edit` (empty + loaded doc4 at 1366×768
+  and 1440×900, 200-page `big200.pdf` at 1440×900 — thumbnails
+  rail scrollable 4236 > 721), + 4 fit checks on the simple
+  tool page `/pdf/merge` (empty + loaded at both viewports).
+  Real bug found by the new checks: Merge loaded at 1366×768
+  overflowed the document by 77px (two DropZones + summary +
+  actions). Fix: `AppShell` `fitViewport` now covers ALL
+  `pdf-*` routes on desktop (not just `pdf-edit`), and the
+  shared shell root scrolls internally (`flex: 1; minHeight: 0;
+  overflowY: auto`) — the document never scrolls; tool content
+  scrolls inside its own container when taller than the
+  viewport. The `/pdf` picker keeps normal page scrolling (it
+  is a directory, not a workspace).
+- One duplicate-id trap found while reworking: the file summary
+  and the PDF-to-image info card both rendered
+  `#pdf-page-count` (strict-mode violation in Playwright). The
+  info card now owns that id on its page and the default
+  summary is suppressed there (`summary={<></>}`).
+- Regression: web-e2e **36/37** (known keyboard flake only),
+  resize **16/16**, ocr **14/14**, no-WASM **9/9**; web npm
+  test **85/85** (routes.test.ts gained 1 test: unknown `/pdf/*`
+  → picker), lint **0**; cargo test --workspace **336/336**
+  (no Rust changed).
+- Live verification on openpixel.pages.dev: pending (see the
+  phase report — deploy takes ~4 min after the push).
+
 ### 2.16 WASM-absent fallback — PASS (9/9, SVG fix run 16 Nov 2026)
 
 A copy of `dist/` with `public/wasm/` removed, served on port 8322

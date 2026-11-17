@@ -1,0 +1,114 @@
+/**
+ * Image to PDF — one focused page. One PDF page per image, in
+ * order, at the image's own size or a named page size.
+ */
+import { useState } from 'react'
+import { Box, Button, Select, Typography } from '@mui/material'
+import { getPdfInfo, pdfFromImages, PDF_PAGE_SIZES, type PdfPageSize } from '../../lib/pdf'
+import { recordActivity } from '../../lib/activity'
+import { DropZone } from '../DropZone'
+import { PdfToolPage } from './shared'
+import { usePdfFile, wasmMissing, type PdfToolProps } from './usePdfFile'
+
+export function ImagesToPdfTool({ initialFiles: _initialFiles, onInitialFilesConsumed: _onConsumed }: PdfToolProps) {
+  // The hook owns the shared result/status/busy state; the images
+  // themselves live here (no PDF file is loaded on this page, and
+  // no handed-over file is ever forwarded to it).
+  const pdf = usePdfFile('pdf-images-to-pdf')
+  const [imageFiles, setImageFiles] = useState<File[]>([])
+  const [imagePageSize, setImagePageSize] = useState<PdfPageSize>('Original')
+
+  const run = async () => {
+    if (imageFiles.length === 0) return
+    pdf.setBusy('Images to PDF')
+    pdf.setError(null)
+    pdf.setStatus(null)
+    const images: Uint8Array[] = []
+    for (const f of imageFiles) images.push(new Uint8Array(await f.arrayBuffer()))
+    const built = await pdfFromImages(images, imagePageSize === 'Original' ? null : imagePageSize)
+    if (!built) {
+      pdf.setError(wasmMissing('Images to PDF'))
+      pdf.setBusy(null)
+      return
+    }
+    const builtInfo = await getPdfInfo(built)
+    const pages = builtInfo?.page_count ?? imageFiles.length
+    pdf.setResults([
+      {
+        label: 'Images to PDF',
+        blob: new Blob([built as BlobPart], { type: 'application/pdf' }),
+        filename: 'images.pdf',
+        pages,
+      },
+    ])
+    pdf.setStatus(`Images to PDF: ${pages} pages`)
+    recordActivity({
+      fileName: 'images.pdf',
+      fileSize: built.length,
+      fileType: 'application/pdf',
+      tool: 'pdf-images-to-pdf',
+      result: `Images to PDF: ${pages} pages`,
+    })
+    pdf.setBusy(null)
+  }
+
+  const upload = (
+    <DropZone
+      compact
+      inputId="pdf-images-file"
+      label="Drop images here"
+      hint="PNG, JPEG, WebP and the other formats this browser decodes — one PDF page per image, in order. Nothing is uploaded."
+      multiple
+      accept="image/*"
+      onFiles={(files) => setImageFiles(files)}
+    />
+  )
+
+  const summary = (
+    <Box>
+      <Typography variant="body2">
+        {imageFiles.length} image{imageFiles.length === 1 ? '' : 's'}: {imageFiles.map((f) => f.name).join(', ')}
+      </Typography>
+      <Button type="button" variant="outlined" size="small" onClick={() => setImageFiles([])} sx={{ mt: 1 }}>
+        Choose different images
+      </Button>
+    </Box>
+  )
+
+  return (
+    <PdfToolPage
+      headingId="pdf-images-to-pdf-heading"
+      title="Image to PDF"
+      description="Turn one or more images into a PDF document — one page per image, in order."
+      pdf={pdf}
+      ready={imageFiles.length > 0}
+      upload={upload}
+      summary={summary}
+      primary={{
+        id: 'pdf-from-images-button',
+        label: 'Build PDF from images',
+        busyLabel: 'Building…',
+        busyKey: 'Images to PDF',
+        onClick: () => void run(),
+        disabled: imageFiles.length === 0,
+      }}
+    >
+      <Box>
+        <Typography variant="subtitle2" component="label" htmlFor="pdf-images-page-size" sx={{ display: 'block' }}>
+          Page size
+        </Typography>
+        <Select
+          native
+          id="pdf-images-page-size"
+          value={imagePageSize}
+          onChange={(e) => setImagePageSize(e.target.value as PdfPageSize)}
+          sx={{ mt: 0.5, minWidth: 140 }}
+        >
+          {PDF_PAGE_SIZES.map((s) => (
+            <option key={s} value={s}>{s === 'Original' ? 'Original image size' : s}</option>
+          ))}
+        </Select>
+      </Box>
+    </PdfToolPage>
+  )
+}

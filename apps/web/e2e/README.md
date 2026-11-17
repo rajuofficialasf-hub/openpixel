@@ -70,10 +70,10 @@ cargo build that touches `openpixel-ocr`.
 node apps/web/e2e/web-e2e.mjs        # 37 checks, Chromium vs :8321
 node apps/web/e2e/web-nowasm.mjs     # 9 checks, WASM-absent fallback vs :8322
 node apps/web/e2e/resize-e2e.mjs     # 16 checks, Resize tab vs :8321
-node apps/web/e2e/pdf-e2e.mjs        # 24 checks, PDF tab vs :8323
+node apps/web/e2e/pdf-e2e.mjs        # 31 checks, per-tool PDF pages vs :8323
 node apps/web/e2e/ocr-e2e.mjs        # 14 checks, OCR tab vs :8324
-node apps/web/e2e/routing-e2e.mjs    # 9 checks, URL routing; starts its own SPA server on :8325
-node apps/web/e2e/viewport-qa.mjs    # 27 checks: no horizontal overflow vs :8321 + PDF viewport-fit (empty/loaded at 1366x768 and 1440x900, 200-page PDF at 1440x900; needs /tmp/op-e2e/pdf-in/doc4.pdf and big200.pdf)
+node apps/web/e2e/routing-e2e.mjs    # 12 checks, URL routing; starts its own SPA server on :8325
+node apps/web/e2e/viewport-qa.mjs    # 31 checks: no horizontal overflow vs :8321 + PDF viewport-fit on /pdf/edit (empty/loaded at 1366x768 and 1440x900, 200-page PDF at 1440x900; needs /tmp/op-e2e/pdf-in/doc4.pdf and big200.pdf) + fit on /pdf/merge
 ```
 
 Serve `apps/web/dist` on port 8323 for the PDF run the same way
@@ -148,20 +148,17 @@ result line reports the honest change ("3% larger" when a
 re-encode grows the file — see docs/E2E.md §2.19). Screenshots
 `17-resize-tab.png` … `20-resize-batch.png`.
 
-`pdf-e2e.mjs` — the PDF tab, Studio Phase 2 (16 Nov 2026; see
-docs/E2E.md §2.20), extended Phase 3: tab renders; a real 4-page
-PDF uploads and its info shows the true page count (just the
-number — the "Pages | Pages: 4" duplication is fixed), version
-and page sizes; pdf.js preview actually paints page 1 (canvas
-512×384 at the default 2× scale — a broken worker would leave it
-blank); PDF→PNG downloads a genuine PNG at the requested
-dimensions (`file` + `openpixel info`); merge (4+2 pages)
-downloads a real 6-page PDF; split downloads one real PDF per
-range; rotate and extract download real PDFs with the right page
-counts; compress (screen mode) downloads a real 4-page PDF no
-bigger than the input, with the measured sizes in the status
-line; images→PDF builds a real 2-page PDF; dark-mode screenshot.
-Screenshots `21-pdf-tab.png` … `23-pdf-dark.png`.
+`pdf-e2e.mjs` — the per-tool PDF pages (17 Nov 2026 restructure;
+see docs/E2E.md §2.25): `/pdf` is the picker (cards for every
+tool; a PDF uploaded there travels to the picked tool); merge
+(4+2 pages), split, rotate, extract, remove, reorder, duplicate,
+reverse, booklet, N-up, compress (screen mode, no bigger than
+the input), images→PDF, PDF→PNG at 2× (genuine 512×384 PNG),
+extract-text (real text layer to .txt), edit overlay + page
+numbers, redaction (byte-proof), metadata, threat check +
+sanitize, flatten, repair — every check verifies a real
+downloaded file with `file(1)` + the CLI. Screenshots
+`21-pdf-picker.png`, `22-pdf-edit.png`, `23-pdf-dark.png`.
 
 `ocr-e2e.mjs` — the OCR tab, Studio Phase 4 (17 Nov 2026; see
 docs/E2E.md §2.21): tab renders; no worker / core / traineddata
@@ -175,15 +172,22 @@ origin (any CDN fetch fails the run); zero console/page errors.
 Screenshots `24-ocr-tab.png` … `26-ocr-dark.png`.
 
 `routing-e2e.mjs` — URL routing (17 Nov 2026; see docs/E2E.md
-§2.23): deep links `/pdf` and `/convert` load directly; sidebar
-navigation pushes the URL; browser back/forward change the page;
-refresh on `/ocr` stays on OCR; sidebar Settings click pushes
-`/settings`; unknown `/nope` lands on home with the URL corrected
-to `/`. Starts its own SPA-fallback server on :8325 — no external
-server needed, no fixtures.
+§2.23 + §2.25): deep links `/pdf`, `/pdf/merge`, `/pdf/compress`
+and `/convert` load directly; sidebar navigation pushes the URL;
+browser back/forward change the page; refresh on `/ocr` stays on
+OCR; sidebar Settings click pushes `/settings`; unknown `/nope`
+lands on home with the URL corrected to `/`; unknown `/pdf/nope`
+lands on the PDF picker. Starts its own SPA-fallback server on
+:8325 — no external server needed, no fixtures.
 
 `viewport-qa.mjs` — no horizontal overflow at 360×800 / 768×1024 /
-1440×900 on Home, All Tools, Convert, PDF tab and Settings.
+1440×900 on Home, All Tools, Convert, PDF picker and Settings;
+viewport-fit on `/pdf/edit` (empty/loaded doc4 at 1366×768 and
+1440×900, 200-page PDF at 1440×900) and on `/pdf/merge`
+(empty/loaded at both desktop viewports). `AppShell`
+`fitViewport` covers all `pdf-*` routes on desktop, so every
+tool page fits without page scroll; the picker keeps normal
+page scrolling.
 
 ## Known notes (see docs/E2E.md)
 

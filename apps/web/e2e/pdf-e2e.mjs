@@ -1,17 +1,19 @@
-// OpenPixel web e2e — PDF tab. Real Chromium (cached ms-playwright
+// OpenPixel web e2e — per-tool PDF pages (user correction, 17 Nov
+// 2026: one tool = one page). Real Chromium (cached ms-playwright
 // build) driven by playwright-core. Serves the production build over
-// plain HTTP. Usage: node apps/web/e2e/pdf-e2e.mjs (server must
-// already run on 8323, serving apps/web/dist with the WASM module).
-// Checks: PDF tab renders; info shows the real page count/version/
-// page sizes; pdf.js preview actually paints the selected page;
-// PDF→PNG downloads a genuine PNG at the requested scale; merge
-// (4+2 pages) downloads a real 6-page PDF; split downloads one
-// real PDF per range; rotate and extract download real PDFs with
-// the right page counts; compress downloads a real PDF that is no
-// bigger than the input (with the measured sizes in the report);
-// images→PDF builds a real PDF. Every downloaded file is verified
-// with `file(1)` and the CLI (`openpixel pdf info` for PDFs,
-// `openpixel info` for images).
+// plain HTTP with the SPA server (deep links need it). Usage:
+// node apps/web/e2e/pdf-e2e.mjs (server must already run on 8323,
+// serving apps/web/dist with the WASM module).
+// Checks: /pdf is the tool picker (cards for every PDF tool);
+// every tool page loads its file, runs, and downloads a real
+// result verified with `file(1)` and the CLI (`openpixel pdf info`
+// for PDFs, `openpixel info` for images, `openpixel pdf
+// extract-text` for text layers). Merge (4+2 pages), split,
+// rotate, extract, remove, reorder, duplicate, reverse, booklet,
+// N-up, compress, images→PDF, PDF→PNG, extract-text, edit overlay
+// + page numbers, redaction (byte-proof), metadata, threat check,
+// sanitize, flatten, repair. The picker hands its file to the
+// picked tool.
 import { chromium } from 'playwright-core';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -130,45 +132,47 @@ async function downloadResult(index) {
   return p;
 }
 
-// --- 1. load + PDF tab ---
+/** Open a tool page by deep link and upload a PDF on it. */
+async function openTool(route, pdfFile = 'doc4.pdf', expectPages = '4') {
+  await page.goto(`${BASE}pdf/${route}`, { waitUntil: 'networkidle' });
+  await page.setInputFiles('#pdf-file', path.join(IN, pdfFile));
+  await page.waitForSelector('#pdf-page-count', { timeout: 30000 });
+  const count = (await page.locator('#pdf-page-count').innerText()).trim();
+  if (count !== expectPages) throw new Error(`${route}: page count ${count}, want ${expectPages}`);
+}
+
+function extractText(p) {
+  const out = path.join(DL, `${path.basename(p, '.pdf')}.txt`);
+  execFileSync(CLI_IMG, ['pdf', 'extract-text', p, '--output', out], { encoding: 'utf8' });
+  return fs.readFileSync(out, 'utf8');
+}
+
+// --- 1. /pdf is the picker, not the everything-page ---
 await page.goto(BASE, { waitUntil: 'networkidle' });
 check('page loads, title OpenPixel', (await page.title()).includes('OpenPixel'), await page.title());
 await page.locator('#tab-pdf').click();
 await page.waitForSelector('#panel-pdf', { timeout: 10000 });
-check('PDF tab renders', (await page.locator('#pdf-heading').innerText()) === 'PDF tools');
-await shot('21-pdf-tab.png');
+check('PDF picker renders', (await page.locator('#pdf-heading').innerText()) === 'PDF tools');
+const pickerText = await page.locator('main').innerText();
+check(
+  'picker lists the tools (Merge, Split, Rotate, Compress, Edit, Redact)',
+  ['Merge PDF', 'Split PDF', 'Rotate PDF Pages', 'Compress PDF', 'Edit PDF', 'Redact PDF'].every((t) => pickerText.includes(t)),
+  pickerText.replace(/\n/g, ' | ').slice(0, 300),
+);
+await shot('21-pdf-picker.png');
 
-// --- 2. upload doc4.pdf (4 pages: p1 256x192 pt) ---
+// --- 1b. picker hands its file to the picked tool ---
 await page.setInputFiles('#pdf-file', path.join(IN, 'doc4.pdf'));
 await page.waitForSelector('#pdf-page-count', { timeout: 30000 });
-const pageCount = await page.locator('#pdf-page-count').innerText();
-check('info page count is just the number (no "Pages:" prefix)', pageCount.trim() === '4', pageCount);
-const infoText = await page.locator('#pdf-info').innerText();
-check('info shows version 1.5 and page sizes', infoText.includes('PDF 1.5') && infoText.includes('256 × 192 pt'), infoText.replace(/\n/g, ' | ').slice(0, 200));
-// pdf.js preview: page 1 at the default 2x scale is 512x384 px.
-// A broken worker would leave the canvas blank / dims unset.
-await page.waitForSelector('#pdf-preview-dims', { timeout: 30000 });
-const dims = await page.locator('#pdf-preview-dims').innerText();
-const canvasSize = await page.evaluate(() => {
-  const c = document.querySelector('#pdf-preview-canvas');
-  return c ? `${c.width}x${c.height}` : 'no canvas';
-});
-check('pdf.js preview paints page 1 at 512x384 (2x scale)', dims.includes('512 × 384 px') && canvasSize === '512x384', `${dims} | canvas=${canvasSize}`);
-await shot('22-pdf-loaded.png');
+await page.getByRole('button', { name: 'Merge PDF — open the tool' }).click();
+await page.waitForSelector('#pdf-page-count', { timeout: 30000 });
+check(
+  'picker hands the file to Merge PDF (URL /pdf/merge, 4 pages loaded)',
+  page.url().endsWith('/pdf/merge') && (await page.locator('#pdf-page-count').innerText()).trim() === '4',
+  page.url(),
+);
 
-// --- 3. PDF -> PNG at 2x scale: genuine 512x384 PNG ---
-const [pngDl] = await Promise.all([
-  page.waitForEvent('download', { timeout: 30000 }),
-  page.locator('#pdf-render-download').click(),
-]);
-const pngPath = path.join(DL, pngDl.suggestedFilename());
-await pngDl.saveAs(pngPath);
-const pngInfo = verifyImage(pngPath, 'png', '512x384');
-check('PDF page 1 renders to a genuine PNG 512x384', pngInfo.ok, pngInfo.detail);
-await waitStatus('Rendered page 1 as PNG: 512 × 384 px');
-check('render status line reports real dimensions', true, await page.locator('#pdf-result-status').innerText());
-
-// --- 4. merge doc4 + doc2 -> 6 pages ---
+// --- 2. merge doc4 + doc2 -> 6 pages ---
 await page.setInputFiles('#pdf-merge-file', path.join(IN, 'doc2.pdf'));
 await page.locator('#pdf-merge-button').click();
 await waitStatus('Merged PDF: 6 pages');
@@ -176,7 +180,8 @@ const mergedPath = await downloadResult(0);
 const mergedInfo = verifyPdf(mergedPath, 6);
 check('merge downloads a real 6-page PDF', mergedInfo.ok, mergedInfo.detail);
 
-// --- 5. split 1-2,3-4 -> two 2-page PDFs ---
+// --- 3. split 1-2,3-4 -> two 2-page PDFs ---
+await openTool('split');
 await page.fill('#pdf-split-ranges', '1-2,3-4');
 await page.locator('#pdf-split-button').click();
 await waitStatus('Split PDF: split into 2 documents (2 pages, 2 pages)');
@@ -187,34 +192,77 @@ const split2 = await downloadResult(1);
 const split2Info = verifyPdf(split2, 2);
 check('split part 2 is a real 2-page PDF', split2Info.ok, split2Info.detail);
 
-// --- 6. rotate page 1 -> still 4 pages ---
+// --- 4. rotate page 1 -> still 4 pages ---
+await openTool('rotate');
 await page.fill('#pdf-rotate-pages', '1');
 await page.locator('#pdf-rotate-button').click();
 await waitStatus('Rotated PDF: 4 pages');
 const rotatedPath = await downloadResult(0);
-const rotatedInfo = verifyPdf(rotatedPath, 4);
-check('rotate downloads a real 4-page PDF', rotatedInfo.ok, rotatedInfo.detail);
+const rotatedPathInfo = verifyPdf(rotatedPath, 4);
+check('rotate downloads a real 4-page PDF', rotatedPathInfo.ok, rotatedPathInfo.detail);
 
-// --- 7. extract pages 1,3 -> 2 pages ---
+// --- 5. extract pages 1,3 -> 2 pages ---
+await openTool('extract');
 await page.fill('#pdf-extract-pages', '1,3');
 await page.locator('#pdf-extract-button').click();
 await waitStatus('Extracted PDF: 2 pages');
 const extractedPath = await downloadResult(0);
-const extractedInfo = verifyPdf(extractedPath, 2);
-check('extract downloads a real 2-page PDF', extractedInfo.ok, extractedInfo.detail);
+const extractedPathInfo = verifyPdf(extractedPath, 2);
+check('extract downloads a real 2-page PDF', extractedPathInfo.ok, extractedPathInfo.detail);
 
-// --- 8. images -> PDF (2 images -> 2 pages) ---
-await page.setInputFiles('#pdf-images-file', [path.join(IMG_IN, 'rgba.png'), path.join(IMG_IN, 'photo.jpg')]);
-await page.locator('#pdf-from-images-button').click();
-await waitStatus('Images to PDF: 2 pages');
-const builtPath = await downloadResult(0);
-const builtInfo = verifyPdf(builtPath, 2);
-check('images to PDF builds a real 2-page PDF', builtInfo.ok, builtInfo.detail);
+// --- 6. remove page 2 -> 3 pages ---
+await openTool('remove');
+await page.fill('#pdf-remove-pages', '2');
+await page.locator('#pdf-remove-button').click();
+await waitStatus('Removed pages: 3 pages');
+const removedPath = await downloadResult(0);
+const removedPathInfo = verifyPdf(removedPath, 3);
+check('remove downloads a real 3-page PDF', removedPathInfo.ok, removedPathInfo.detail);
 
-// --- 8b. compress (screen mode) -> still 4 pages, no bigger than the input ---
-// doc4.pdf is built from images (Flate RGB), so screen mode must
-// actually shrink it; the engine's best-of rule guarantees the
-// result is never bigger than the input in any case.
+// --- 7. reorder 4,3,2,1 -> 4 pages ---
+await openTool('reorder');
+await page.fill('#pdf-reorder-order', '4,3,2,1');
+await page.locator('#pdf-reorder-button').click();
+await waitStatus('Reordered PDF: 4 pages');
+const reorderedPath = await downloadResult(0);
+const reorderedPathInfo = verifyPdf(reorderedPath, 4);
+check('reorder downloads a real 4-page PDF', reorderedPathInfo.ok, reorderedPathInfo.detail);
+
+// --- 8. duplicate page 1 -> 5 pages ---
+await openTool('duplicate');
+await page.fill('#pdf-duplicate-pages', '1');
+await page.locator('#pdf-duplicate-button').click();
+await waitStatus('Duplicated pages: 5 pages');
+const dupPath = await downloadResult(0);
+const dupPathInfo = verifyPdf(dupPath, 5);
+check('duplicate downloads a real 5-page PDF', dupPathInfo.ok, dupPathInfo.detail);
+
+// --- 9. reverse -> 4 pages ---
+await openTool('reverse');
+await page.locator('#pdf-reverse-button').click();
+await waitStatus('Reversed PDF: 4 pages');
+const revPath = await downloadResult(0);
+const revPathInfo = verifyPdf(revPath, 4);
+check('reverse downloads a real 4-page PDF', revPathInfo.ok, revPathInfo.detail);
+
+// --- 10. booklet -> 4 pages ---
+await openTool('booklet');
+await page.locator('#pdf-booklet-button').click();
+await waitStatus('Booklet PDF: 4 pages');
+const bookPath = await downloadResult(0);
+const bookPathInfo = verifyPdf(bookPath, 4);
+check('booklet downloads a real 4-page PDF', bookPathInfo.ok, bookPathInfo.detail);
+
+// --- 11. N-up 2x2 -> 1 page ---
+await openTool('n-up');
+await page.locator('#pdf-nup-button').click();
+await waitStatus('N-up PDF: 1 pages');
+const nupPath = await downloadResult(0);
+const nupPathInfo = verifyPdf(nupPath, 1);
+check('N-up downloads a real 1-page PDF', nupPathInfo.ok, nupPathInfo.detail);
+
+// --- 12. compress (screen mode) -> still 4 pages, no bigger than the input ---
+await openTool('compress');
 await page.locator('#pdf-compress-mode').selectOption('screen');
 await page.locator('#pdf-compress-button').click();
 await waitStatus('Compressed PDF');
@@ -229,23 +277,52 @@ check(
   `${compressedInfo.detail} | ${compIn} -> ${compOut} bytes | status: ${compStatus}`,
 );
 
-// --- 8c-8j. Edit (Phase 5) on the text PDF: overlay, page numbers,
-// redaction (byte-proof), metadata, threat check, sanitize, flatten,
-// repair. The text PDF is uploaded fresh so the Edit card works on it.
-function extractText(p) {
-  const out = path.join(DL, `${path.basename(p, '.pdf')}.txt`);
-  execFileSync(CLI_IMG, ['pdf', 'extract-text', p, '--output', out], { encoding: 'utf8' });
-  return fs.readFileSync(out, 'utf8');
-}
-// The DropZone (#pdf-file) only renders when no file is loaded, so
-// switch files with the "Choose a different file" button first.
-await page.getByRole('button', { name: 'Choose a different file' }).click();
-await page.waitForSelector('#pdf-file', { timeout: 10000 });
-await page.setInputFiles('#pdf-file', path.join(IN, 'text2.pdf'));
-await page.waitForSelector('#pdf-page-count', { timeout: 30000 });
-check('text PDF uploads with 2 pages', (await page.locator('#pdf-page-count').innerText()).trim() === '2');
+// --- 13. images -> PDF (2 images -> 2 pages) ---
+await page.goto(`${BASE}pdf/images-to-pdf`, { waitUntil: 'networkidle' });
+await page.setInputFiles('#pdf-images-file', [path.join(IMG_IN, 'rgba.png'), path.join(IMG_IN, 'photo.jpg')]);
+await page.locator('#pdf-from-images-button').click();
+await waitStatus('Images to PDF: 2 pages');
+const builtPath = await downloadResult(0);
+const builtPathInfo = verifyPdf(builtPath, 2);
+check('images to PDF builds a real 2-page PDF', builtPathInfo.ok, builtPathInfo.detail);
 
-// --- 8c. add a text overlay: the overlay is extractable, original kept ---
+// --- 14. PDF -> PNG at 2x scale: genuine 512x384 PNG ---
+await openTool('pdf-to-image');
+const infoText = await page.locator('#pdf-info').innerText();
+check('info shows version 1.5 and page sizes', infoText.includes('PDF 1.5') && infoText.includes('256 × 192 pt'), infoText.replace(/\n/g, ' | ').slice(0, 200));
+await page.waitForSelector('#pdf-preview-dims', { timeout: 30000 });
+const dims = await page.locator('#pdf-preview-dims').innerText();
+const canvasSize = await page.evaluate(() => {
+  const c = document.querySelector('#pdf-preview-canvas');
+  return c ? `${c.width}x${c.height}` : 'no canvas';
+});
+check('pdf.js preview paints page 1 at 512x384 (2x scale)', dims.includes('512 × 384 px') && canvasSize === '512x384', `${dims} | canvas=${canvasSize}`);
+const [pngDl] = await Promise.all([
+  page.waitForEvent('download', { timeout: 30000 }),
+  page.locator('#pdf-render-download').click(),
+]);
+const pngPath = path.join(DL, pngDl.suggestedFilename());
+await pngDl.saveAs(pngPath);
+const pngInfo = verifyImage(pngPath, 'png', '512x384');
+check('PDF page 1 renders to a genuine PNG 512x384', pngInfo.ok, pngInfo.detail);
+await waitStatus('Rendered page 1 as PNG: 512 × 384 px');
+
+// --- 15. extract text (pdf.js) from the text PDF ---
+await openTool('extract-text', 'text2.pdf', '2');
+await page.locator('#pdf-extract-text-button').click();
+await waitStatus('Extracted PDF text:');
+const textPath = await downloadResult(0);
+const textContent = fs.readFileSync(textPath, 'utf8');
+check(
+  'extract text downloads a .txt with the real text layer',
+  textContent.includes('SECRET-123 is here') && textContent.includes('PUBLIC line') && textContent.includes('Second page'),
+  textContent.replace(/\n/g, ' | ').slice(0, 160),
+);
+
+// --- 16. Edit page (3-panel): overlay + page numbers on text2.pdf ---
+await openTool('edit', 'text2.pdf', '2');
+await page.waitForSelector('#pdf-preview-dims', { timeout: 30000 });
+check('edit page shows the 3 panels', await page.locator('#pdf-thumbs-panel').count() === 1 && await page.locator('#pdf-center-panel').count() === 1 && await page.locator('#pdf-ops-panel').count() === 1);
 await page.fill('#pdf-edit-text', 'DRAFT');
 await page.locator('#pdf-edit-text-button').click();
 await waitStatus('Edited PDF: 1 op');
@@ -257,10 +334,6 @@ check(
   editedInfo.ok && editedText.includes('DRAFT') && editedText.includes('SECRET-123 is here'),
   `${editedInfo.detail} | text: ${editedText.replace(/\n/g, ' | ').slice(0, 160)}`,
 );
-
-// --- 8d. page numbers: "Page 1 of 2" appears in the text layer ---
-// (A page-numbers op expands to one text op per page, so the status
-// counts 2 ops on 2 pages.)
 await page.locator('#pdf-edit-pagenum-button').click();
 await waitStatus('Edited PDF: 2 ops on 2 pages');
 const numberedPath = await downloadResult(0);
@@ -271,9 +344,11 @@ check(
   numberedInfo.ok && numberedText.includes('Page 1 of 2'),
   `${numberedInfo.detail} | text: ${numberedText.replace(/\n/g, ' | ').slice(0, 160)}`,
 );
+await shot('22-pdf-edit.png');
 
-// --- 8e. redact the secret by text: byte-proof (absent from the file
-// bytes) AND absent from the text layer, while PUBLIC line survives ---
+// --- 17. redact the secret by text: byte-proof (absent from the
+// file bytes) AND absent from the text layer, while PUBLIC survives ---
+await openTool('redact', 'text2.pdf', '2');
 await page.fill('#pdf-redact-text', 'SECRET-123');
 await page.locator('#pdf-redact-text-button').click();
 await waitStatus('Redacted PDF: 2 runs, 20 characters removed');
@@ -290,9 +365,9 @@ check(
   `${redactedInfo.detail} | text: ${redactedText.replace(/\n/g, ' | ').slice(0, 160)}`,
 );
 
-// --- 8f. metadata: title set, author cleared ---
+// --- 18. metadata: title set ---
+await openTool('metadata', 'text2.pdf', '2');
 await page.fill('#pdf-meta-title', 'Web edit title');
-await page.fill('#pdf-meta-author', '');
 await page.locator('#pdf-meta-button').click();
 await waitStatus('Metadata PDF: title/author/subject/keywords updated');
 const metaPath = await downloadResult(0);
@@ -304,37 +379,37 @@ check(
   `${metaInfo.detail} | info: ${metaOut.replace(/\n/g, ' | ').slice(0, 160)}`,
 );
 
-// --- 8g. threat check on the clean text PDF: clean ---
+// --- 19. clean up: threat check (clean) + sanitize ---
+await openTool('sanitize', 'text2.pdf', '2');
 await page.locator('#pdf-inspect-button').click();
 await waitStatus('Threat check: clean');
 check('threat check reports the clean text PDF as clean', true, await page.locator('#pdf-result-status').innerText());
-
-// --- 8h. sanitize a clean PDF: nothing removed, file unchanged ---
-// (The UI labels this "Cleaned PDF", not "Sanitized PDF".)
 await page.locator('#pdf-sanitize-button').click();
 await waitStatus('Cleaned PDF: nothing dangerous was found');
 const cleanPath = await downloadResult(0);
-const cleanInfo = verifyPdf(cleanPath, 2);
-check('sanitize downloads a real 2-page PDF for a clean input', cleanInfo.ok, cleanInfo.detail);
+const cleanPathInfo = verifyPdf(cleanPath, 2);
+check('sanitize downloads a real 2-page PDF for a clean input', cleanPathInfo.ok, cleanPathInfo.detail);
 
-// --- 8i. flatten: still a real 2-page PDF ---
+// --- 20. flatten: still a real 2-page PDF ---
+await openTool('flatten', 'text2.pdf', '2');
 await page.locator('#pdf-flatten-button').click();
 await waitStatus('Flattened PDF');
 const flatPath = await downloadResult(0);
-const flatInfo = verifyPdf(flatPath, 2);
-check('flatten downloads a real 2-page PDF', flatInfo.ok, flatInfo.detail);
+const flatPathInfo = verifyPdf(flatPath, 2);
+check('flatten downloads a real 2-page PDF', flatPathInfo.ok, flatPathInfo.detail);
 
-// --- 8j. repair a healthy file: "as written", still a real 2-page PDF ---
+// --- 21. repair a healthy file: "as written", still a real 2-page PDF ---
+await openTool('repair', 'text2.pdf', '2');
 await page.locator('#pdf-repair-button').click();
 await waitStatus('Repaired PDF: cross-reference table read "as written"');
 const repairedPath = await downloadResult(0);
-const repairedInfo = verifyPdf(repairedPath, 2);
-check('repair downloads a real 2-page PDF', repairedInfo.ok, repairedInfo.detail);
+const repairedPathInfo = verifyPdf(repairedPath, 2);
+check('repair downloads a real 2-page PDF', repairedPathInfo.ok, repairedPathInfo.detail);
 
-// --- 9. dark mode screenshot ---
+// --- 22. dark mode on a tool page ---
 await page.locator('button[aria-label="Switch to dark theme"]').click();
 await page.waitForFunction(() => document.documentElement.classList.contains('dark'), null, { timeout: 10000 });
-check('dark mode toggles on the PDF tab', await page.evaluate(() => document.documentElement.classList.contains('dark')));
+check('dark mode toggles on a PDF tool page', await page.evaluate(() => document.documentElement.classList.contains('dark')));
 await shot('23-pdf-dark.png');
 
 console.log('\n--- failed requests/console errors ---');

@@ -5,7 +5,7 @@ const ALL_ROUTES = Object.keys(ROUTE_PATHS) as RouteId[]
 
 describe('ROUTE_PATHS — one shareable URL per page', () => {
   it('covers every route exactly once, home is /', () => {
-    expect(ALL_ROUTES).toHaveLength(13)
+    expect(ALL_ROUTES).toHaveLength(33)
     expect(ROUTE_PATHS.home).toBe('/')
     const paths = new Set(Object.values(ROUTE_PATHS))
     expect(paths.size).toBe(ALL_ROUTES.length)
@@ -19,6 +19,9 @@ describe('ROUTE_PATHS — one shareable URL per page', () => {
 
   it('resolves the documented deep links', () => {
     expect(routeFromPath('/pdf')).toBe('pdf')
+    expect(routeFromPath('/pdf/merge')).toBe('pdf-merge')
+    expect(routeFromPath('/pdf/compress')).toBe('pdf-compress')
+    expect(routeFromPath('/pdf/edit')).toBe('pdf-edit')
     expect(routeFromPath('/convert')).toBe('convert')
     expect(routeFromPath('/ocr')).toBe('ocr')
     expect(routeFromPath('/settings')).toBe('settings')
@@ -27,12 +30,17 @@ describe('ROUTE_PATHS — one shareable URL per page', () => {
 
   it('tolerates a trailing slash', () => {
     expect(routeFromPath('/pdf/')).toBe('pdf')
+    expect(routeFromPath('/pdf/merge/')).toBe('pdf-merge')
     expect(routeFromPath('/tools/')).toBe('tools')
   })
 
   it('falls back to home for unknown paths — no invented 404 page', () => {
     expect(routeFromPath('/nope')).toBe('home')
-    expect(routeFromPath('/pdf/extra')).toBe('home')
     expect(routeFromPath('')).toBe('home')
+  })
+
+  it('falls back to the PDF picker for unknown /pdf/* paths', () => {
+    expect(routeFromPath('/pdf/extra')).toBe('pdf')
+    expect(routeFromPath('/pdf/nope')).toBe('pdf')
   })
 })

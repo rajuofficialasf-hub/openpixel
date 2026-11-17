@@ -37,11 +37,38 @@ const check = (name, ok, extra = '') => {
 };
 
 try {
-  // 1. Deep link /pdf loads the PDF page directly.
+  // 1. Deep link /pdf loads the PDF picker directly.
   await page.goto(`${BASE}/pdf`, { waitUntil: 'networkidle' });
   await sleep(500);
   check(
-    'deep link /pdf loads PDF page',
+    'deep link /pdf loads PDF picker',
+    page.url() === `${BASE}/pdf` && (await page.locator('#pdf-heading').count()) > 0,
+    `url=${page.url()}`,
+  );
+
+  // 1b. Deep link /pdf/merge loads the Merge tool page directly.
+  await page.goto(`${BASE}/pdf/merge`, { waitUntil: 'networkidle' });
+  await sleep(500);
+  check(
+    'deep link /pdf/merge loads Merge PDF page',
+    page.url() === `${BASE}/pdf/merge` && (await bodyText()).includes('Merge PDF'),
+    `url=${page.url()}`,
+  );
+
+  // 1c. Deep link /pdf/compress loads the Compress tool page directly.
+  await page.goto(`${BASE}/pdf/compress`, { waitUntil: 'networkidle' });
+  await sleep(500);
+  check(
+    'deep link /pdf/compress loads Compress PDF page',
+    page.url() === `${BASE}/pdf/compress` && (await bodyText()).includes('Compress PDF'),
+    `url=${page.url()}`,
+  );
+
+  // 1d. Unknown /pdf/* falls back to the /pdf picker, not home.
+  await page.goto(`${BASE}/pdf/nope`, { waitUntil: 'networkidle' });
+  await sleep(500);
+  check(
+    'unknown /pdf/nope lands on PDF picker',
     page.url() === `${BASE}/pdf` && (await page.locator('#pdf-heading').count()) > 0,
     `url=${page.url()}`,
   );

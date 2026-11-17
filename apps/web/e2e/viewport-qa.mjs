@@ -59,12 +59,15 @@ for (const vp of VIEWPORTS) {
   }
   await ctx.close();
 }
-// --- PDF viewport-fit contract (user report, 17 Nov 2026): the PDF
-// page must fit the viewport on desktop — no page-level vertical
-// scroll — with each of the three columns scrolling internally.
-// Empty state and loaded state, at 1366x768 and 1440x900, plus a
-// 200-page PDF at 1440x900 (12 thumbnails + 188 numbered buttons
-// in the rail, 200 options in the page selector).
+// --- PDF viewport-fit contract (user report, 17 Nov 2026): the
+// EDIT tool page must fit the viewport on desktop — no page-level
+// vertical scroll — with each of the three columns scrolling
+// internally. (The fit contract moved here from /pdf when the
+// everything-page became the picker.) Empty state and loaded state,
+// at 1366x768 and 1440x900, plus a 200-page PDF at 1440x900 (12
+// thumbnails + 188 numbered buttons in the rail, 200 options in the
+// page selector). A simple tool page (/pdf/merge) must also fit
+// without page scroll, empty and loaded.
 const FIT_VIEWPORTS = [
   { width: 1366, height: 768, name: '1366x768' },
   { width: 1440, height: 900, name: '1440x900' },
@@ -108,7 +111,7 @@ for (const vp of FIT_VIEWPORTS) {
   page.on('pageerror', (e) => errs.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
   // Deep link (needs the SPA server — plain http.server 404s it).
-  await page.goto(`${BASE}pdf`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}pdf/edit`, { waitUntil: 'networkidle' });
   await new Promise((r) => setTimeout(r, 700));
   await fitCheck(page, vp, 'empty');
   await page.setInputFiles('#pdf-file', PDF_IN);
@@ -135,6 +138,32 @@ for (const vp of FIT_VIEWPORTS) {
   if (errs.length) {
     total++; fails++;
     console.log(`FAIL  ${vp.name} pdf fit: console/page errors: ${errs.join('; ')}`);
+  }
+  await ctx.close();
+}
+
+// --- Simple tool page fit: /pdf/merge must also fit without page
+// scroll, empty and loaded, at both desktop viewports.
+for (const vp of FIT_VIEWPORTS) {
+  const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+  const page = await ctx.newPage();
+  const errs = [];
+  page.on('pageerror', (e) => errs.push(e.message));
+  page.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+  await page.goto(`${BASE}pdf/merge`, { waitUntil: 'networkidle' });
+  await new Promise((r) => setTimeout(r, 700));
+  const emptyM = await page.evaluate(() => ({ docScroll: document.documentElement.scrollHeight, innerH: window.innerHeight }));
+  total++; if (emptyM.docScroll > emptyM.innerH + 1) fails++;
+  console.log(`${emptyM.docScroll <= emptyM.innerH + 1 ? 'PASS' : 'FAIL'}  ${vp.name} pdf/merge empty: docScrollHeight=${emptyM.docScroll} innerHeight=${emptyM.innerH}`);
+  await page.setInputFiles('#pdf-file', PDF_IN);
+  await page.waitForSelector('#pdf-page-count', { timeout: 30000 });
+  await new Promise((r) => setTimeout(r, 700));
+  const loadedM = await page.evaluate(() => ({ docScroll: document.documentElement.scrollHeight, innerH: window.innerHeight }));
+  total++; if (loadedM.docScroll > loadedM.innerH + 1) fails++;
+  console.log(`${loadedM.docScroll <= loadedM.innerH + 1 ? 'PASS' : 'FAIL'}  ${vp.name} pdf/merge loaded doc4: docScrollHeight=${loadedM.docScroll} innerHeight=${loadedM.innerH}`);
+  if (errs.length) {
+    total++; fails++;
+    console.log(`FAIL  ${vp.name} pdf/merge fit: console/page errors: ${errs.join('; ')}`);
   }
   await ctx.close();
 }

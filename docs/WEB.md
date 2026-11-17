@@ -117,8 +117,14 @@ reinventing it. Tailwind was removed entirely (16 Nov 2026 redesign)
 
 Routes (`src/lib/routes.ts`, `RouteId`): `home` (homepage, default),
 `overview` (workspace dashboard), `tools` (All Tools), `convert`,
-`resize`, `pdf`, `ocr`, `batch`, `formats`, `files` (My Files),
-`recent` (Recent Files), `settings`, `help`. The sidebar groups are
+`resize`, `pdf` (PDF tools picker), `ocr`, `batch`, `formats`, `files`
+(My Files), `recent` (Recent Files), `settings`, `help`, plus one
+route per PDF tool under `/pdf/*`: `pdf-merge`, `pdf-split`,
+`pdf-rotate`, `pdf-extract`, `pdf-remove`, `pdf-reorder`,
+`pdf-duplicate`, `pdf-reverse`, `pdf-booklet`, `pdf-n-up`,
+`pdf-compress`, `pdf-edit`, `pdf-redact`, `pdf-metadata`,
+`pdf-sanitize`, `pdf-flatten`, `pdf-repair`, `pdf-pdf-to-image`,
+`pdf-images-to-pdf`, `pdf-extract-text` (33 routes total). The sidebar groups are
 Workspace (Overview / My Files / Recent Files), Tools (All Tools /
 Convert Image / Resize Image / PDF Tools / OCR / Batch Convert /
 Formats), Account (Settings / Help Center).
@@ -127,8 +133,8 @@ Formats), Account (Settings / Help Center).
   popular tools, categories, how-it-works, benefits, privacy
   section. The upload area sniffs the file (PDF magic bytes, then
   `detectFileFormat`) and routes it with the file handed over:
-  image → Convert, several images → Batch, PDF → PDF Tools.
-  Office documents and unknown files get an honest notice naming
+  image → Convert, several images → Batch, PDF → the PDF Tools
+  picker (`/pdf`). Office documents and unknown files get an honest notice naming
   the CLI route — never a dead end.
 - **All Tools** (`src/components/ToolsDirectory.tsx`): search,
   category filter, popular, recently used (from the local activity
@@ -143,27 +149,49 @@ Formats), Account (Settings / Help Center).
   sort, star, remove), Recent Files (table). All three read only
   the local activity store; empty states are honest — no invented
   files. Recording a success happens in each workspace
-  (`recordActivity()` in Convert / Resize / Batch / OCR; the PDF
-  workspace records once per produced result set, keyed on the
-  results array identity so preview renders do not re-record).
-- **Editors**: the PDF tab is a 3-panel editor — thumbnails rail
+  (`recordActivity()` in Convert / Resize / Batch / OCR; each PDF
+  tool records once per produced result set via the shared
+  `usePdfFile` hook, keyed on the tool's route id so the Tools
+  directory "recently used" entry opens the exact tool page).
+- **PDF tools (per-tool pages, 17 Nov 2026):** `/pdf` is the
+  picker — a grid of tool cards (web tools first, then CLI-only
+  with the exact command, then Coming Soon). A PDF uploaded on
+  the picker travels with the user to the picked tool (except
+  Images to PDF, which takes images, never a PDF). Every tool
+  page shares one shell (`PdfToolPage` in
+  `src/components/pdf/shared.tsx` + the `usePdfFile` hook in
+  `src/components/pdf/usePdfFile.ts`): breadcrumb, title, one
+  short description, upload area, file list, settings panel, ONE
+  prominent primary action, processing states, result state
+  (output name/format/size, download). The tool pages are
+  `src/components/pdf/{PageOpsTools,CompressTool,MergeTool,
+  ImagesToPdfTool,PdfToImageTool,ExtractTextTool,CleanUpTools,
+  EditTool,PdfPicker}.tsx`. Extract text is a real web tool
+  (pdf.js `getTextContent`, TXT download + on-screen text);
+  EPUB/DOCX export stays CLI-only. Threat inspection is not a
+  standalone tool — it lives on the Clean up page
+  (`/pdf/sanitize`) as the "Check for threats" step before
+  "Remove threats".
+- **Editors**: the Edit PDF tool (`/pdf/edit`) is a 3-panel editor — thumbnails rail
   (`PdfThumbnails`, real pdf.js renders, max 12, click to jump),
-  center preview + info, tools on the right (page ops, compress,
-  merge, Edit card). The image editor (Convert) uses the shared
+  center preview + info, tools on the right (text overlays,
+  highlights, page numbers, headers/footers). The image editor (Convert) uses the shared
   `EditorShell` (preview left, tools right); Resize/Batch keep
   their multi-item list layouts. No fake undo/redo anywhere.
-- **PDF viewport-fit (17 Nov 2026):** on desktop (≥900px) the PDF
-  page is a viewport-height workspace — the shell (`AppShell`
-  `fitViewport`, PDF route only) fills exactly `100dvh` below the
-  AppBar, the footer is hidden on this route, the page itself
-  never scrolls, and each of the three columns (thumbnails /
-  center / operations, ids `pdf-thumbs-panel` /
+- **PDF viewport-fit (17 Nov 2026):** on desktop (≥900px) every
+  PDF tool page is a viewport-height workspace — the shell
+  (`AppShell` `fitViewport`, all `pdf-*` routes) fills exactly
+  `100dvh` below the AppBar, the footer is hidden on these
+  routes, the page itself never scrolls, and tool content scrolls
+  inside its own container when taller than the viewport (e.g.
+  Merge at 1366×768). On the Edit page each of the three columns
+  (thumbnails / center / operations, ids `pdf-thumbs-panel` /
   `pdf-center-panel` / `pdf-ops-panel`) scrolls internally. The
   header is one compact line (breadcrumb + "PDF tools", no long
   description); the preview canvas caps at
   `clamp(200px, calc(100dvh - 470px), 420px)`. The empty state
   fits too (compact DropZones — `compact` prop on `DropZone`).
-  Below lg the page keeps its normal stacked scrolling layout.
+  Below lg the pages keep their normal stacked scrolling layout.
   Three flexbox gotchas found while building it: (1) a stretched
   Grid row sizes to its tallest item, so Grid items need explicit
   `height: 100%` on lg; (2) MUI Card has `overflow: hidden`,
@@ -280,7 +308,7 @@ settings (per-file download, plus a .zip of all results).
   §2.19). The same run re-checked the baselines: web e2e 36/37
   (the one failure is the known keyboard file-chooser flake,
   §2.19a — not a regression) and resize e2e 16/16. New PDF tab
-  (`apps/web/e2e/pdf-e2e.mjs`, 15/15 — see docs/E2E.md §2.20),
+  (`apps/web/e2e/pdf-e2e.mjs`, 31/31 — see docs/E2E.md §2.25),
   incl. the compress check and the fixed page-count label.
 
 ## PDF tools — PDF tab (Studio Phase 2, extended Phases 3 + 5, 17 Nov 2026)
@@ -359,8 +387,10 @@ PDF from images — no upload, no server.
   pdf.js render may look slightly different from it on very
   complex pages. Encrypted PDFs cannot be opened in the browser
   (the engine refuses them); use the CLI. Password protect,
-  unlock, watermark and text extraction are CLI/desktop-only too
-  (no WASM export — see `docs/PDF.md`). Digital signatures are
+  unlock and watermark are CLI/desktop-only (no WASM export —
+  see `docs/PDF.md`). Text extraction IS a web tool
+  (`/pdf/extract-text`, pdf.js `getTextContent`, TXT download);
+  only EPUB/DOCX export stays CLI-only. Digital signatures are
   CLI/desktop-only (a private key must never be uploaded).
   Without the WASM module, page operations are disabled with a
   warning, while preview and PDF→image still work.
@@ -370,8 +400,8 @@ PDF from images — no upload, no server.
   and the Phase 5 wrappers (`pdfEdit`, `pdfRedact`,
   `pdfFlatten`, `pdfSetMetadata`, `pdfSanitize`, `pdfRepair`,
   `pdfInspect`), hex colour parsing, compress modes); e2e in
-  `apps/web/e2e/pdf-e2e.mjs` (24 checks — see docs/E2E.md
-  §2.20).
+  `apps/web/e2e/pdf-e2e.mjs` (31 checks — see docs/E2E.md
+  §2.25).
 
 ## OCR — OCR tab (Studio Phase 4, 17 Nov 2026)
 
@@ -583,8 +613,22 @@ pushes, `popstate` drives back/forward):
 | `/tools` | All Tools | `/formats` | Formats |
 | `/convert` | Convert Image | `/files` | My Files |
 | `/resize` | Resize Image | `/recent` | Recent Files |
-| `/pdf` | PDF Tools | `/settings` | Settings |
+| `/pdf` | PDF Tools (picker) | `/settings` | Settings |
+| `/pdf/merge` | Merge PDF | `/pdf/compress` | Compress PDF |
+| `/pdf/split` | Split PDF | `/pdf/edit` | Edit PDF |
+| `/pdf/rotate` | Rotate PDF Pages | `/pdf/redact` | Redact PDF |
+| `/pdf/extract` | Extract PDF Pages | `/pdf/metadata` | Edit PDF Metadata |
+| `/pdf/remove` | Remove PDF Pages | `/pdf/sanitize` | Clean Up PDF |
+| `/pdf/reorder` | Reorder PDF Pages | `/pdf/flatten` | Flatten PDF |
+| `/pdf/duplicate` | Duplicate PDF Pages | `/pdf/repair` | Repair PDF |
+| `/pdf/reverse` | Reverse PDF Pages | `/pdf/pdf-to-image` | PDF to Image |
+| `/pdf/booklet` | PDF Booklet | `/pdf/images-to-pdf` | Images to PDF |
+| `/pdf/n-up` | N-up PDF | `/pdf/extract-text` | Extract PDF Text |
 | | | `/help` | Help Center |
+
+An unknown path renders the home page and the address bar is
+corrected to `/` — there is no 404 page. An unknown `/pdf/*`
+path falls back to the PDF picker (`/pdf`), not home.
 
 Deep links work because `apps/web/public/_redirects` (copied to
 `dist/` by the build) tells Pages to serve `index.html` for every
@@ -594,8 +638,7 @@ path:
 /* /index.html 200
 ```
 
-An unknown path renders the home page and the address bar is
-corrected to `/` — there is no 404 page. Local e2e servers must
+Local e2e servers must
 provide the same fallback: use `apps/web/e2e/spa-server.mjs`
 (`node apps/web/e2e/spa-server.mjs 8321`), NOT
 `python3 -m http.server`, which 404s deep links and breaks any
