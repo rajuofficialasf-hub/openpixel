@@ -62,6 +62,8 @@ page.on('console', (m) => { if (m.type() === 'error') failedReqs.push(`console.e
 
 await page.goto(BASE, { waitUntil: 'networkidle' });
 check('live page loads, title OpenPixel', (await page.title()).includes('OpenPixel'), await page.title());
+// Phase 6: the default route is the homepage — open Convert first.
+await page.locator('#tab-convert').click();
 try {
   await page.waitForFunction(
     () => document.body.innerText.includes('WASM engine’s BMP'),
@@ -103,6 +105,8 @@ async function reset() {
     await sleep(300);
   } else {
     await page.goto(BASE, { waitUntil: 'networkidle' });
+    // Phase 6: the default route is the homepage — reopen Convert.
+    await page.locator('#tab-convert').click();
   }
 }
 async function alertText() {

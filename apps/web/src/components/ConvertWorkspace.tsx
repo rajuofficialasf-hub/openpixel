@@ -28,14 +28,20 @@ import {
 import { convertImage, probeImage, ProbeError, type ProbedImage } from '../lib/convert'
 import type { DetectedFormat } from '../lib/detect'
 import type { Settings } from '../lib/settings'
+import { recordActivity } from '../lib/activity'
 import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
 import { DropZone } from './DropZone'
+import { EditorShell } from './EditorShell'
+import { ToolPageHeader } from './ToolPage'
 
 type Status = 'idle' | 'probing' | 'ready' | 'converting' | 'done' | 'error'
 
 interface ConvertWorkspaceProps {
   settings: Settings
   onSettingsChange: (settings: Settings) => void
+  /** Files handed over from the homepage upload — consumed once on mount. */
+  initialFiles?: File[]
+  onInitialFilesConsumed?: () => void
 }
 
 function downloadBlob(blob: Blob, filename: string): void {
@@ -49,7 +55,7 @@ function downloadBlob(blob: Blob, filename: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspaceProps) {
+export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onInitialFilesConsumed }: ConvertWorkspaceProps) {
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [probed, setProbed] = useState<ProbedImage | null>(null)
@@ -137,6 +143,18 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
     [decodableFormats],
   )
 
+  // Homepage hand-off: a file dropped on the home page arrives here
+  // already loaded. Consume it once; the ref guard also covers
+  // StrictMode's double effect run in development.
+  const initialConsumedRef = useRef(false)
+  useEffect(() => {
+    if (initialFiles && initialFiles.length > 0 && !initialConsumedRef.current) {
+      initialConsumedRef.current = true
+      void handleFiles(initialFiles)
+      onInitialFilesConsumed?.()
+    }
+  }, [initialFiles, handleFiles, onInitialFilesConsumed])
+
   const canConvert =
     file !== null && probed !== null && probed.format !== 'unknown' && decodableFormats.includes(probed.format)
 
@@ -169,6 +187,13 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
       if (resultUrlRef.current) URL.revokeObjectURL(resultUrlRef.current)
       resultUrlRef.current = url
       setResult({ blob: converted.blob, url, width: converted.width, height: converted.height, bytes: converted.bytes })
+      recordActivity({
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type || probed.format,
+        tool: 'convert',
+        result: `Converted to ${formatLabel(targetFormat)} · ${converted.width}×${converted.height} · ${formatBytes(converted.bytes)}`,
+      })
       if (converted.engine === 'wasm') {
         setWarnings((prev) => [
           ...prev,
@@ -216,19 +241,20 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
   return (
     <Box component="section" aria-labelledby="convert-heading">
       <Stack spacing={3}>
-        <Box>
-          <Typography variant="h5" component="h2" id="convert-heading">
-            Convert one image
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
-            Files never leave your device — conversion runs locally in your browser. PNG,
-            JPEG and WebP output via the canvas
-            {wasmSupport
-              ? ', plus the built-in WASM engine’s BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF targets (and sources) — AVIF still needs the native CLI'
-              : ', plus the WASM engine’s extra formats when its module is built (see Settings, About)'}
-            . Everything else needs the native CLI.
-          </Typography>
-        </Box>
+        <ToolPageHeader
+          headingId="convert-heading"
+          title="Convert one image"
+          description={
+            <>
+              Files never leave your device — conversion runs locally in your browser. PNG, JPEG and WebP output
+              via the canvas
+              {wasmSupport
+                ? ', plus the built-in WASM engine’s BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF targets (and sources) — AVIF still needs the native CLI'
+                : ', plus the WASM engine’s extra formats when its module is built (see Settings, About)'}
+              . Everything else needs the native CLI.
+            </>
+          }
+        />
 
         {!file && (
           <DropZone
@@ -242,8 +268,9 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
         )}
 
         {file && (
-          <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { md: '1fr 1fr' } }}>
-            <Stack spacing={2}>
+          <EditorShell
+            main={
+              <>
               <Card>
                 <CardContent>
                   <Typography variant="overline" color="text.secondary">
@@ -344,8 +371,10 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
                   Reading image…
                 </Typography>
               )}
-            </Stack>
-
+              </>
+            }
+            tools={
+              <>
             <Card>
               <CardContent>
                 <Typography variant="overline" color="text.secondary">
@@ -474,7 +503,9 @@ export function ConvertWorkspace({ settings, onSettingsChange }: ConvertWorkspac
                 </Stack>
               </CardContent>
             </Card>
-          </Box>
+              </>
+            }
+          />
         )}
 
         {warnings.length > 0 && (

@@ -35,6 +35,9 @@ check('page loads, title OpenPixel', (await page.title()).includes('OpenPixel'),
 check('no failed requests / console errors on load', failedReqs.length === 0, failedReqs.join(' | '));
 await shot('01-home.png');
 
+// Phase 6: the default route is the homepage — open Convert first.
+await page.locator('#tab-convert').click();
+
 // WASM module present? The intro text switches once wasmSupport loads.
 // (Marker is 'WASM engine’s BMP': BMP leads the WASM target list
 // since the 16 Nov 2026 polish — the canvas cannot encode BMP.)

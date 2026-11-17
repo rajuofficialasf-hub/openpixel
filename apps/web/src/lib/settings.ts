@@ -16,6 +16,10 @@ export interface ResizeSettings {
 
 export interface Settings {
   theme: Theme
+  /** Interface language. 'bn' is stored now; the interface itself
+   *  stays English until the Bengali strings land (Phase 6 prep —
+   *  the Noto Sans Bengali font is already bundled). */
+  language: 'en' | 'bn'
   defaultQuality: number // JPEG/WebP quality 1–100
   defaultFormat: string // engine format id, e.g. 'webp'
   defaultBackground: string // hex colour used to flatten alpha
@@ -27,6 +31,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
+  language: 'en',
   defaultQuality: 85,
   defaultFormat: 'webp',
   defaultBackground: '#ffffff',
@@ -47,6 +52,7 @@ export function loadSettings(): Settings {
     const parsed = JSON.parse(raw) as Partial<Settings>
     return {
       theme: parsed.theme === 'light' || parsed.theme === 'dark' ? parsed.theme : 'system',
+      language: parsed.language === 'bn' ? 'bn' : 'en',
       defaultQuality:
         typeof parsed.defaultQuality === 'number'
           ? Math.min(100, Math.max(1, Math.round(parsed.defaultQuality)))

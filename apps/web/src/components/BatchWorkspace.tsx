@@ -21,8 +21,10 @@ import {
 } from '../lib/capabilities'
 import { convertImage, probeImage, ProbeError } from '../lib/convert'
 import type { Settings } from '../lib/settings'
+import { recordActivity } from '../lib/activity'
 import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
 import { DropZone } from './DropZone'
+import { ToolPageHeader } from './ToolPage'
 
 type ItemStatus = 'queued' | 'probing' | 'ready' | 'converting' | 'done' | 'failed' | 'skipped'
 
@@ -43,6 +45,9 @@ interface BatchItem {
 
 interface BatchWorkspaceProps {
   settings: Settings
+  /** Files handed over from the homepage upload — consumed once on mount. */
+  initialFiles?: File[]
+  onInitialFilesConsumed?: () => void
 }
 
 function downloadBlob(blob: Blob, filename: string): void {
@@ -77,7 +82,7 @@ function statusChipProps(status: ItemStatus): {
   }
 }
 
-export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
+export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed }: BatchWorkspaceProps) {
   const [items, setItems] = useState<BatchItem[]>([])
   const [targetFormat, setTargetFormat] = useState(settings.defaultFormat)
   const [running, setRunning] = useState(false)
@@ -166,6 +171,18 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
     }
   }, [decodableFormats])
 
+  // Homepage hand-off: files dropped on the home page arrive here
+  // already loaded. Consume them once; the ref guard also covers
+  // StrictMode's double effect run in development.
+  const initialConsumedRef = useRef(false)
+  useEffect(() => {
+    if (initialFiles && initialFiles.length > 0 && !initialConsumedRef.current) {
+      initialConsumedRef.current = true
+      void addFiles(initialFiles)
+      onInitialFilesConsumed?.()
+    }
+  }, [initialFiles, addFiles, onInitialFilesConsumed])
+
   const convertAll = useCallback(async () => {
     if (running) return
     setRunning(true)
@@ -182,6 +199,13 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
             quality: settings.defaultQuality,
             background: settings.defaultBackground,
             pngCompression: 1,
+          })
+          recordActivity({
+            fileName: item.file.name,
+            fileSize: item.file.size,
+            fileType: item.file.type || 'image',
+            tool: 'batch',
+            result: `Converted to ${formatLabel(targetFormat)} · ${converted.width}×${converted.height} · ${formatBytes(converted.bytes)}`,
           })
           setItems((prev) =>
             prev.map((p) =>
@@ -252,17 +276,17 @@ export function BatchWorkspace({ settings }: BatchWorkspaceProps) {
   return (
     <Box component="section" aria-labelledby="batch-heading">
       <Stack spacing={3}>
-        <Box>
-          <Typography variant="h5" component="h2" id="batch-heading">
-            Batch conversion
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
-            Add several images and convert them together — still entirely on your device.
-            Files are processed up to {settings.batchWorkers} at a time (see Settings). A file
-            that fails never stops the rest of the batch. Files this browser cannot decode are
-            skipped with a reason.
-          </Typography>
-        </Box>
+        <ToolPageHeader
+          headingId="batch-heading"
+          title="Batch conversion"
+          description={
+            <>
+              Add several images and convert them together — still entirely on your device. Files are processed
+              up to {settings.batchWorkers} at a time (see Settings). A file that fails never stops the rest of
+              the batch. Files this browser cannot decode are skipped with a reason.
+            </>
+          }
+        />
 
         <DropZone
           inputId="batch-files"

@@ -16,6 +16,7 @@ import { alpha } from '@mui/material/styles'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import DownloadIcon from '@mui/icons-material/Download'
 import { formatBytes } from '../lib/capabilities'
+import { recordActivity } from '../lib/activity'
 import {
   formatConfidence,
   formatDurationMs,
@@ -30,6 +31,7 @@ import {
   type OcrResult,
 } from '../lib/ocr'
 import { DropZone } from './DropZone'
+import { ToolPageHeader } from './ToolPage'
 
 function downloadText(text: string, filename: string): void {
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
@@ -102,6 +104,13 @@ export function OcrWorkspace() {
         onProgress: (p) => setProgress(p),
       })
       setResult(recognised)
+      recordActivity({
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type || 'image',
+        tool: 'ocr',
+        result: `OCR (${OCR_LANGUAGE_LABELS[recognised.language]}) · ${recognised.wordCount} words · ${formatConfidence(recognised.confidence)} mean confidence`,
+      })
       setProgress(null)
     } catch (err) {
       setProgress(null)
@@ -128,15 +137,11 @@ export function OcrWorkspace() {
   return (
     <Box component="section" aria-labelledby="ocr-heading">
       <Stack spacing={3}>
-        <Box>
-          <Typography variant="h5" component="h2" id="ocr-heading">
-            Text recognition (OCR)
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
-            Read the text out of a photo or scan, entirely in your browser. Files never leave
-            your device — the engine and language data load from this site only when you run OCR.
-          </Typography>
-        </Box>
+        <ToolPageHeader
+          headingId="ocr-heading"
+          title="Text recognition (OCR)"
+          description="Read the text out of a photo or scan, entirely in your browser. Files never leave your device — the engine and language data load from this site only when you run OCR."
+        />
 
         <Box
           role="status"

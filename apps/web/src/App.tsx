@@ -1,37 +1,45 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { Box, Button, Container, CssBaseline, Tab, Tabs, Typography } from '@mui/material'
-import { alpha, ThemeProvider } from '@mui/material/styles'
-import DarkModeIcon from '@mui/icons-material/DarkMode'
-import LightModeIcon from '@mui/icons-material/LightMode'
+import { Box } from '@mui/material'
+import { ThemeProvider } from '@mui/material/styles'
 import { BatchWorkspace } from './components/BatchWorkspace'
 import { CapabilitiesTable } from './components/CapabilitiesTable'
 import { ConvertWorkspace } from './components/ConvertWorkspace'
+import { HelpPage } from './components/HelpPage'
+import { HomePage } from './components/HomePage'
 import { OcrWorkspace } from './components/OcrWorkspace'
 import { PdfWorkspace } from './components/PdfWorkspace'
 import { ResizeWorkspace } from './components/ResizeWorkspace'
 import { SettingsPanel } from './components/SettingsPanel'
+import { ToolsDirectory, type ToolsCategoryFilter } from './components/ToolsDirectory'
+import { MyFilesPage, RecentFilesPage, WorkspaceDashboard } from './components/Workspace'
+import { AppShell } from './components/layout/AppShell'
 import { loadSettings, resolveTheme, saveSettings, type Settings } from './lib/settings'
 import { getTheme } from './theme/theme'
+import type { RouteId, ToolCategory } from './lib/routes'
 
 // Lazy: the 3D backdrop is decoration — it must never block first
 // paint. The chunk loads only when the setting is on.
 const Background3D = lazy(() => import('./components/Background3D'))
 
-type TabId = 'convert' | 'resize' | 'pdf' | 'ocr' | 'batch' | 'formats' | 'settings'
+interface PendingFiles {
+  files: File[]
+  route: RouteId
+}
 
-const TABS: { id: TabId; label: string }[] = [
-  { id: 'convert', label: 'Convert' },
-  { id: 'resize', label: 'Resize' },
-  { id: 'pdf', label: 'PDF' },
-  { id: 'ocr', label: 'OCR' },
-  { id: 'batch', label: 'Batch' },
-  { id: 'formats', label: 'Formats' },
-  { id: 'settings', label: 'Settings' },
-]
+interface NavigateOpts {
+  toolsQuery?: string
+  toolsCategory?: ToolCategory
+  files?: File[]
+}
 
 function App() {
-  const [tab, setTab] = useState<TabId>('convert')
+  const [route, setRoute] = useState<RouteId>('home')
   const [settings, setSettings] = useState<Settings>(() => loadSettings())
+  const [toolsFilter, setToolsFilter] = useState<{ query: string; category: ToolsCategoryFilter }>({
+    query: '',
+    category: 'all',
+  })
+  const [pending, setPending] = useState<PendingFiles | null>(null)
 
   const mode = resolveTheme(settings.theme)
   const theme = useMemo(() => getTheme(mode), [mode])
@@ -44,119 +52,70 @@ function App() {
     saveSettings(settings)
   }, [settings, mode])
 
-  const toggleTheme = useCallback(() => {
-    setSettings((prev) => ({
-      ...prev,
-      theme: resolveTheme(prev.theme) === 'dark' ? 'light' : 'dark',
-    }))
+  const navigate = useCallback((next: RouteId, opts?: NavigateOpts) => {
+    if (opts?.toolsQuery !== undefined || opts?.toolsCategory !== undefined) {
+      setToolsFilter((prev) => ({
+        query: opts.toolsQuery !== undefined ? opts.toolsQuery : prev.query,
+        category: opts.toolsCategory !== undefined ? opts.toolsCategory : prev.category,
+      }))
+    }
+    if (opts?.files) setPending({ files: opts.files, route: next })
+    setRoute(next)
+    window.scrollTo({ top: 0 })
   }, [])
 
-  const isDark = mode === 'dark'
-  const themeLabel = isDark ? 'Switch to light theme' : 'Switch to dark theme'
+  const clearPending = useCallback(() => setPending(null), [])
 
   return (
     <ThemeProvider theme={theme}>
-      <CssBaseline />
       {settings.show3dBackground && (
         <Suspense fallback={null}>
           <Background3D />
         </Suspense>
       )}
-      <Box
-        sx={{
-          position: 'relative',
-          zIndex: 1,
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-        }}
-      >
-        <Box
-          component="header"
-          sx={{
-            borderBottom: 1,
-            borderColor: 'divider',
-            bgcolor: (t) => alpha(t.palette.background.paper, 0.85),
-            backdropFilter: 'blur(10px)',
-          }}
-        >
-          <Container maxWidth="lg">
-            <Box
-              sx={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 2,
-                py: 2,
-              }}
-            >
-              <Box>
-                <Typography variant="h5" component="h1">
-                  OpenPixel
-                  <Box component="span" sx={{ color: 'secondary.main' }}>
-                    .
-                  </Box>
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  Local image conversion — files never leave your device.
-                </Typography>
-              </Box>
-              <Button
-                type="button"
-                variant="outlined"
-                onClick={toggleTheme}
-                aria-label={themeLabel}
-                startIcon={isDark ? <LightModeIcon /> : <DarkModeIcon />}
-              >
-                {isDark ? 'Light' : 'Dark'}
-              </Button>
-            </Box>
-            <Tabs
-              value={tab}
-              onChange={(_, value: TabId) => setTab(value)}
-              aria-label="OpenPixel sections"
-              sx={{ mt: 1 }}
-            >
-              {TABS.map((t) => (
-                <Tab key={t.id} value={t.id} label={t.label} id={`tab-${t.id}`} aria-controls={`panel-${t.id}`} />
-              ))}
-            </Tabs>
-          </Container>
-        </Box>
-
-        <Container component="main" maxWidth="lg" sx={{ py: 4, flex: 1, width: '100%' }}>
-          <Box role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-            {tab === 'convert' && (
-              <ConvertWorkspace settings={settings} onSettingsChange={setSettings} />
-            )}
-            {tab === 'resize' && (
-              <ResizeWorkspace settings={settings} onSettingsChange={setSettings} />
-            )}
-            {tab === 'pdf' && <PdfWorkspace />}
-            {tab === 'ocr' && <OcrWorkspace />}
-            {tab === 'batch' && <BatchWorkspace settings={settings} />}
-            {tab === 'formats' && <CapabilitiesTable />}
-            {tab === 'settings' && <SettingsPanel settings={settings} onSettingsChange={setSettings} />}
-          </Box>
-        </Container>
-
-        <Box
-          component="footer"
-          sx={{
-            borderTop: 1,
-            borderColor: 'divider',
-            bgcolor: (t) => alpha(t.palette.background.paper, 0.85),
-            backdropFilter: 'blur(10px)',
-            px: 2,
-            py: 2,
-            textAlign: 'center',
-          }}
-        >
-          <Typography variant="caption" color="text.secondary" component="p">
-            OpenPixel Engine — local processing. No server, no upload, no account.
-          </Typography>
-        </Box>
+      {/* The content sits above the (optional) 3D backdrop. */}
+      <Box sx={{ position: 'relative', zIndex: 1 }}>
+        <AppShell route={route} onNavigate={navigate} settings={settings} onSettingsChange={setSettings}>
+          {route === 'home' && <HomePage onNavigate={navigate} />}
+          {route === 'overview' && <WorkspaceDashboard onNavigate={navigate} />}
+          {route === 'tools' && (
+            <ToolsDirectory
+              query={toolsFilter.query}
+              onQueryChange={(query) => setToolsFilter((prev) => ({ ...prev, query }))}
+              category={toolsFilter.category}
+              onCategoryChange={(category) => setToolsFilter((prev) => ({ ...prev, category }))}
+              onNavigate={navigate}
+            />
+          )}
+          {route === 'convert' && (
+            <ConvertWorkspace
+              settings={settings}
+              onSettingsChange={setSettings}
+              initialFiles={pending?.route === 'convert' ? pending.files : undefined}
+              onInitialFilesConsumed={clearPending}
+            />
+          )}
+          {route === 'resize' && <ResizeWorkspace settings={settings} onSettingsChange={setSettings} />}
+          {route === 'pdf' && (
+            <PdfWorkspace
+              initialFiles={pending?.route === 'pdf' ? pending.files : undefined}
+              onInitialFilesConsumed={clearPending}
+            />
+          )}
+          {route === 'ocr' && <OcrWorkspace />}
+          {route === 'batch' && (
+            <BatchWorkspace
+              settings={settings}
+              initialFiles={pending?.route === 'batch' ? pending.files : undefined}
+              onInitialFilesConsumed={clearPending}
+            />
+          )}
+          {route === 'formats' && <CapabilitiesTable />}
+          {route === 'files' && <MyFilesPage onNavigate={navigate} />}
+          {route === 'recent' && <RecentFilesPage onNavigate={navigate} />}
+          {route === 'settings' && <SettingsPanel settings={settings} onSettingsChange={setSettings} />}
+          {route === 'help' && <HelpPage />}
+        </AppShell>
       </Box>
     </ThemeProvider>
   )

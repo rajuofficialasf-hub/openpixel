@@ -23,6 +23,8 @@ page.on('console', (m) => { if (m.type() === 'error') errs.push(`console.error: 
 
 await page.goto(BASE, { waitUntil: 'networkidle' });
 await new Promise((r) => setTimeout(r, 2000));
+// Phase 6: the default route is the homepage — open Convert first.
+await page.locator('#tab-convert').click();
 const intro = await page.locator('section').first().innerText();
 check('no-WASM build: intro does NOT claim WASM targets', !intro.includes('WASM engine’s TIFF'), intro.slice(0, 160).replace(/\n/g, ' | '));
 check('no-WASM build: intro mentions canvas-only fallback', /canvas|WASM engine’s extra formats when its module is built/i.test(intro), intro.slice(0, 200).replace(/\n/g, ' | '));

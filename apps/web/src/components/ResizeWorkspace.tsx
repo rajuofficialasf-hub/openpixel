@@ -40,8 +40,10 @@ import {
 } from '../lib/resize'
 import { resizeImage } from '../lib/resize-convert'
 import type { ResizeSettings, Settings } from '../lib/settings'
+import { recordActivity } from '../lib/activity'
 import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
 import { DropZone } from './DropZone'
+import { ToolPageHeader } from './ToolPage'
 
 type ItemStatus = 'queued' | 'probing' | 'ready' | 'resizing' | 'done' | 'failed' | 'skipped'
 
@@ -318,6 +320,13 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
           targetBytes,
         })
         const url = URL.createObjectURL(resized.blob)
+        recordActivity({
+          fileName: item.file.name,
+          fileSize: item.file.size,
+          fileType: item.file.type || 'image',
+          tool: 'resize',
+          result: `Resized to ${resized.width}×${resized.height} · ${formatBytes(item.file.size)} → ${formatBytes(resized.bytes)}`,
+        })
         setItems((prev) =>
           prev.map((p) =>
             p.id === item.id
@@ -412,17 +421,11 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
   return (
     <Box component="section" aria-labelledby="resize-heading">
       <Stack spacing={3}>
-        <Box>
-          <Typography variant="h5" component="h2" id="resize-heading">
-            Resize &amp; compress
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
-            Change dimensions and shrink file size without losing quality — the resize runs
-            through the real engine (Lanczos3), always from the original file. In-browser
-            resize strips EXIF/ICC/XMP; use the native CLI to keep it. Files never leave
-            your device.
-          </Typography>
-        </Box>
+        <ToolPageHeader
+          headingId="resize-heading"
+          title="Resize & compress"
+          description="Change dimensions and shrink file size without losing quality — the resize runs through the real engine (Lanczos3), always from the original file. In-browser resize strips EXIF/ICC/XMP; use the native CLI to keep it. Files never leave your device."
+        />
 
         {items.length === 0 && (
           <DropZone

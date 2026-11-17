@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Alert,
   Box,
@@ -7,6 +7,7 @@ import {
   CardContent,
   Checkbox,
   FormControlLabel,
+  Grid,
   Select,
   Stack,
   TextField,
@@ -48,7 +49,10 @@ import {
   type PdfThreats,
 } from '../lib/pdf'
 import { loadWasmEngine } from '../lib/wasm-engine'
+import { recordActivity } from '../lib/activity'
 import { DropZone } from './DropZone'
+import { PdfThumbnails } from './PdfThumbnails'
+import { ToolPageHeader } from './ToolPage'
 
 interface PdfResult {
   label: string
@@ -72,7 +76,14 @@ function metaRow(label: string, value: string | null | undefined): { label: stri
   return value == null || value === '' ? null : { label, value }
 }
 
-export function PdfWorkspace() {
+export function PdfWorkspace({
+  initialFiles,
+  onInitialFilesConsumed,
+}: {
+  /** A PDF handed over from the homepage upload — consumed once on mount. */
+  initialFiles?: File[]
+  onInitialFilesConsumed?: () => void
+}) {
   const [file, setFile] = useState<File | null>(null)
   const [bytes, setBytes] = useState<Uint8Array<ArrayBuffer> | null>(null)
   const [info, setInfo] = useState<PdfInfo | null>(null)
@@ -183,7 +194,7 @@ export function PdfWorkspace() {
     }
   }, [bytes, previewPage, renderScale])
 
-  const handleFiles = async (files: File[]) => {
+  const handleFiles = useCallback(async (files: File[]) => {
     const next = files[0]
     if (!next) return
     setLoading(true)
@@ -233,7 +244,37 @@ export function PdfWorkspace() {
       }
     }
     setLoading(false)
-  }
+  }, [])
+
+  // Homepage hand-off: a PDF dropped on the home page arrives here
+  // already loaded. Consume it once; the ref guard also covers
+  // StrictMode's double effect run in development.
+  const initialConsumedRef = useRef(false)
+  useEffect(() => {
+    if (initialFiles && initialFiles.length > 0 && !initialConsumedRef.current) {
+      initialConsumedRef.current = true
+      void handleFiles(initialFiles)
+      onInitialFilesConsumed?.()
+    }
+  }, [initialFiles, handleFiles, onInitialFilesConsumed])
+
+  // Workspace history: record one entry per produced result set.
+  // The identity check matters — preview rendering sets `status`
+  // without producing results, and must not re-record the previous
+  // operation.
+  const recordedResultsRef = useRef<PdfResult[] | null>(null)
+  useEffect(() => {
+    if (results.length > 0 && recordedResultsRef.current !== results && status && file) {
+      recordedResultsRef.current = results
+      recordActivity({
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: 'application/pdf',
+        tool: 'pdf',
+        result: status,
+      })
+    }
+  }, [results, status, file])
 
   const clearFile = () => {
     setFile(null)
@@ -736,16 +777,11 @@ export function PdfWorkspace() {
   return (
     <Box component="section" aria-labelledby="pdf-heading">
       <Stack spacing={3}>
-        <Box>
-          <Typography variant="h5" component="h2" id="pdf-heading">
-            PDF tools
-          </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
-            Work with PDFs entirely in your browser — page operations run through the real
-            engine in WebAssembly and previews render with pdf.js. Files never leave your
-            device.
-          </Typography>
-        </Box>
+        <ToolPageHeader
+          headingId="pdf-heading"
+          title="PDF tools"
+          description="Work with PDFs entirely in your browser — page operations run through the real engine in WebAssembly and previews render with pdf.js. Files never leave your device."
+        />
 
         {wasmReady === false && (
           <Box
@@ -784,7 +820,20 @@ export function PdfWorkspace() {
         )}
 
         {file && bytes && (
-          <>
+          <Grid container spacing={2} alignItems="flex-start">
+            <Grid size={{ xs: 12, lg: 2 }}>
+              <Stack spacing={2}>
+                <PdfThumbnails
+                  key={`${file.name}-${file.size}`}
+                  bytes={bytes}
+                  pageCount={pageCount}
+                  currentPage={previewPage}
+                  onSelect={setPreviewPage}
+                />
+              </Stack>
+            </Grid>
+            <Grid size={{ xs: 12, lg: 6 }}>
+              <Stack spacing={2}>
             <Card id="pdf-info">
               <CardContent>
                 <Typography variant="overline" color="text.secondary">
@@ -949,7 +998,10 @@ export function PdfWorkspace() {
                 </Stack>
               </CardContent>
             </Card>
-
+              </Stack>
+            </Grid>
+            <Grid size={{ xs: 12, lg: 4 }}>
+              <Stack spacing={2}>
             <Card>
               <CardContent>
                 <Typography variant="overline" color="text.secondary">
@@ -1634,7 +1686,9 @@ export function PdfWorkspace() {
                 </Stack>
               </CardContent>
             </Card>
-          </>
+              </Stack>
+            </Grid>
+          </Grid>
         )}
 
         <Card>
