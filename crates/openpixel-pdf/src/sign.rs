@@ -793,7 +793,7 @@ fn verify_one_signature(
     let covers_file = off1 == 0
         && matches!(end1, Some(e1) if e1 <= off2)
         && matches!(end2, Some(e2) if e2 == file.len())
-        && end1.map_or(false, |e1| {
+        && end1.is_some_and(|e1| {
             let gap = off2 - e1;
             gap == contents.len() * 2 + 2 || gap == contents.len() + 2
         });

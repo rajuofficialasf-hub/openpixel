@@ -414,23 +414,29 @@ pub fn run_command_isolated(
 mod tests {
     use super::*;
 
-    /// `sleep` exists on every Unix test host (and in Git Bash on
-    /// Windows); the timeout test needs a child that outlives the
-    /// deadline by a wide margin.
-    fn sleep_command(seconds: u64) -> Command {
-        let mut cmd = Command::new("sleep");
-        cmd.arg(seconds.to_string());
+    /// The child processes are `python3 -c` one-liners, not the
+    /// Unix `sleep`/`echo`/`cat`/`sh` utilities: python3 is on
+    /// PATH on all three CI runners (and is already what the
+    /// Linux-only RSS test below uses), while the Unix utilities
+    /// exist on Windows only inside Git Bash — which is not
+    /// reliably on PATH for a `cargo test` process, so the
+    /// timeout/stdout/stdin tests would fail there with
+    /// SpawnFailed instead of testing the supervisor.
+    fn python_command(code: &str) -> Command {
+        let mut cmd = Command::new("python3");
+        cmd.args(["-c", code]);
         cmd
+    }
+
+    /// A child that outlives the deadline by a wide margin.
+    fn sleep_command(seconds: u64) -> Command {
+        python_command(&format!("import time; time.sleep({seconds})"))
     }
 
     #[test]
     fn fast_child_returns_its_stdout() {
         let out = run_command_isolated(
-            {
-                let mut cmd = Command::new("echo");
-                cmd.arg("hello-isolated");
-                cmd
-            },
+            python_command("print('hello-isolated')"),
             b"",
             &IsolationLimits::none(),
         )
@@ -445,20 +451,19 @@ mod tests {
 
     #[test]
     fn stdin_is_fed_to_the_child() {
-        let out =
-            run_command_isolated(Command::new("cat"), b"round-trip", &IsolationLimits::none())
-                .unwrap();
+        let out = run_command_isolated(
+            python_command("import sys; sys.stdout.write(sys.stdin.read())"),
+            b"round-trip",
+            &IsolationLimits::none(),
+        )
+        .unwrap();
         assert_eq!(out.stdout, b"round-trip");
     }
 
     #[test]
     fn failing_child_reports_its_stderr_not_a_timeout() {
         let err = run_command_isolated(
-            {
-                let mut cmd = Command::new("sh");
-                cmd.args(["-c", "echo boom >&2; exit 3"]);
-                cmd
-            },
+            python_command("import sys; sys.stderr.write('boom\\n'); sys.exit(3)"),
             b"",
             &IsolationLimits::none(),
         )

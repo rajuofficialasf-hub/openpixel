@@ -302,6 +302,16 @@ jobs:
   desktop:
     name: Desktop (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Studio Phase 7: the desktop backend links Tesseract
+    # (openpixel-ocr, `native-ocr` is a default feature) — the
+    # vcpkg crate needs the same triplet/dynamic opt-in as the
+    # CLI job (see its note: without VCPKGRS_TRIPLET the
+    # leptonica-sys build script panics on
+    # x64-windows-static-md; without VCPKGRS_DYNAMIC it errors
+    # RequiredEnvMissing). Harmless on Linux/macOS.
+    env:
+      VCPKGRS_TRIPLET: x64-windows
+      VCPKGRS_DYNAMIC: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -357,6 +367,13 @@ jobs:
       # "System libraries"). No sysroot workaround on a clean runner.
       # meson + ninja + nasm are the dav1d source-build tools (same
       # as the CLI job); pkg-config is preinstalled on the runner.
+      # Studio Phase 7: Tesseract + Leptonica + libclang-dev — the
+      # desktop backend links openpixel-ocr (native-ocr is a
+      # default feature), so without these the Tauri build fails
+      # in the leptonica-sys/tesseract-sys build scripts (run
+      # 44172492652: all three Desktop jobs failed at "Build
+      # desktop installers" — the CLI job had these, the desktop
+      # job did not).
       - name: Install system deps (Linux)
         if: runner.os == 'Linux'
         run: |
@@ -364,7 +381,9 @@ jobs:
           sudo apt-get install -y meson ninja-build nasm pkg-config \
             libwebkit2gtk-4.1-dev \
             libappindicator3-dev librsvg2-dev patchelf \
-            libgtk-3-dev libsoup-3.0-dev
+            libgtk-3-dev libsoup-3.0-dev \
+            tesseract-ocr libtesseract-dev libleptonica-dev \
+            tesseract-ocr-eng tesseract-ocr-ben libclang-dev
 
       # --- Windows: dav1d is built from source (static) — see the
       # CLI job's note. No vcpkg, no pkg-config, no DLL handling.
@@ -383,10 +402,32 @@ jobs:
           where.exe cl
 
       # --- macOS: dav1d is built from source (static) — see the
-      # CLI job's note.
+      # CLI job's note. Studio Phase 7: tesseract + tesseract-lang
+      # (eng+ben) — the desktop backend links openpixel-ocr.
       - name: Install dav1d build tools (macOS)
         if: runner.os == 'macOS'
-        run: brew install meson ninja nasm pkg-config
+        run: brew install meson ninja nasm pkg-config tesseract tesseract-lang
+
+      # --- Windows: Tesseract (Studio Phase 7, native OCR) —
+      # same step as the CLI job: vcpkg (NOT choco — choco's
+      # tesseract ships runtime DLLs only, no headers/import
+      # lib/traineddata), choco llvm for libclang, eng+ben
+      # traineddata into C:\openpixel-tessdata.
+      - name: Install Tesseract via vcpkg (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install llvm -y
+          echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin\libclang.dll" >> $env:GITHUB_ENV
+          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          vcpkg install tesseract:x64-windows --clean-after-build
+          echo "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin" >> $env:GITHUB_PATH
+          New-Item -ItemType Directory -Force -Path C:\openpixel-tessdata | Out-Null
+          Invoke-WebRequest -Uri https://github.com/tesseract-ocr/tessdata_fast/raw/main/eng.traineddata -OutFile C:\openpixel-tessdata\eng.traineddata
+          Invoke-WebRequest -Uri https://github.com/tesseract-ocr/tessdata_fast/raw/main/ben.traineddata -OutFile C:\openpixel-tessdata\ben.traineddata
+          echo "TESSDATA_PREFIX=C:\openpixel-tessdata" >> $env:GITHUB_ENV
+          Get-ChildItem $env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\lib\tesseract* -ErrorAction Stop
+          Get-ChildItem $env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\include\tesseract\capi.h -ErrorAction Stop
+          Get-ChildItem C:\openpixel-tessdata
 
       - name: Install frontend deps
         working-directory: apps/desktop

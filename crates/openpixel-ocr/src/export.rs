@@ -141,11 +141,10 @@ const DOCX_APP: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?
 /// tables or images. An empty result still yields a valid
 /// document (title only).
 pub fn ocr_to_docx(result: &OcrResult) -> Vec<u8> {
-    let core = format!(
-        r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    let core = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>OCR result</dc:title><dc:creator>OpenPixel Studio</dc:creator></cp:coreProperties>
-"#,
-    );
+"#
+    .to_string();
     let mut document = String::from(
         r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>
