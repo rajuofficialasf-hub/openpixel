@@ -446,7 +446,7 @@ mobile OCR/PDF performance is acceptable on device.
 
 ## Phase 8 — Production
 
-**Entry:** Phases 6–7 exit green.
+**Status: DONE 18 Nov 2026** (commits dc915de–236fc11, pushed; live on openpixel.pages.dev). Process isolation: heavy CLI work runs in a supervised child (`__isolated-work`, SIGKILL + reap on timeout/RSS breach, atomic output) — A8/A9 CLOSED for CLI; 20 regression tests; CLI e2e §14. libpdfium distribution: CLI tarball ships it (13.4 MB, clean-path render verified), desktop bundles it via `resources/*` (`.deb` 18.1 MB, `.AppImage` 95.1 MB, Xvfb smoke green); Windows/macOS bundles configured, not built on this VM. Security audit: 16 findings fixed (B1–B16) + redaction appearance-stream leak + B7b `read_bytes` fix; new `fuzz_pdf` target, 5,283 runs, 0 crashes; `cargo deny check licenses` green; `cargo audit` has 3 accepted risks (rsa Marvin, chrono/paste unmaintained). Benchmarks: Phase 8 run 18 Nov 2026 in `docs/BENCHMARKS.md` (AVIF 11.0 s, batch w4 1.53 s, render 0.55 s/page, 554 MiB peak, isolation +50% on small batches). Release readiness: `docs/RELEASE.md` — prepared, **no release created** (needs the user's yes). Workspace 375/375, web 92/92, desktop backend 29/29, frontend 15/15. Honest limits: isolation Linux-only (timeout only on Win/macOS; desktop in-process); `pdf info | head` broken-pipe panic (cosmetic, pre-existing); Android still blocked at dav1d-sys (user decision); iOS needs a Mac; click-through needs a real desktop.
 **Work:** security audit over the new engines; load +
 performance benchmarks (large PDFs, batch OCR, concurrent
 jobs, memory); cross-platform QA; Docker deployment for the
