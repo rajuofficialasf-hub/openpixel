@@ -1049,18 +1049,21 @@ mod tests {
     #[test]
     fn isolated_job_timeout_kills_child_and_pool_continues() {
         use std::process::Command;
+        // Child commands are `python3 -c` one-liners (see the
+        // note in openpixel-security's isolated.rs tests): `sleep`
+        // and `sh` do not exist on Windows, so the pool tests
+        // must not shell out to them.
         let started = Instant::now();
         let runner: Arc<IsolatedRunner> = Arc::new(|job: &Job| {
             if job.input.to_string_lossy().contains("slow") {
-                let mut cmd = Command::new("sleep");
-                cmd.arg("60");
+                let mut cmd = Command::new("python3");
+                cmd.args(["-c", "import time; time.sleep(60)"]);
                 ChildJobSpec::new(cmd)
             } else {
                 // Fast job: write 5 bytes to the job's output so
                 // the pool can report its size.
-                let mut cmd = Command::new("sh");
-                cmd.arg("-c")
-                    .arg("printf hello > \"$0\"")
+                let mut cmd = Command::new("python3");
+                cmd.args(["-c", "import sys; open(sys.argv[1], 'wb').write(b'hello')"])
                     .arg(job.output.clone());
                 ChildJobSpec::new(cmd)
             }
@@ -1130,9 +1133,8 @@ mod tests {
     fn isolated_job_success_records_done() {
         use std::process::Command;
         let runner: Arc<IsolatedRunner> = Arc::new(|job: &Job| {
-            let mut cmd = Command::new("sh");
-            cmd.arg("-c")
-                .arg("printf hello > \"$0\"")
+            let mut cmd = Command::new("python3");
+            cmd.args(["-c", "import sys; open(sys.argv[1], 'wb').write(b'hello')"])
                 .arg(job.output.clone());
             ChildJobSpec::new(cmd)
         });
@@ -1149,8 +1151,11 @@ mod tests {
     fn isolated_job_child_failure_is_recorded_not_a_timeout() {
         use std::process::Command;
         let runner: Arc<IsolatedRunner> = Arc::new(|_: &Job| {
-            let mut cmd = Command::new("sh");
-            cmd.args(["-c", "echo bad input >&2; exit 2"]);
+            let mut cmd = Command::new("python3");
+            cmd.args([
+                "-c",
+                "import sys; sys.stderr.write('bad input\\n'); sys.exit(2)",
+            ]);
             ChildJobSpec::new(cmd)
         });
         let manager = JobManager::new_isolated(
