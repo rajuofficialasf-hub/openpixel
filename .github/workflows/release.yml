@@ -4,8 +4,16 @@
 # - Builds the CLI (cargo test --workspace + cargo build --release)
 #   and the Tauri desktop app (npm run tauri build) on all three OSes.
 # - Uploads the resulting binaries / installers as workflow artifacts
-#   (actions/upload-artifact). Nothing is published: there is no
-#   release-creation step, no upload to any store, no deploy.
+#   (actions/upload-artifact). Nothing is published by the build
+#   jobs: there is no release-creation step in them, no upload to
+#   any store, no deploy.
+# - The `release` job at the bottom is the ONLY publishing step:
+#   it runs on manual dispatch only (`if: github.event_name ==
+#   'workflow_dispatch'`), after the build jobs on the same
+#   commit, and creates the public GitHub Release v0.1.0 from
+#   their artifacts. Added 18 Nov 2026 with Raju's explicit yes
+#   ("হ্যাঁ, v0.1.0 Release করো"). Never add a tag-push trigger:
+#   a release must always be a deliberate manual dispatch.
 # - Studio Phase 1 added a fourth job, wasm-and-licenses: a
 #   wasm32 build check (openpixel-wasm + openpixel-pdf) and a
 #   `cargo deny check licenses` run (deny.toml — AGPL/GPL/LGPL
@@ -545,3 +553,77 @@ jobs:
 
       - name: Check licences
         run: cargo deny check licenses
+
+  # ------------------------------------------------------------- Release
+  # The ONLY publishing step in this workflow. Manual dispatch only:
+  # `if: github.event_name == 'workflow_dispatch'` — on push/PR
+  # this job is skipped. It runs after ALL build jobs on the same
+  # commit (needs:), downloads their artifacts, and creates the
+  # public GitHub Release v0.1.0 with `gh release create`
+  # (GITHUB_TOKEN, contents: write). The tag is created by that
+  # command at the dispatched commit when it does not exist yet.
+  # Assets: the Linux CLI tarball (+ .sha256, SHA256SUMS), the
+  # three CLI binaries, and the desktop installers from all three
+  # desktop jobs (.deb, .AppImage, .msi, .exe, .dmg, .app).
+  # The web app is NOT a release asset — it deploys continuously
+  # to Cloudflare Pages. Added 18 Nov 2026 with Raju's explicit
+  # yes. Do NOT add a tag-push trigger: a release must always be
+  # a deliberate manual dispatch, never an accident of a push.
+  release:
+    name: Release v0.1.0
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'workflow_dispatch'
+    needs: [cli, desktop, web, wasm-and-licenses]
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Download CLI tarball (Linux)
+        uses: actions/download-artifact@v4
+        with:
+          name: openpixel-cli-tarball-Linux-X64
+          path: release-assets
+
+      - name: Download CLI binaries
+        uses: actions/download-artifact@v4
+        with:
+          pattern: openpixel-cli-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Download desktop installers
+        uses: actions/download-artifact@v4
+        with:
+          pattern: openpixel-desktop-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: List release assets
+        run: find release-assets -type f | sort
+
+      - name: Create release v0.1.0
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create v0.1.0 $(find release-assets -type f | sort) \
+            --title "OpenPixel Studio v0.1.0" \
+            --notes "OpenPixel Studio v0.1.0 — the first release.
+
+          One platform for images, PDFs, OCR and documents — local-first, no account, files never leave your device (web) or your machine (CLI/desktop).
+
+          Highlights
+          - Image engine: convert, resize, process and batch 20+ formats (JPEG, PNG, WebP, AVIF, HEIC, JXL, SVG, TIFF, QOI and more) — Rust core, CLI + desktop + web (WASM).
+          - PDF: merge, split, rotate, extract, reorder, compress, redact, edit overlays, sign, sanitise, repair, OCR to searchable PDF, PDF to image, text extraction.
+          - OCR: English + Bengali (Tesseract), searchable PDFs, preprocessing (deskew, denoise, threshold).
+          - Documents: LibreOffice conversion (docx/xlsx/pptx/odt/ods/odp and PDF).
+          - Web app: https://openpixel.pages.dev — convert, resize, PDF tools and OCR, all in the browser.
+          - Desktop: Windows, macOS and Linux installers (Tauri), same engines, offline.
+
+          Honest limits
+          - Web: AVIF is not a conversion target (the WASM build is dav1d-free); metadata is stripped on the web; Office conversion and PDF protect/sign are CLI/desktop-only.
+          - CLI needs libtesseract + language data installed for OCR; the Linux tarball ships libpdfium.
+          - No backend, no accounts — everything runs locally.
+          - Android/iOS apps are not in this release." \
+            --target ${{ github.sha }}

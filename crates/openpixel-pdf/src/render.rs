@@ -591,40 +591,48 @@ mod tests {
     #[test]
     fn tauri_resource_candidates_cover_deb_appimage_and_macos_layouts() {
         // The platform library name is OS-dependent (libpdfium.so
-        // on Linux); assert on the directory tail, not the filename.
+        // on Linux, libpdfium.dylib on macOS, pdfium.dll on
+        // Windows) — build the expected tails from the same name
+        // the resolver uses. A hardcoded `libpdfium` failed the
+        // Windows run (run #41: every candidate ends in
+        // pdfium.dll there).
+        use pdfium_render::prelude::Pdfium;
+        let lib = Pdfium::pdfium_platform_library_name()
+            .to_string_lossy()
+            .into_owned();
         let has_tail = |paths: &[std::path::PathBuf], tail: &str| {
             paths
                 .iter()
                 .any(|p| p.to_string_lossy().replace('\\', "/").contains(tail))
         };
         // Installed .deb: /usr/bin/openpixel-desktop ->
-        // /usr/lib/openpixel-desktop/libpdfium.so.
+        // /usr/lib/openpixel-desktop/<lib>.
         let deb = super::worker::tauri_resource_candidates(std::path::Path::new(
             "/usr/bin/openpixel-desktop",
         ));
         assert!(
-            has_tail(&deb, "bin/../lib/openpixel-desktop/libpdfium"),
+            has_tail(&deb, &format!("bin/../lib/openpixel-desktop/{lib}")),
             "deb candidates: {deb:?}"
         );
         // AppImage mount: $APPDIR/usr/bin/... ->
-        // $APPDIR/usr/lib/openpixel-desktop/libpdfium.so.
+        // $APPDIR/usr/lib/openpixel-desktop/<lib>.
         let appimage = super::worker::tauri_resource_candidates(std::path::Path::new(
             "/tmp/.mount-OpenPixel/usr/bin/openpixel-desktop",
         ));
         assert!(
             has_tail(
                 &appimage,
-                ".mount-OpenPixel/usr/bin/../lib/openpixel-desktop/libpdfium"
+                &format!(".mount-OpenPixel/usr/bin/../lib/openpixel-desktop/{lib}")
             ),
             "appimage candidates: {appimage:?}"
         );
         // macOS .app: Contents/MacOS/OpenPixel ->
-        // Contents/Resources/libpdfium.dylib.
+        // Contents/Resources/<lib>.
         let macos = super::worker::tauri_resource_candidates(std::path::Path::new(
             "/Applications/OpenPixel.app/Contents/MacOS/OpenPixel",
         ));
         assert!(
-            has_tail(&macos, "MacOS/../Resources/libpdfium"),
+            has_tail(&macos, &format!("MacOS/../Resources/{lib}")),
             "macos candidates: {macos:?}"
         );
         // The resource-dir candidates never outrank the env vars:
