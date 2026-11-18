@@ -57,7 +57,7 @@ import GridOnIcon from '@mui/icons-material/GridOn'
 import { NAV_GROUPS, ROUTE_TITLES, searchTools, type RouteId, type ToolEntry } from '../../lib/routes'
 import { NotifyContext } from './notify'
 import { translate } from '../../lib/i18n'
-import { useI18n } from '../../lib/i18n-context'
+import { useI18n } from '../../lib/use-i18n'
 import { resolveTheme, saveSettings, type Settings } from '../../lib/settings'
 
 const SIDEBAR_WIDTH = 248

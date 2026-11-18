@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { Box, Typography } from '@mui/material'
 import { alpha } from '@mui/material/styles'
 import { visuallyHidden } from '@mui/utils'
-import { useI18n } from '../lib/i18n-context'
+import { useI18n } from '../lib/use-i18n'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 
 interface DropZoneProps {

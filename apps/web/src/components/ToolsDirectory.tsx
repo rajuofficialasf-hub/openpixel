@@ -22,7 +22,7 @@ import { CATEGORIES, ROUTE_TITLES, searchTools, TOOLS, type RouteId, type ToolCa
 import { formatDate, loadActivity } from '../lib/activity'
 import { ToolCard } from './ToolCard'
 import { plural, translate } from '../lib/i18n'
-import { useI18n } from '../lib/i18n-context'
+import { useI18n } from '../lib/use-i18n'
 
 export type ToolsCategoryFilter = ToolCategory | 'all'
 

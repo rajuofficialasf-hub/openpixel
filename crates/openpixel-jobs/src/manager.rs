@@ -721,9 +721,15 @@ mod tests {
     use std::sync::Barrier;
 
     fn test_job(input: &str) -> (PathBuf, PathBuf, ImageFormat, ConvertOptions) {
+        // The output lives in the OS temp dir, not a hardcoded
+        // `/tmp/...`: /tmp does not exist on the Windows runner,
+        // so any isolated test that really writes a file (via the
+        // python3 one-liner) failed there with FileNotFoundError
+        // while the same tests passed on Linux/macOS (run
+        // 44214404851). temp_dir() exists on every platform.
         (
             PathBuf::from(input),
-            PathBuf::from(format!("/tmp/out-{input}")),
+            std::env::temp_dir().join(format!("out-{input}")),
             ImageFormat::Png,
             ConvertOptions::default(),
         )

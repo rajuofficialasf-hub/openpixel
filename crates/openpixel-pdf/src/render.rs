@@ -642,19 +642,27 @@ mod tests {
         // a tempdir and assert a candidate really exists on disk
         // (the `..` in the candidate path resolves through the
         // filesystem, so `is_file()` is the honest check).
+        //
+        // Stage the file under the PLATFORM library name
+        // (libpdfium.so / libpdfium.dylib / pdfium.dll) — the
+        // resolver builds candidates with exactly that name, so
+        // staging a hardcoded `.so` failed on macOS (run
+        // 44214404851: no candidate ended in `.so` there).
+        use pdfium_render::prelude::Pdfium;
         let root = tempfile::tempdir().expect("tempdir");
         let bin = root
             .path()
             .join("usr")
             .join("bin")
             .join("openpixel-desktop");
-        let lib = root
-            .path()
-            .join("usr")
-            .join("lib")
-            .join("OpenPixel")
-            .join("resources")
-            .join("libpdfium.so");
+        let lib = Pdfium::pdfium_platform_library_name_at_path(
+            &root
+                .path()
+                .join("usr")
+                .join("lib")
+                .join("OpenPixel")
+                .join("resources"),
+        );
         std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
         std::fs::create_dir_all(lib.parent().unwrap()).unwrap();
         std::fs::write(&bin, b"fake exe").unwrap();
