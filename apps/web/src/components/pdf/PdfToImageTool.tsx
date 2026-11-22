@@ -14,7 +14,7 @@ import {
   renderPdfPageBlob,
   PDF_RENDER_SCALES,
 } from '../../lib/pdf'
-import { PdfToolPage } from './shared'
+import { PdfJsCaption, PdfToolPage } from './shared'
 import { downloadBlob, usePdfFile, type PdfToolProps } from './usePdfFile'
 
 function metaRow(label: string, value: string | null | undefined): { label: string; value: string } | null {
@@ -145,7 +145,7 @@ export function PdfToImageTool({ initialFiles, onInitialFilesConsumed }: PdfTool
     <PdfToolPage
       headingId="pdf-to-image-heading"
       title="PDF to Image"
-      description="Render PDF pages to PNG or JPEG and download them — rendered with pdf.js in this browser."
+      description="Render PDF pages to PNG or JPEG and download them."
       pdf={pdf}
       // The info card below already shows file/size/pages (and owns
       // #pdf-page-count), so the default file summary is suppressed
@@ -234,10 +234,7 @@ export function PdfToImageTool({ initialFiles, onInitialFilesConsumed }: PdfTool
         </Typography>
       )}
       {previewError && <Alert severity="error">{previewError}</Alert>}
-      <Typography variant="caption" color="text.secondary">
-        Preview and PDF to image render with pdf.js in this browser — not with PDFium, so very complex pages may
-        look slightly different from the CLI render.
-      </Typography>
+      <PdfJsCaption />
     </PdfToolPage>
   )
 }

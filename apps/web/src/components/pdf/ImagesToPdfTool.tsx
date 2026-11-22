@@ -20,14 +20,14 @@ export function ImagesToPdfTool({ initialFiles: _initialFiles, onInitialFilesCon
 
   const run = async () => {
     if (imageFiles.length === 0) return
-    pdf.setBusy('Images to PDF')
+    pdf.setBusy('Image to PDF')
     pdf.setError(null)
     pdf.setStatus(null)
     const images: Uint8Array[] = []
     for (const f of imageFiles) images.push(new Uint8Array(await f.arrayBuffer()))
     const built = await pdfFromImages(images, imagePageSize === 'Original' ? null : imagePageSize)
     if (!built) {
-      pdf.setError(wasmMissing('Images to PDF'))
+      pdf.setError(wasmMissing('Image to PDF'))
       pdf.setBusy(null)
       return
     }
@@ -35,19 +35,19 @@ export function ImagesToPdfTool({ initialFiles: _initialFiles, onInitialFilesCon
     const pages = builtInfo?.page_count ?? imageFiles.length
     pdf.setResults([
       {
-        label: 'Images to PDF',
+        label: 'Image to PDF',
         blob: new Blob([built as BlobPart], { type: 'application/pdf' }),
         filename: 'images.pdf',
         pages,
       },
     ])
-    pdf.setStatus(`Images to PDF: ${pages} pages`)
+    pdf.setStatus(`Image to PDF: ${pages} pages`)
     recordActivity({
       fileName: 'images.pdf',
       fileSize: built.length,
       fileType: 'application/pdf',
       tool: 'pdf-images-to-pdf',
-      result: `Images to PDF: ${pages} pages`,
+      result: `Image to PDF: ${pages} pages`,
     })
     pdf.setBusy(null)
   }
@@ -66,8 +66,13 @@ export function ImagesToPdfTool({ initialFiles: _initialFiles, onInitialFilesCon
 
   const summary = (
     <Box>
-      <Typography variant="body2">
-        {imageFiles.length} image{imageFiles.length === 1 ? '' : 's'}: {imageFiles.map((f) => f.name).join(', ')}
+      <Typography
+        variant="body2"
+        sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      >
+        {imageFiles.length} image{imageFiles.length === 1 ? '' : 's'}:{' '}
+        {imageFiles.slice(0, 3).map((f) => f.name).join(', ')}
+        {imageFiles.length > 3 ? `, and ${imageFiles.length - 3} more` : ''}
       </Typography>
       <Button type="button" variant="outlined" size="small" onClick={() => setImageFiles([])} sx={{ mt: 1 }}>
         Choose different images
@@ -88,7 +93,7 @@ export function ImagesToPdfTool({ initialFiles: _initialFiles, onInitialFilesCon
         id: 'pdf-from-images-button',
         label: 'Build PDF from images',
         busyLabel: 'Building…',
-        busyKey: 'Images to PDF',
+        busyKey: 'Image to PDF',
         onClick: () => void run(),
         disabled: imageFiles.length === 0,
       }}

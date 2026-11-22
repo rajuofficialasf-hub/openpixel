@@ -58,7 +58,7 @@ export function ToolCard({ tool, onNavigate }: ToolCardProps) {
     ) : tool.status === 'cli-only' ? (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Typography sx={MONO_META}>CLI & desktop only</Typography>
-        <TerminalIcon fontSize="small" color="action" />
+        <TerminalIcon color="action" sx={{ fontSize: 16 }} />
       </Box>
     ) : (
       <Typography sx={MONO_META}>Coming soon</Typography>

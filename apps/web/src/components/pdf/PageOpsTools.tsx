@@ -210,7 +210,7 @@ export function ReverseTool({ initialFiles, onInitialFilesConsumed }: PdfToolPro
       title="Reverse PDF Pages"
       description="Flip the page order — the last page becomes the first. No settings needed."
       pdf={pdf}
-      primary={{ id: 'pdf-reverse-button', label: 'Reverse order', busyLabel: 'Reversing…', busyKey: 'Reversed PDF', onClick: run, variant: 'outlined' }}
+      primary={{ id: 'pdf-reverse-button', label: 'Reverse order', busyLabel: 'Reversing…', busyKey: 'Reversed PDF', onClick: run }}
     />
   )
 }
@@ -224,7 +224,7 @@ export function BookletTool({ initialFiles, onInitialFilesConsumed }: PdfToolPro
       title="Booklet Layout"
       description="Reorder the pages into a booklet layout, ready to print and fold. No settings needed."
       pdf={pdf}
-      primary={{ id: 'pdf-booklet-button', label: 'Make booklet', busyLabel: 'Making booklet…', busyKey: 'Booklet PDF', onClick: run, variant: 'outlined' }}
+      primary={{ id: 'pdf-booklet-button', label: 'Make booklet', busyLabel: 'Making booklet…', busyKey: 'Booklet PDF', onClick: run }}
     />
   )
 }

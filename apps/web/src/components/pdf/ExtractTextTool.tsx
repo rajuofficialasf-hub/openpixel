@@ -60,7 +60,7 @@ export function ExtractTextTool({ initialFiles, onInitialFilesConsumed }: PdfToo
           overflowY: 'auto',
           m: 0,
           p: 2,
-          borderRadius: 3,
+          borderRadius: 1,
           border: 1,
           borderColor: 'divider',
           bgcolor: 'background.paper',

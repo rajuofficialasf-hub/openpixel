@@ -246,12 +246,10 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
           title="Convert one image"
           description={
             <>
-              Files never leave your device — conversion runs locally in your browser. PNG, JPEG and WebP output
-              via the canvas
+              Files never leave your device — conversion runs locally in your browser.{' '}
               {wasmSupport
-                ? ', plus the built-in WASM engine’s BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF targets (and sources) — AVIF still needs the native CLI'
-                : ', plus the WASM engine’s extra formats when its module is built (see Settings, About)'}
-              . Everything else needs the native CLI.
+                ? 'Canvas targets, plus the WASM engine’s extra formats — AVIF still needs the native CLI.'
+                : 'Canvas targets only — the WASM engine’s extra formats need its module built (see Settings, About).'}
             </>
           }
         />
@@ -260,7 +258,7 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
           <DropZone
             inputId="convert-file"
             label="Drop an image here"
-            hint="PNG, JPEG, WebP, GIF, BMP, SVG, AVIF — plus TIFF, QOI, HEIC, JXL and JPEG 2000 when the WASM engine is built. Nothing is uploaded."
+            hint="PNG, JPEG, WebP, GIF, BMP, SVG, AVIF — plus TIFF, QOI, HEIC, JXL and JPEG 2000 when the WASM engine is built."
             multiple={false}
             accept="image/*"
             onFiles={handleFiles}
@@ -512,11 +510,11 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
           <Box
             role="status"
             sx={{
-              borderRadius: 3,
+              borderRadius: 1,
               border: 1,
               borderColor: (t) => alpha(t.palette.warning.main, 0.4),
               bgcolor: (t) => alpha(t.palette.warning.main, 0.08),
-              p: 2.5,
+              p: 3,
             }}
           >
             <Box component="ul" sx={{ m: 0, pl: 2.5, typography: 'body2' }}>
@@ -533,14 +531,19 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
           <Box
             role="status"
             sx={{
-              borderRadius: 3,
+              borderRadius: 1,
               border: 1,
               borderColor: (t) => alpha(t.palette.success.main, 0.4),
               bgcolor: (t) => alpha(t.palette.success.main, 0.08),
-              p: 2.5,
+              p: 3,
             }}
           >
-            <Typography variant="body1" fontWeight={600} color="success.main">
+            {probed && (
+              <Typography variant="body2" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+                {formatLabel(probed.format)} → {formatLabel(targetFormat)}
+              </Typography>
+            )}
+            <Typography variant="body1" fontWeight={500} color="success.main" sx={{ mt: 0.5 }}>
               Converted: {formatBytes(file.size)} → {formatBytes(result.bytes)} ({result.width} ×{' '}
               {result.height} px)
             </Typography>
@@ -553,7 +556,6 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
               <Button
                 type="button"
                 variant="contained"
-                color="success"
                 startIcon={<DownloadIcon />}
                 onClick={() => downloadBlob(result.blob, outputFileName(file.name, targetFormat))}
               >

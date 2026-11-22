@@ -20,8 +20,8 @@ export function EditorShell({ main, tools }: EditorShellProps) {
     <Box
       sx={{
         display: 'grid',
-        gap: 2,
-        gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) minmax(0, 1fr)' },
+        gap: 3,
+        gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 7fr) minmax(0, 5fr)' },
         alignItems: 'start',
       }}
     >

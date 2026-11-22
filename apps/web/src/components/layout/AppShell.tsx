@@ -268,7 +268,10 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
   )
 
   // One tool = one page: a PDF tool page crumbs as
-  // Overview / Tools / PDF Tools / <tool>.
+  // Overview / Tools / PDF Tools / <tool>. The first crumb is
+  // always the Overview home link — when the page itself IS the
+  // overview, that would read "Overview / Overview", so the
+  // trailing crumb is dropped in that case.
   const isPdfTool = route !== 'pdf' && route.startsWith('pdf-')
   const crumbs =
     route === 'home'
@@ -280,7 +283,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
             : []),
           ...(isPdfTool ? [{ label: t('crumb.pdfTools'), route: 'pdf' as RouteId }] : []),
           { label: routeLabel(route), route },
-        ]
+        ].filter((c, i, all) => !(i === all.length - 1 && all.length > 1 && c.label === all[0].label))
 
   return (
     <NotifyContext.Provider value={(message) => setSnack(message)}>
@@ -395,7 +398,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                 onClick={toggleLanguage}
                 aria-label={lang === 'bn' ? t('header.languageToEn') : t('header.languageToBn')}
                 title={lang === 'bn' ? t('header.languageToEn') : t('header.languageToBn')}
-                sx={{ minWidth: 40, color: 'inherit', fontWeight: 700 }}
+                sx={{ minWidth: 40, color: 'inherit', fontWeight: 600 }}
               >
                 {lang === 'bn' ? 'EN' : 'বাং'}
               </Button>

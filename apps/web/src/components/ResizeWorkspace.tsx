@@ -6,7 +6,6 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   FormControlLabel,
   Select,
   Slider,
@@ -89,22 +88,24 @@ function downloadBlob(blob: Blob, filename: string): void {
 
 let nextId = 0
 
-function statusChipProps(status: ItemStatus): {
-  color: 'success' | 'error' | 'info' | 'default'
+/** Quiet mono status text for a list row — the status carries
+    its meaning in words and a muted semantic colour, not a pill. */
+function statusTextProps(status: ItemStatus): {
+  color: 'success.main' | 'error.main' | 'info.main' | 'text.secondary'
   label: string
 } {
   switch (status) {
     case 'done':
-      return { color: 'success', label: 'done' }
+      return { color: 'success.main', label: 'done' }
     case 'failed':
     case 'skipped':
-      return { color: 'error', label: status }
+      return { color: 'error.main', label: status }
     case 'resizing':
-      return { color: 'info', label: 'Resizing…' }
+      return { color: 'info.main', label: 'Resizing…' }
     case 'probing':
-      return { color: 'info', label: 'Reading…' }
+      return { color: 'info.main', label: 'Reading…' }
     default:
-      return { color: 'default', label: status }
+      return { color: 'text.secondary', label: status }
   }
 }
 
@@ -424,14 +425,14 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
         <ToolPageHeader
           headingId="resize-heading"
           title="Resize & compress"
-          description="Change dimensions and shrink file size without losing quality — the resize runs through the real engine (Lanczos3), always from the original file. In-browser resize strips EXIF/ICC/XMP; use the native CLI to keep it. Files never leave your device."
+          description="Change dimensions and shrink file size — how much quality is kept depends on the format. The resize runs through the real engine (Lanczos3), always from the original file. Files never leave your device."
         />
 
         {items.length === 0 && (
           <DropZone
             inputId="resize-file"
             label="Drop images here"
-            hint="One image for a detailed preview, or several to resize them all with the same settings. Nothing is uploaded."
+            hint="One image for a detailed preview, or several to resize them all with the same settings."
             multiple
             accept="image/*"
             onFiles={handleFiles}
@@ -700,11 +701,11 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
           <Box
             role="status"
             sx={{
-              borderRadius: 3,
+              borderRadius: 1,
               border: 1,
               borderColor: (t) => alpha(t.palette.warning.main, 0.4),
               bgcolor: (t) => alpha(t.palette.warning.main, 0.08),
-              p: 2.5,
+              p: 3,
             }}
           >
             <Box component="ul" sx={{ m: 0, pl: 2.5, typography: 'body2' }}>
@@ -755,7 +756,10 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                           sx={{ display: 'block', maxHeight: 320, maxWidth: '100%', borderRadius: 1, objectFit: 'contain', mt: 1 }}
                         />
                         <Typography variant="body2" sx={{ mt: 1 }} role="status">
-                          Resized: {formatBytes(single.file.size)} → {formatBytes(single.result.bytes)} (
+                          <Box component="span" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+                            {formatLabel(single.sourceFormat)} → {formatLabel(targetFormat)}
+                          </Box>{' '}
+                          · {formatBytes(single.file.size)} → {formatBytes(single.result.bytes)} (
                           {single.result.width} × {single.result.height} px) —{' '}
                           {(() => {
                             // The honest change: a re-encode can make
@@ -801,7 +805,6 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                     <Button
                       type="button"
                       variant="contained"
-                      color="success"
                       id="resize-download"
                       startIcon={<DownloadIcon />}
                       onClick={() => downloadBlob(single.result!.blob, outputFileName(single.file.name, targetFormat))}
@@ -833,7 +836,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
             <CardContent>
               <Stack spacing={1.5}>
                 {items.map((item) => {
-                  const chip = statusChipProps(item.status)
+                  const status = statusTextProps(item.status)
                   return (
                     <Box
                       key={item.id}
@@ -843,8 +846,8 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                         alignItems: 'center',
                         border: 1,
                         borderColor: 'divider',
-                        borderRadius: 2,
-                        p: 1.5,
+                        borderRadius: 1,
+                        p: 2,
                         flexWrap: 'wrap',
                       }}
                     >
@@ -855,7 +858,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                         sx={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 1 }}
                       />
                       <Box sx={{ flex: 1, minWidth: 180 }}>
-                        <Typography variant="body2" fontWeight={600} noWrap>
+                        <Typography variant="body2" fontWeight={500} noWrap>
                           {item.file.name}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
@@ -876,7 +879,9 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                           </Typography>
                         )}
                       </Box>
-                      <Chip color={chip.color} label={chip.label} size="small" />
+                      <Typography variant="caption" sx={{ fontFamily: 'monospace', color: status.color }}>
+                        {status.label}
+                      </Typography>
                       {item.result && (
                         <Button
                           type="button"

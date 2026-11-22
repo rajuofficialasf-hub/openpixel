@@ -7,6 +7,7 @@
 import { useMemo, useState } from 'react'
 import {
   Box,
+  Button,
   Chip,
   FormControl,
   Grid,
@@ -65,7 +66,7 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
   }, [activity])
 
   return (
-    <Stack spacing={3}>
+    <Stack spacing={4}>
       <Box>
         <Typography variant="h5" component="h2" id="tools-heading">
           {t('tools.title')}
@@ -133,7 +134,7 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
                   flexWrap: 'wrap',
                   border: 1,
                   borderColor: 'divider',
-                  borderRadius: 2,
+                  borderRadius: 1,
                   px: 2,
                   py: 1.5,
                   bgcolor: 'background.paper',
@@ -147,7 +148,9 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
                     {formatDate(r.at)}
                   </Typography>
                 </Box>
-                <Chip size="small" label={t('common.openTool')} color="primary" clickable onClick={() => onNavigate(r.route)} />
+                <Button size="small" onClick={() => onNavigate(r.route)}>
+                  {t('common.openTool')}
+                </Button>
               </Box>
             ))}
           </Stack>
@@ -156,7 +159,10 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
 
       {showSections ? (
         CATEGORIES.map((cat) => {
-          const tools = TOOLS.filter((t) => t.categories.includes(cat.id))
+          // Each tool appears once, under its first (primary)
+          // category — a tool in two categories used to render
+          // twice, once per section.
+          const tools = TOOLS.filter((t) => t.categories[0] === cat.id)
           return (
             <Box key={cat.id} component="section" aria-labelledby={`tools-cat-${cat.id}`}>
               <Typography variant="h6" component="h3" id={`tools-cat-${cat.id}`}>

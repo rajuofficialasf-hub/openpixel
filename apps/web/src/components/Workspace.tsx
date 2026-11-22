@@ -217,7 +217,7 @@ function EmptyHistory({ onNavigate }: { onNavigate: (route: RouteId) => void }) 
   const { t } = useI18n()
   return (
     <Card>
-      <CardContent sx={{ textAlign: 'center', py: 5 }}>
+      <CardContent sx={{ textAlign: 'center', py: 4 }}>
         <FolderOpenIcon color="action" sx={{ fontSize: 40 }} />
         <Typography variant="subtitle1" sx={{ mt: 1 }}>
           {t('ws.noFiles')}

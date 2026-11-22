@@ -10,7 +10,7 @@ describe('i18n', () => {
   it('returns the Bengali string when present', () => {
     expect(translate('bn', 'nav.tools')).toBe('সব টুল')
     expect(translate('bn', 'nav.settings')).toBe('সেটিংস')
-    expect(translate('bn', 'ws.welcome')).toBe('আবার স্বাগতম')
+    expect(translate('bn', 'ws.welcome')).toBe('ওভারভিউ')
   })
 
   it('keeps tool names in English in Bengali mode', () => {

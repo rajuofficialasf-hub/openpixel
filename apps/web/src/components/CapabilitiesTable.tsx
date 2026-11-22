@@ -17,7 +17,7 @@ import {
   BROWSER_DECODABLE,
   BROWSER_ENCODABLE,
   CAPABILITIES,
-  formatLabel,
+  formatName,
 } from '../lib/capabilities'
 import { ToolPageHeader } from './ToolPage'
 
@@ -91,7 +91,10 @@ export function CapabilitiesTable() {
           aria-label="Filter formats"
         >
           <ToggleButton value="all" aria-label="All formats">
-            All formats ({CAPABILITIES.length})
+            All formats
+            <Box component="span" sx={{ fontFamily: 'monospace', color: 'text.secondary', ml: 1 }}>
+              {CAPABILITIES.length}
+            </Box>
           </ToggleButton>
           <ToggleButton value="browser" aria-label="Works in this browser">
             Works in this browser
@@ -119,16 +122,24 @@ export function CapabilitiesTable() {
               {rows.map((cap) => (
                 <TableRow key={cap.format_id}>
                   <TableCell component="th" scope="row" sx={{ fontWeight: 500 }}>
-                    {formatLabel(cap.format_id)}
+                    {formatName(cap.format_id)}
                   </TableCell>
                   <TableCell sx={{ fontFamily: 'monospace', fontSize: '0.85em' }}>
                     {cap.extensions.map((e) => `.${e}`).join(', ')}
                   </TableCell>
-                  <TableCell>{cap.can_decode ? 'Yes' : 'No'}</TableCell>
-                  <TableCell>{cap.can_encode ? 'Yes' : 'No'}</TableCell>
-                  <TableCell>{cap.supports_alpha ? 'Yes' : 'No'}</TableCell>
-                  <TableCell>{cap.supports_animation ? 'Yes' : 'No'}</TableCell>
-                  <TableCell>{browserNote(cap.format_id, cap.can_decode, cap.can_encode)}</TableCell>
+                  <TableCell sx={{ color: cap.can_decode ? 'text.secondary' : 'text.disabled' }}>
+                    {cap.can_decode ? 'Yes' : 'No'}
+                  </TableCell>
+                  <TableCell sx={{ color: cap.can_encode ? 'text.secondary' : 'text.disabled' }}>
+                    {cap.can_encode ? 'Yes' : 'No'}
+                  </TableCell>
+                  <TableCell sx={{ color: cap.supports_alpha ? 'text.secondary' : 'text.disabled' }}>
+                    {cap.supports_alpha ? 'Yes' : 'No'}
+                  </TableCell>
+                  <TableCell sx={{ color: cap.supports_animation ? 'text.secondary' : 'text.disabled' }}>
+                    {cap.supports_animation ? 'Yes' : 'No'}
+                  </TableCell>
+                  <TableCell sx={{ minWidth: 150 }}>{browserNote(cap.format_id, cap.can_decode, cap.can_encode)}</TableCell>
                   <TableCell sx={{ fontSize: '0.85em' }}>{cap.status}</TableCell>
                 </TableRow>
               ))}

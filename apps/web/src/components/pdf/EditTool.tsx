@@ -33,7 +33,7 @@ import {
 } from '../../lib/pdf'
 import { PdfThumbnails } from '../PdfThumbnails'
 import { DropZone } from '../DropZone'
-import { PdfResultBoxes, WasmWarning } from './shared'
+import { PdfJsCaption, PdfResultBoxes, WasmWarning } from './shared'
 import { downloadBlob, usePdfFile, wasmMissing, type PdfToolProps } from './usePdfFile'
 
 function metaRow(label: string, value: string | null | undefined): { label: string; value: string } | null {
@@ -299,7 +299,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
             Edit PDF
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Add text, highlights, page numbers and headers — entirely in your browser.
+            Add text, highlights, page numbers and headers.
           </Typography>
         </Box>
 
@@ -487,10 +487,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                             : `Download page ${previewPage} as ${renderFormat.toUpperCase()}`}
                         </Button>
                       </Stack>
-                      <Typography variant="caption" color="text.secondary">
-                        Preview and PDF to image render with pdf.js in this browser — not with PDFium, so very
-                        complex pages may look slightly different from the CLI render.
-                      </Typography>
+                      <PdfJsCaption />
                     </Stack>
                   </CardContent>
                 </Card>
@@ -545,7 +542,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                           <TextField id="pdf-edit-y" size="small" label="Y (pt)" type="number" value={editY} onChange={(e) => setEditY(e.target.value)} sx={{ width: 90 }} />
                           <TextField id="pdf-edit-size" size="small" label="Size (pt)" type="number" value={editSize} onChange={(e) => setEditSize(e.target.value)} sx={{ width: 90 }} />
                           <TextField id="pdf-edit-color" size="small" label="Colour" type="color" value={editColor} onChange={(e) => setEditColor(e.target.value)} sx={{ width: 70 }} />
-                          <Button type="button" variant="contained" id="pdf-edit-text-button" onClick={handleEditText} disabled={pdf.busy !== null || pdf.wasmReady === false}>
+                          <Button type="button" variant="outlined" id="pdf-edit-text-button" onClick={handleEditText} disabled={pdf.busy !== null || pdf.wasmReady === false}>
                             {editing ? 'Adding…' : 'Add text'}
                           </Button>
                         </Stack>
@@ -566,14 +563,14 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                             <option value="top_center">Top centre</option>
                             <option value="top_right">Top right</option>
                           </Select>
-                          <Button type="button" variant="contained" id="pdf-edit-pagenum-button" onClick={handlePageNumbers} disabled={pdf.busy !== null || pdf.wasmReady === false}>
+                          <Button type="button" variant="outlined" id="pdf-edit-pagenum-button" onClick={handlePageNumbers} disabled={pdf.busy !== null || pdf.wasmReady === false}>
                             {editing ? 'Adding…' : 'Add page numbers'}
                           </Button>
                         </Stack>
                         <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap" sx={{ mt: 1.5 }}>
                           <TextField id="pdf-edit-header" size="small" label="Header" value={headerText} onChange={(e) => setHeaderText(e.target.value)} sx={{ width: 220 }} />
                           <TextField id="pdf-edit-footer" size="small" label="Footer" value={footerText} onChange={(e) => setFooterText(e.target.value)} sx={{ width: 220 }} />
-                          <Button type="button" variant="contained" id="pdf-edit-header-footer-button" onClick={handleHeaderFooter} disabled={pdf.busy !== null || pdf.wasmReady === false}>
+                          <Button type="button" variant="outlined" id="pdf-edit-header-footer-button" onClick={handleHeaderFooter} disabled={pdf.busy !== null || pdf.wasmReady === false}>
                             {editing ? 'Adding…' : 'Add header / footer'}
                           </Button>
                         </Stack>
@@ -584,10 +581,10 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                           <TextField id="pdf-highlight-page" size="small" label="Page" type="number" value={highlightPage} onChange={(e) => setHighlightPage(e.target.value)} sx={{ width: 90 }} />
                           <TextField id="pdf-highlight-x" size="small" label="X (pt)" type="number" value={highlightX} onChange={(e) => setHighlightX(e.target.value)} sx={{ width: 90 }} />
                           <TextField id="pdf-highlight-y" size="small" label="Y (pt)" type="number" value={highlightY} onChange={(e) => setHighlightY(e.target.value)} sx={{ width: 90 }} />
-                          <TextField id="pdf-highlight-w" size="small" label="Width (pt)" type="number" value={highlightW} onChange={(e) => setHighlightW(e.target.value)} sx={{ width: 100 }} />
-                          <TextField id="pdf-highlight-h" size="small" label="Height (pt)" type="number" value={highlightH} onChange={(e) => setHighlightH(e.target.value)} sx={{ width: 100 }} />
+                          <TextField id="pdf-highlight-w" size="small" label="Width (pt)" type="number" value={highlightW} onChange={(e) => setHighlightW(e.target.value)} sx={{ width: 90 }} />
+                          <TextField id="pdf-highlight-h" size="small" label="Height (pt)" type="number" value={highlightH} onChange={(e) => setHighlightH(e.target.value)} sx={{ width: 90 }} />
                           <TextField id="pdf-highlight-color" size="small" label="Colour" type="color" value={highlightColor} onChange={(e) => setHighlightColor(e.target.value)} sx={{ width: 70 }} />
-                          <Button type="button" variant="contained" id="pdf-highlight-button" onClick={handleHighlight} disabled={pdf.busy !== null || pdf.wasmReady === false}>
+                          <Button type="button" variant="outlined" id="pdf-highlight-button" onClick={handleHighlight} disabled={pdf.busy !== null || pdf.wasmReady === false}>
                             {editing ? 'Highlighting…' : 'Highlight'}
                           </Button>
                         </Stack>

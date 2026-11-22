@@ -123,6 +123,14 @@ export function formatLabel(formatId: string): string {
   return `${name} (.${ext})`
 }
 
+/** Bare format name, without the extension — for tables that
+    already have an Extensions column. */
+export function formatName(formatId: string): string {
+  const cap = formatById(formatId)
+  if (!cap) return formatId.toUpperCase()
+  return formatId === 'jpeg2000' ? 'JPEG 2000' : formatId === 'pnm' ? 'PNM' : formatId.toUpperCase()
+}
+
 /** Output filename for a source name converted to `targetFormat`. */
 export function outputFileName(sourceName: string, targetFormat: string): string {
   const stem = sourceName.replace(/\.[^.]*$/, '') || 'converted'

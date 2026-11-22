@@ -3,7 +3,7 @@ import { Box, Typography } from '@mui/material'
 import { alpha } from '@mui/material/styles'
 import { visuallyHidden } from '@mui/utils'
 import { useI18n } from '../lib/use-i18n'
-import CloudUploadIcon from '@mui/icons-material/CloudUpload'
+import UploadIcon from '@mui/icons-material/Upload'
 
 interface DropZoneProps {
   onFiles: (files: File[]) => void
@@ -16,11 +16,12 @@ interface DropZoneProps {
       workspace (the PDF page uses it) — same content, less air. */
   compact?: boolean
   /**
-   * Corner radius in MUI units (× theme radius 12px). Default 4
-   * (48px) is kept for the tool workspaces; the homepage passes
-   * 1.5 (18px) so the bench reads as a panel, not a pill.
+   * Corner radius in MUI units (× theme radius 12px). Default 1.5
+   * (18px) — the bench reads as a panel, not a pill.
    */
   radius?: number
+  /** Picker link text (default "Choose files or drag them here"). */
+  chooseLabel?: string
 }
 
 /**
@@ -38,7 +39,8 @@ export function DropZone({
   hint,
   inputId,
   compact = false,
-  radius = 4,
+  radius = 1.5,
+  chooseLabel,
 }: DropZoneProps) {
   const { t } = useI18n()
   const [dragging, setDragging] = useState(false)
@@ -101,7 +103,7 @@ export function DropZone({
           bgcolor: (t) => alpha(t.palette.primary.main, 0.08),
         }}
       >
-        <CloudUploadIcon color="primary" sx={{ fontSize: compact ? 24 : 32 }} />
+        <UploadIcon color="primary" sx={{ fontSize: compact ? 24 : 32 }} />
       </Box>
       <Typography variant="h6" component="p" sx={{ mt: compact ? 1.5 : 2 }}>
         {label}
@@ -110,7 +112,7 @@ export function DropZone({
         {hint}
       </Typography>
       <Typography variant="body2" color="primary" fontWeight={600} sx={{ mt: compact ? 1.5 : 2 }}>
-        {t('common.chooseFiles')}
+        {chooseLabel ?? t('common.chooseFiles')}
       </Typography>
       <Box
         component="input"

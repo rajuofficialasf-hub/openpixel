@@ -12,7 +12,6 @@ import {
   Stack,
   Typography,
 } from '@mui/material'
-import { alpha } from '@mui/material/styles'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import DownloadIcon from '@mui/icons-material/Download'
 import { formatBytes } from '../lib/capabilities'
@@ -140,17 +139,17 @@ export function OcrWorkspace() {
         <ToolPageHeader
           headingId="ocr-heading"
           title="Text recognition (OCR)"
-          description="Read the text out of a photo or scan, entirely in your browser. Files never leave your device — the engine and language data load from this site only when you run OCR."
+          description="Read the text out of a photo or scan. Files never leave your device — the engine and language data load from this site only when you run OCR."
         />
 
         <Box
           role="status"
           sx={{
-            borderRadius: 3,
+            borderRadius: 1,
             border: 1,
-            borderColor: (t) => alpha(t.palette.info.main, 0.4),
-            bgcolor: (t) => alpha(t.palette.info.main, 0.08),
-            p: 2.5,
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+            p: 3,
           }}
         >
           <Typography variant="body2">
@@ -166,7 +165,7 @@ export function OcrWorkspace() {
           <DropZone
             inputId="ocr-file"
             label="Drop an image here"
-            hint="Printed text in a photo or scan — PNG, JPEG, WebP and the other formats this browser decodes. Nothing is uploaded."
+            hint="Printed text in a photo or scan — PNG, JPEG, WebP and the other formats this browser decodes."
             multiple={false}
             accept="image/*"
             onFiles={handleFiles}
@@ -274,11 +273,11 @@ export function OcrWorkspace() {
           <Box
             role="status"
             sx={{
-              borderRadius: 3,
+              borderRadius: 1,
               border: 1,
-              borderColor: (t) => alpha(t.palette.info.main, 0.4),
-              bgcolor: (t) => alpha(t.palette.info.main, 0.08),
-              p: 2.5,
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+              p: 3,
             }}
           >
             <Typography variant="body2" id="ocr-progress">

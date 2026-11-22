@@ -36,6 +36,7 @@ export function CategoryIcon({ category }: { category: ToolCategory }) {
         bgcolor: (t) => `${t.palette.primary.main}14`,
         color: 'primary.main',
         flex: 'none',
+        '& .MuiSvgIcon-root': { fontSize: 18 },
       }}
     >
       {CATEGORY_ICONS[category]}

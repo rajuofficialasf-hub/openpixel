@@ -13,7 +13,7 @@ export function HelpPage() {
           Help Center
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 720 }}>
-          How OpenPixel Studio works, what it does with your files, and what it does not do.
+          How OpenPixel Studio works, what it does with your files, and what it does not do
         </Typography>
       </Box>
 

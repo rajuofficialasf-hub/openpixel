@@ -50,14 +50,6 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
   }
   const wasmSupport = useWasmSupport()
 
-  const codeSx = {
-    fontFamily: 'monospace',
-    fontSize: '0.85em',
-    bgcolor: 'action.hover',
-    px: 0.5,
-    borderRadius: 0.5,
-  }
-
   return (
     <Box component="section" aria-labelledby="settings-heading">
       <Stack spacing={3}>
@@ -232,6 +224,9 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                   {t('settings.clearSaved')}
                 </Button>
               </Stack>
+              <Typography variant="caption" color="text.secondary">
+                {t('settings.resetNote')}
+              </Typography>
             </Stack>
           </CardContent>
         </Card>
@@ -241,26 +236,16 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
             <Typography variant="overline" color="text.secondary">
               {t('settings.about')}
             </Typography>
-            <Typography variant="subtitle1" fontWeight={600} sx={{ mt: 1 }}>
+            <Typography variant="subtitle1" sx={{ mt: 1 }}>
               {t('settings.aboutTitle')}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              OpenPixel web (Phase 7) — React + TypeScript + Vite + Material UI, with a Three.js
-              animated background. All processing is local: there is no server, no account, and no
-              upload. Capability data is generated from the Rust engine with{' '}
-              <Box component="code" sx={codeSx}>
-                npm run generate:capabilities
-              </Box>
-              . WASM processing is available in this build: the real Rust engine compiles to
-              wasm32 as a dav1d-free build (`crates/openpixel-wasm`, see docs/WEB.md) and is
-              packaged into `public/wasm/` with{' '}
-              <Box component="code" sx={codeSx}>
-                npm run build:wasm
-              </Box>
-              ; conversion uses the browser canvas in a Web Worker for PNG / JPEG / WebP and
-              the WASM engine for the formats the canvas cannot handle (including BMP, which
-              the canvas cannot encode at all). AVIF is not available in
-              WASM (it needs the native libdav1d library).
+              OpenPixel Studio is a React + TypeScript web app — the file tools run in your
+              browser, and the heavy work is done by the real Rust engine compiled to
+              WebAssembly. The browser canvas handles PNG / JPEG / WebP; the WASM engine
+              handles the formats the canvas cannot (including BMP, which the canvas cannot
+              encode at all). AVIF is not available in the browser — it needs the native
+              libdav1d library.
             </Typography>
           </CardContent>
         </Card>
@@ -322,9 +307,6 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                 {wasmSupport
                   ? t('settings.wasmLoaded', { d: wasmSupport.decode.length, e: wasmSupport.encode.length })
                   : t('settings.wasmMissing')}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {t('settings.filesNeverStored')}
               </Typography>
             </Stack>
           </CardContent>

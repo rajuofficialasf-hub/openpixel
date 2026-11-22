@@ -11,7 +11,6 @@
  */
 import { useMemo } from 'react'
 import { Alert, Box, Grid, Stack, Typography } from '@mui/material'
-import { alpha } from '@mui/material/styles'
 import { TOOLS, type RouteId } from '../../lib/routes'
 import { DropZone } from '../DropZone'
 import { ToolCard } from '../ToolCard'
@@ -60,6 +59,7 @@ export function PdfPicker({ initialFiles, onInitialFilesConsumed, onNavigate }: 
             inputId="pdf-file"
             label="Drop a PDF here — it travels with you to the tool you pick"
             hint="Optional: you can also upload on the tool's own page. One PDF at a time."
+            chooseLabel="Choose a PDF"
             multiple={false}
             accept="application/pdf,.pdf"
             compact
@@ -92,11 +92,11 @@ export function PdfPicker({ initialFiles, onInitialFilesConsumed, onNavigate }: 
         <Box
           role="status"
           sx={{
-            borderRadius: 3,
+            borderRadius: 1,
             border: 1,
-            borderColor: (t) => alpha(t.palette.info.main, 0.4),
-            bgcolor: (t) => alpha(t.palette.info.main, 0.08),
-            p: 2.5,
+            borderColor: 'divider',
+            bgcolor: 'background.paper',
+            p: 3,
           }}
         >
           <Typography variant="body2">

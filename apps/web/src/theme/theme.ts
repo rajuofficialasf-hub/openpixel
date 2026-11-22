@@ -95,8 +95,8 @@ export function getTheme(mode: ThemeMode): Theme {
       h4: { fontSize: '1.375rem', lineHeight: 1.3, fontWeight: 500, letterSpacing: '-0.01em' },
       h5: { fontSize: '1.25rem', lineHeight: 1.35, fontWeight: 500, letterSpacing: '-0.01em' },
       h6: { fontSize: '1.125rem', lineHeight: 1.35, fontWeight: 500, letterSpacing: '-0.01em' },
-      subtitle1: { fontSize: '1rem', lineHeight: 1.5, fontWeight: 600 },
-      subtitle2: { fontSize: '0.875rem', lineHeight: 1.5, fontWeight: 600, letterSpacing: '0.01em' },
+      subtitle1: { fontSize: '1rem', lineHeight: 1.5, fontWeight: 500 },
+      subtitle2: { fontSize: '0.875rem', lineHeight: 1.5, fontWeight: 500, letterSpacing: '0.01em' },
       body1: { fontSize: '1rem', lineHeight: 1.6 },
       body2: { fontSize: '0.875rem', lineHeight: 1.55 },
       caption: { fontSize: '0.75rem', lineHeight: 1.5 },
@@ -184,9 +184,9 @@ export function getTheme(mode: ThemeMode): Theme {
         styleOverrides: {
           head: {
             fontSize: '0.75rem',
-            fontWeight: 600,
-            letterSpacing: '0.06em',
-            textTransform: 'uppercase',
+            fontWeight: 500,
+            letterSpacing: 0,
+            textTransform: 'none',
             color: dark ? '#A3AEC2' : '#64748B',
           },
           body: { padding: '12px 16px' },
@@ -210,7 +210,7 @@ export function getTheme(mode: ThemeMode): Theme {
       },
       MuiChip: {
         styleOverrides: {
-          root: { fontWeight: 600 },
+          root: { fontWeight: 500, borderRadius: 8 },
         },
       },
       MuiSlider: {

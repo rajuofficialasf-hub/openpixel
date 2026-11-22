@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   Select,
   Stack,
   Typography,
@@ -63,22 +62,22 @@ function downloadBlob(blob: Blob, filename: string): void {
 
 let nextId = 0
 
-function statusChipProps(status: ItemStatus): {
-  color: 'success' | 'error' | 'info' | 'default'
+function statusTextProps(status: ItemStatus): {
+  color: 'success.main' | 'error.main' | 'info.main' | 'text.secondary'
   label: string
 } {
   switch (status) {
     case 'done':
-      return { color: 'success', label: 'done' }
+      return { color: 'success.main', label: 'done' }
     case 'failed':
     case 'skipped':
-      return { color: 'error', label: status }
+      return { color: 'error.main', label: status }
     case 'converting':
-      return { color: 'info', label: 'Converting…' }
+      return { color: 'info.main', label: 'Converting…' }
     case 'probing':
-      return { color: 'info', label: 'Reading…' }
+      return { color: 'info.main', label: 'Reading…' }
     default:
-      return { color: 'default', label: status }
+      return { color: 'text.secondary', label: status }
   }
 }
 
@@ -290,8 +289,8 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
 
         <DropZone
           inputId="batch-files"
-          label="Drop images here for batch conversion"
-          hint="PNG, JPEG, WebP, GIF, BMP, SVG, AVIF (browser-dependent) — plus TIFF, QOI, HEIC, JXL and JPEG 2000 when the WASM engine is built. Nothing is uploaded."
+          label="Drop images here"
+          hint="PNG, JPEG, WebP, GIF, BMP, SVG, AVIF (browser-dependent) — plus TIFF, QOI, HEIC, JXL and JPEG 2000 when the WASM engine is built."
           multiple
           accept="image/*"
           onFiles={addFiles}
@@ -324,7 +323,6 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
               <Button
                 type="button"
                 variant="contained"
-                color="success"
                 startIcon={<DownloadIcon />}
                 onClick={downloadAllAsZip}
                 disabled={zipping || doneCount === 0}
@@ -348,7 +346,7 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
 
             <Stack component="ul" spacing={1.5} sx={{ listStyle: 'none', m: 0, p: 0 }}>
               {items.map((item) => {
-                const chip = statusChipProps(item.status)
+                const status = statusTextProps(item.status)
                 return (
                   <Card key={item.id} component="li">
                     <CardContent
@@ -377,9 +375,12 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
                           {formatBytes(item.file.size)}
-                          {item.width > 0 ? ` · ${item.width} × ${item.height} px` : ''} · source{' '}
-                          {formatLabel(item.sourceFormat)}
-                          {item.status === 'done' ? ` → ${formatBytes(item.resultBytes)}` : ''}
+                          {item.width > 0 ? ` · ${item.width} × ${item.height} px` : ''} ·{' '}
+                          <Box component="span" sx={{ fontFamily: 'monospace' }}>
+                            {formatLabel(item.sourceFormat)}
+                            {item.status === 'done' ? ` → ${formatLabel(targetFormat)}` : ''}
+                          </Box>
+                          {item.status === 'done' ? ` · ${formatBytes(item.resultBytes)}` : ''}
                         </Typography>
                         {item.error && (
                           <Typography role="alert" variant="caption" color="error" display="block">
@@ -396,12 +397,13 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
                             </Typography>
                           )}
                       </Box>
-                      <Chip color={chip.color} label={chip.label} size="small" />
+                      <Typography variant="caption" sx={{ fontFamily: 'monospace', color: status.color }}>
+                        {status.label}
+                      </Typography>
                       {item.status === 'done' && item.resultBlob && (
                         <Button
                           type="button"
-                          variant="contained"
-                          color="success"
+                          variant="outlined"
                           size="small"
                           onClick={() =>
                             downloadBlob(item.resultBlob as Blob, outputFileName(item.file.name, targetFormat))

@@ -28,11 +28,11 @@ export function WasmWarning() {
     <Box
       role="status"
       sx={{
-        borderRadius: 3,
+        borderRadius: 1,
         border: 1,
         borderColor: (t) => alpha(t.palette.warning.main, 0.4),
         bgcolor: (t) => alpha(t.palette.warning.main, 0.08),
-        p: 2.5,
+        p: 3,
       }}
     >
       <Typography variant="body2">
@@ -51,7 +51,7 @@ export function PdfFileSummary({ pdf }: { pdf: UsePdfFile }) {
     <Card>
       <CardContent>
         <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
-          <Typography variant="body1" fontWeight={600} sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
+          <Typography variant="body1" fontWeight={500} sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '100%' }}>
             {pdf.file.name}
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -78,14 +78,14 @@ export function PdfResultBoxes({ pdf }: { pdf: UsePdfFile }) {
         <Box
           role="status"
           sx={{
-            borderRadius: 3,
+            borderRadius: 1,
             border: 1,
             borderColor: (t) => alpha(t.palette.success.main, 0.4),
             bgcolor: (t) => alpha(t.palette.success.main, 0.08),
-            p: 2.5,
+            p: 3,
           }}
         >
-          <Typography variant="body1" fontWeight={600} color="success.main" id="pdf-result-status">
+          <Typography variant="body1" fontWeight={500} color="success.main" id="pdf-result-status">
             {pdf.status}
           </Typography>
           <Stack direction="row" flexWrap="wrap" spacing={1.5} sx={{ mt: 1.5 }}>
@@ -94,7 +94,6 @@ export function PdfResultBoxes({ pdf }: { pdf: UsePdfFile }) {
                 key={r.filename}
                 type="button"
                 variant="contained"
-                color="success"
                 id={`pdf-download-${i}`}
                 startIcon={<DownloadIcon />}
                 onClick={() => downloadBlob(r.blob, r.filename)}
@@ -110,14 +109,14 @@ export function PdfResultBoxes({ pdf }: { pdf: UsePdfFile }) {
         <Box
           role="status"
           sx={{
-            borderRadius: 3,
+            borderRadius: 1,
             border: 1,
             borderColor: (t) => alpha(t.palette.success.main, 0.4),
             bgcolor: (t) => alpha(t.palette.success.main, 0.08),
-            p: 2.5,
+            p: 3,
           }}
         >
-          <Typography variant="body1" fontWeight={600} color="success.main" id="pdf-result-status">
+          <Typography variant="body1" fontWeight={500} color="success.main" id="pdf-result-status">
             {pdf.status}
           </Typography>
         </Box>
@@ -125,6 +124,18 @@ export function PdfResultBoxes({ pdf }: { pdf: UsePdfFile }) {
 
       {pdf.error && <Alert severity="error">{pdf.error}</Alert>}
     </>
+  )
+}
+
+/** One line under a PDF preview: previews render with pdf.js in
+    this browser, not with PDFium — shared by the Edit and PDF to
+    Image tools so the same note is not written twice. */
+export function PdfJsCaption() {
+  return (
+    <Typography variant="caption" color="text.secondary">
+      Preview and PDF to image render with pdf.js in this browser — not with PDFium, so very
+      complex pages may look slightly different from the CLI render.
+    </Typography>
   )
 }
 
@@ -218,9 +229,15 @@ export function PdfToolPage({
         flex: 1,
         minHeight: 0,
         overflowY: 'auto',
+        display: 'flex',
+        flexDirection: 'column',
+        // Empty state: the bench sits in the middle of the
+        // viewport-fit area instead of leaving a dead band below.
+        // Once a file is loaded the content starts at the top.
+        justifyContent: loaded ? 'flex-start' : 'center',
       }}
     >
-      <Stack spacing={2} sx={{ maxWidth: 860 }}>
+      <Stack spacing={2} sx={{ maxWidth: 860, width: '100%', mx: 'auto' }}>
         <ToolPageHeader headingId={headingId} title={title} description={description} />
 
         {pdf.wasmReady === false && <WasmWarning />}
@@ -231,6 +248,7 @@ export function PdfToolPage({
               inputId="pdf-file"
               label={uploadLabel}
               hint={uploadHint}
+              chooseLabel={t('common.choosePdf')}
               multiple={false}
               accept="application/pdf,.pdf"
               compact

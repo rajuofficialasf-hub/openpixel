@@ -312,7 +312,7 @@ export function FlattenTool({ initialFiles, onInitialFilesConsumed }: PdfToolPro
       title="Flatten PDF"
       description="Flatten annotations into the page content and remove form fields — what you see is what the file keeps."
       pdf={pdf}
-      primary={{ id: 'pdf-flatten-button', label: 'Flatten annotations', busyLabel: 'Flattening…', busyKey: 'Flattened PDF', onClick: () => void run(), variant: 'outlined' }}
+      primary={{ id: 'pdf-flatten-button', label: 'Flatten annotations', busyLabel: 'Flattening…', busyKey: 'Flattened PDF', onClick: () => void run() }}
     >
       <Typography variant="body2" color="text.secondary">
         Annotations without an appearance are dropped and counted — never faked into the output.
@@ -353,7 +353,7 @@ export function RepairTool({ initialFiles, onInitialFilesConsumed }: PdfToolProp
       title="Repair PDF"
       description="Rebuild the cross-reference table of a damaged PDF so it opens again."
       pdf={pdf}
-      primary={{ id: 'pdf-repair-button', label: 'Repair file', busyLabel: 'Repairing…', busyKey: 'Repaired PDF', onClick: () => void run(), variant: 'outlined' }}
+      primary={{ id: 'pdf-repair-button', label: 'Repair file', busyLabel: 'Repairing…', busyKey: 'Repaired PDF', onClick: () => void run() }}
     >
       <Typography variant="body2" color="text.secondary">
         A healthy file comes back with the cross-reference table read "as written".
