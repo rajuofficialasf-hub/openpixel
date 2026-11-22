@@ -20,6 +20,7 @@ import {
   formatName,
 } from '../lib/capabilities'
 import { ToolPageHeader } from './ToolPage'
+import { useI18n } from '../lib/use-i18n'
 
 type Filter = 'all' | 'browser' | 'cli-only'
 
@@ -30,6 +31,7 @@ type Filter = 'all' | 'browser' | 'cli-only'
  * column showing what the canvas path in this app can actually do.
  */
 export function CapabilitiesTable() {
+  const { t } = useI18n()
   const [filter, setFilter] = useState<Filter>('all')
 
   const rows = CAPABILITIES.filter((cap) => {
@@ -45,11 +47,11 @@ export function CapabilitiesTable() {
   const browserNote = (formatId: string, canDecode: boolean, canEncode: boolean): string => {
     const decodes = BROWSER_DECODABLE.includes(formatId)
     const encodes = BROWSER_ENCODABLE.includes(formatId)
-    if (decodes && encodes) return 'Decode + encode'
-    if (decodes) return 'Decode only'
-    if (encodes) return 'Encode only'
-    if (canDecode || canEncode) return 'Engine only — use the CLI'
-    return 'Not implemented'
+    if (decodes && encodes) return t('fmt.both')
+    if (decodes) return t('fmt.decodeOnly')
+    if (encodes) return t('fmt.encodeOnly')
+    if (canDecode || canEncode) return t('fmt.engineOnly')
+    return t('fmt.notImpl')
   }
 
   const codeSx = {
@@ -65,19 +67,18 @@ export function CapabilitiesTable() {
       <Stack spacing={3}>
         <ToolPageHeader
           headingId="formats-heading"
-          title="Format capabilities"
+          title={t('fmt.title')}
           description={
             <>
-              Generated from the Rust engine’s registry — run{' '}
+              {t('fmt.descA')}{' '}
               <Box component="code" sx={codeSx}>
                 npm run generate:capabilities
               </Box>{' '}
-              to regenerate it after any engine change. The “In browser” column is what this web app can do;
-              everything else needs the native CLI ({' '}
+              {t('fmt.descB')}
               <Box component="code" sx={codeSx}>
                 openpixel convert
               </Box>
-              ) or the desktop app.
+              {t('fmt.descC')}
             </>
           }
         />
@@ -88,19 +89,19 @@ export function CapabilitiesTable() {
           onChange={(_, value: Filter | null) => {
             if (value) setFilter(value)
           }}
-          aria-label="Filter formats"
+          aria-label={t('fmt.filterAria')}
         >
-          <ToggleButton value="all" aria-label="All formats">
-            All formats
+          <ToggleButton value="all" aria-label={t('fmt.all')}>
+            {t('fmt.all')}
             <Box component="span" sx={{ fontFamily: 'monospace', color: 'text.secondary', ml: 1 }}>
               {CAPABILITIES.length}
             </Box>
           </ToggleButton>
-          <ToggleButton value="browser" aria-label="Works in this browser">
-            Works in this browser
+          <ToggleButton value="browser" aria-label={t('fmt.browser')}>
+            {t('fmt.browser')}
           </ToggleButton>
-          <ToggleButton value="cli-only" aria-label="CLI / desktop only">
-            CLI / desktop only
+          <ToggleButton value="cli-only" aria-label={t('fmt.cliOnly')}>
+            {t('fmt.cliOnly')}
           </ToggleButton>
         </ToggleButtonGroup>
 
@@ -108,14 +109,14 @@ export function CapabilitiesTable() {
           <Table sx={{ minWidth: 720 }}>
             <TableHead>
               <TableRow>
-                <TableCell>Format</TableCell>
-                <TableCell>Extensions</TableCell>
-                <TableCell>Engine decode</TableCell>
-                <TableCell>Engine encode</TableCell>
-                <TableCell>Alpha</TableCell>
-                <TableCell>Animation</TableCell>
-                <TableCell>In browser</TableCell>
-                <TableCell>Status</TableCell>
+                <TableCell>{t('fmt.colFormat')}</TableCell>
+                <TableCell>{t('fmt.colExtensions')}</TableCell>
+                <TableCell>{t('fmt.colDecode')}</TableCell>
+                <TableCell>{t('fmt.colEncode')}</TableCell>
+                <TableCell>{t('fmt.colAlpha')}</TableCell>
+                <TableCell>{t('fmt.colAnimation')}</TableCell>
+                <TableCell>{t('fmt.colBrowser')}</TableCell>
+                <TableCell>{t('fmt.colStatus')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -128,16 +129,16 @@ export function CapabilitiesTable() {
                     {cap.extensions.map((e) => `.${e}`).join(', ')}
                   </TableCell>
                   <TableCell sx={{ color: cap.can_decode ? 'text.secondary' : 'text.disabled' }}>
-                    {cap.can_decode ? 'Yes' : 'No'}
+                    {cap.can_decode ? t('fmt.yes') : t('fmt.no')}
                   </TableCell>
                   <TableCell sx={{ color: cap.can_encode ? 'text.secondary' : 'text.disabled' }}>
-                    {cap.can_encode ? 'Yes' : 'No'}
+                    {cap.can_encode ? t('fmt.yes') : t('fmt.no')}
                   </TableCell>
                   <TableCell sx={{ color: cap.supports_alpha ? 'text.secondary' : 'text.disabled' }}>
-                    {cap.supports_alpha ? 'Yes' : 'No'}
+                    {cap.supports_alpha ? t('fmt.yes') : t('fmt.no')}
                   </TableCell>
                   <TableCell sx={{ color: cap.supports_animation ? 'text.secondary' : 'text.disabled' }}>
-                    {cap.supports_animation ? 'Yes' : 'No'}
+                    {cap.supports_animation ? t('fmt.yes') : t('fmt.no')}
                   </TableCell>
                   <TableCell sx={{ minWidth: 150 }}>{browserNote(cap.format_id, cap.can_decode, cap.can_encode)}</TableCell>
                   <TableCell sx={{ fontSize: '0.85em' }}>{cap.status}</TableCell>
@@ -147,8 +148,7 @@ export function CapabilitiesTable() {
           </Table>
         </TableContainer>
         <Typography variant="body2" color="text.secondary">
-          Showing {rows.length} of {CAPABILITIES.length} formats. HEIC/HEIF, APNG, RAW and PSD are
-          planned in the engine and not convertible anywhere yet — the CLI reports them the same way.
+          {t('fmt.footer', { shown: rows.length, total: CAPABILITIES.length })}
         </Typography>
       </Stack>
     </Box>

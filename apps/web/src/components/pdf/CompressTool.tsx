@@ -8,9 +8,11 @@ import { Box, Checkbox, FormControlLabel, Select, Typography } from '@mui/materi
 import { formatBytes } from '../../lib/capabilities'
 import { pdfCompress, pdfOutputName, type PdfCompressMode, PDF_COMPRESS_MODES } from '../../lib/pdf'
 import { PdfToolPage } from './shared'
-import { usePdfFile, wasmMissing, type PdfToolProps } from './usePdfFile'
+import { useI18n } from '../../lib/use-i18n'
+import { usePdfFile, type PdfToolProps } from './usePdfFile'
 
 export function CompressTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps) {
+  const { t } = useI18n()
   const pdf = usePdfFile('pdf-compress', initialFiles, onInitialFilesConsumed)
   const [mode, setMode] = useState<PdfCompressMode>('ebook')
   const [strip, setStrip] = useState(false)
@@ -22,7 +24,7 @@ export function CompressTool({ initialFiles, onInitialFilesConsumed }: PdfToolPr
     pdf.setStatus(null)
     const result = await pdfCompress(pdf.bytes, mode, strip)
     if (!result) {
-      pdf.setError(wasmMissing('Compressed PDF'))
+      pdf.setError(pdf.wasmMissing('Compressed PDF'))
       pdf.setBusy(null)
       return
     }
@@ -34,11 +36,23 @@ export function CompressTool({ initialFiles, onInitialFilesConsumed }: PdfToolPr
         pages: pdf.pageCount,
       },
     ])
-    pdf.setStatus(
-      result.note
-        ? `Compressed PDF: ${formatBytes(result.inputBytes)} → ${formatBytes(result.outputBytes)} — ${result.note}`
-        : `Compressed PDF: ${formatBytes(result.inputBytes)} → ${formatBytes(result.outputBytes)} (${result.savedPercent.toFixed(1)}% smaller, ${result.imagesRecompressed} image${result.imagesRecompressed === 1 ? '' : 's'} recompressed)`,
-    )
+    if (result.note) {
+      pdf.setStatusKey('pdf.compressDoneNote', {
+        label: 'Compressed PDF',
+        from: formatBytes(result.inputBytes),
+        to: formatBytes(result.outputBytes),
+        note: result.note,
+      })
+    } else {
+      pdf.setStatusKey('pdf.compressDone', {
+        label: 'Compressed PDF',
+        from: formatBytes(result.inputBytes),
+        to: formatBytes(result.outputBytes),
+        pct: result.savedPercent.toFixed(1),
+        images: result.imagesRecompressed,
+        s: result.imagesRecompressed === 1 ? '' : 's',
+      })
+    }
     pdf.setBusy(null)
   }
 
@@ -46,13 +60,13 @@ export function CompressTool({ initialFiles, onInitialFilesConsumed }: PdfToolPr
     <PdfToolPage
       headingId="pdf-compress-heading"
       title="Compress PDF"
-      description="Shrink a PDF — images are downsampled to the mode's DPI and re-encoded, and the file structure is optimised."
+      description={t('pdf.compressDesc')}
       pdf={pdf}
-      primary={{ id: 'pdf-compress-button', label: 'Compress', busyLabel: 'Compressing…', busyKey: 'Compressed PDF', onClick: () => void run() }}
+      primary={{ id: 'pdf-compress-button', label: t('pdf.compressButton'), busyLabel: t('pdf.compressing'), busyKey: 'Compressed PDF', onClick: () => void run() }}
     >
       <Box>
         <Typography variant="subtitle2" component="label" htmlFor="pdf-compress-mode" sx={{ display: 'block' }}>
-          Mode
+          {t('pdf.compressMode')}
         </Typography>
         <Select
           native
@@ -63,7 +77,7 @@ export function CompressTool({ initialFiles, onInitialFilesConsumed }: PdfToolPr
         >
           {PDF_COMPRESS_MODES.map((m) => (
             <option key={m} value={m}>
-              {m === 'screen' ? 'Screen — 72 DPI' : m === 'ebook' ? 'Ebook — 150 DPI' : 'Printer — 300 DPI'}
+              {t(m === 'screen' ? 'pdf.compressScreen' : m === 'ebook' ? 'pdf.compressEbook' : 'pdf.compressPrinter')}
             </option>
           ))}
         </Select>
@@ -72,10 +86,10 @@ export function CompressTool({ initialFiles, onInitialFilesConsumed }: PdfToolPr
         control={
           <Checkbox id="pdf-compress-strip" checked={strip} onChange={(e) => setStrip(e.target.checked)} />
         }
-        label="Strip document metadata (title, author…)"
+        label={t('pdf.compressStrip')}
       />
       <Typography variant="caption" color="text.secondary">
-        If a mode cannot shrink this PDF, the original is kept and the result says so.
+        {t('pdf.compressNote')}
       </Typography>
     </PdfToolPage>
   )

@@ -281,7 +281,7 @@ check(
 await page.goto(`${BASE}pdf/images-to-pdf`, { waitUntil: 'networkidle' });
 await page.setInputFiles('#pdf-images-file', [path.join(IMG_IN, 'rgba.png'), path.join(IMG_IN, 'photo.jpg')]);
 await page.locator('#pdf-from-images-button').click();
-await waitStatus('Images to PDF: 2 pages');
+await waitStatus('Image to PDF: 2 pages');
 const builtPath = await downloadResult(0);
 const builtPathInfo = verifyPdf(builtPath, 2);
 check('images to PDF builds a real 2-page PDF', builtPathInfo.ok, builtPathInfo.detail);

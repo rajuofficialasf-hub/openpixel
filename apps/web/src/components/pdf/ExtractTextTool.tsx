@@ -9,9 +9,11 @@ import { useState } from 'react'
 import { Box, Typography } from '@mui/material'
 import { pdfExtractText } from '../../lib/pdf'
 import { PdfToolPage } from './shared'
+import { useI18n } from '../../lib/use-i18n'
 import { usePdfFile, type PdfToolProps } from './usePdfFile'
 
 export function ExtractTextTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps) {
+  const { t } = useI18n()
   const pdf = usePdfFile('pdf-extract-text', initialFiles, onInitialFilesConsumed)
   const [extracted, setExtracted] = useState<string | null>(null)
 
@@ -23,16 +25,14 @@ export function ExtractTextTool({ initialFiles, onInitialFilesConsumed }: PdfToo
     setExtracted(null)
     const out = await pdfExtractText(pdf.bytes)
     if (!out) {
-      pdf.setError('Could not read this PDF’s text — it may be damaged. Try the native CLI.')
+      pdf.setError(t('pdf.extractTextError'))
       pdf.setBusy(null)
       return
     }
     const text = out.text
     setExtracted(text)
     if (text.trim() === '') {
-      pdf.setStatus(
-        `Extracted PDF text: no text found in ${out.pages} page${out.pages === 1 ? '' : 's'} — the pages look scanned (image-only). Use OCR to read them.`,
-      )
+      pdf.setStatusKey('pdf.extractTextEmpty', { n: out.pages, s: out.pages === 1 ? '' : 's' })
       pdf.setBusy(null)
       return
     }
@@ -45,7 +45,7 @@ export function ExtractTextTool({ initialFiles, onInitialFilesConsumed }: PdfToo
         pages: out.pages,
       },
     ])
-    pdf.setStatus(`Extracted PDF text: ${text.length} characters from ${out.pages} page${out.pages === 1 ? '' : 's'}.`)
+    pdf.setStatusKey('pdf.extractTextDone', { chars: text.length, n: out.pages, s: out.pages === 1 ? '' : 's' })
     pdf.setBusy(null)
   }
 
@@ -75,20 +75,19 @@ export function ExtractTextTool({ initialFiles, onInitialFilesConsumed }: PdfToo
     <PdfToolPage
       headingId="pdf-extract-text-heading"
       title="Extract PDF Text"
-      description="Read the text out of a PDF — shown here and downloadable as a .txt file."
+      description={t('pdf.extractTextDesc')}
       pdf={pdf}
       extra={extra}
       primary={{
         id: 'pdf-extract-text-button',
-        label: 'Extract text',
-        busyLabel: 'Extracting…',
+        label: t('pdf.extractTextButton'),
+        busyLabel: t('pdf.extracting'),
         busyKey: 'Extracted PDF text',
         onClick: () => void run(),
       }}
     >
       <Typography variant="body2" color="text.secondary">
-        Only the text layer is read — fonts, images and layout are not preserved. For a scanned PDF with no text
-        layer, use OCR instead.
+        {t('pdf.extractTextNote')}
       </Typography>
     </PdfToolPage>
   )

@@ -77,14 +77,10 @@ export function HomePage({ onNavigate }: HomePageProps) {
       const isZip = head[0] === 0x50 && head[1] === 0x4b
       const isOle = head[0] === 0xd0 && head[1] === 0xcf
       if (isZip || isOle) {
-        setNotice(
-          `"${first.name}" looks like an Office document — those convert in the CLI / desktop app (openpixel doc convert). The browser cannot run LibreOffice.`,
-        )
+        setNotice(t('home.noticeOffice', { name: first.name }))
         return
       }
-      setNotice(
-        `"${first.name}" is not a file this browser can process. Try an image (PNG, JPEG, WebP, …) or a PDF — or use the CLI for other formats.`,
-      )
+      setNotice(t('home.noticeUnknown', { name: first.name }))
     } finally {
       setRouting(false)
     }

@@ -8,12 +8,14 @@ import { getPdfInfo, pdfFromImages, PDF_PAGE_SIZES, type PdfPageSize } from '../
 import { recordActivity } from '../../lib/activity'
 import { DropZone } from '../DropZone'
 import { PdfToolPage } from './shared'
-import { usePdfFile, wasmMissing, type PdfToolProps } from './usePdfFile'
+import { useI18n } from '../../lib/use-i18n'
+import { usePdfFile, type PdfToolProps } from './usePdfFile'
 
 export function ImagesToPdfTool({ initialFiles: _initialFiles, onInitialFilesConsumed: _onConsumed }: PdfToolProps) {
   // The hook owns the shared result/status/busy state; the images
   // themselves live here (no PDF file is loaded on this page, and
   // no handed-over file is ever forwarded to it).
+  const { t } = useI18n()
   const pdf = usePdfFile('pdf-images-to-pdf')
   const [imageFiles, setImageFiles] = useState<File[]>([])
   const [imagePageSize, setImagePageSize] = useState<PdfPageSize>('Original')
@@ -27,7 +29,7 @@ export function ImagesToPdfTool({ initialFiles: _initialFiles, onInitialFilesCon
     for (const f of imageFiles) images.push(new Uint8Array(await f.arrayBuffer()))
     const built = await pdfFromImages(images, imagePageSize === 'Original' ? null : imagePageSize)
     if (!built) {
-      pdf.setError(wasmMissing('Image to PDF'))
+      pdf.setError(pdf.wasmMissing('Image to PDF'))
       pdf.setBusy(null)
       return
     }
@@ -41,13 +43,15 @@ export function ImagesToPdfTool({ initialFiles: _initialFiles, onInitialFilesCon
         pages,
       },
     ])
-    pdf.setStatus(`Image to PDF: ${pages} pages`)
+    pdf.setStatusKey('pdf.imgToPdfDone', { n: pages })
     recordActivity({
       fileName: 'images.pdf',
       fileSize: built.length,
       fileType: 'application/pdf',
       tool: 'pdf-images-to-pdf',
       result: `Image to PDF: ${pages} pages`,
+      resultKey: 'pdf.imgToPdfDone',
+      resultParams: { n: pages },
     })
     pdf.setBusy(null)
   }
@@ -56,9 +60,8 @@ export function ImagesToPdfTool({ initialFiles: _initialFiles, onInitialFilesCon
     <DropZone
       compact
       inputId="pdf-images-file"
-      label="Drop images here"
-      hint="PNG, JPEG, WebP and the other formats this browser decodes — one PDF page per image, in order. Nothing is uploaded."
-      multiple
+      label={t('pdf.imgToPdfDropLabel')}
+      hint={t('pdf.imgToPdfDropHint')}      multiple
       accept="image/*"
       onFiles={(files) => setImageFiles(files)}
     />
@@ -70,12 +73,15 @@ export function ImagesToPdfTool({ initialFiles: _initialFiles, onInitialFilesCon
         variant="body2"
         sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
       >
-        {imageFiles.length} image{imageFiles.length === 1 ? '' : 's'}:{' '}
-        {imageFiles.slice(0, 3).map((f) => f.name).join(', ')}
-        {imageFiles.length > 3 ? `, and ${imageFiles.length - 3} more` : ''}
+        {t('pdf.imgToPdfCount', {
+          n: imageFiles.length,
+          s: imageFiles.length === 1 ? '' : 's',
+          names: imageFiles.slice(0, 3).map((f) => f.name).join(', '),
+        })}
+        {imageFiles.length > 3 ? t('pdf.imgToPdfMore', { n: imageFiles.length - 3 }) : ''}
       </Typography>
       <Button type="button" variant="outlined" size="small" onClick={() => setImageFiles([])} sx={{ mt: 1 }}>
-        Choose different images
+        {t('pdf.imgToPdfChoose')}
       </Button>
     </Box>
   )
@@ -84,15 +90,15 @@ export function ImagesToPdfTool({ initialFiles: _initialFiles, onInitialFilesCon
     <PdfToolPage
       headingId="pdf-images-to-pdf-heading"
       title="Image to PDF"
-      description="Turn one or more images into a PDF document — one page per image, in order."
+      description={t('pdf.imgToPdfDesc')}
       pdf={pdf}
       ready={imageFiles.length > 0}
       upload={upload}
       summary={summary}
       primary={{
         id: 'pdf-from-images-button',
-        label: 'Build PDF from images',
-        busyLabel: 'Building…',
+        label: t('pdf.imgToPdfButton'),
+        busyLabel: t('pdf.imgToPdfBuilding'),
         busyKey: 'Image to PDF',
         onClick: () => void run(),
         disabled: imageFiles.length === 0,
@@ -100,7 +106,7 @@ export function ImagesToPdfTool({ initialFiles: _initialFiles, onInitialFilesCon
     >
       <Box>
         <Typography variant="subtitle2" component="label" htmlFor="pdf-images-page-size" sx={{ display: 'block' }}>
-          Page size
+          {t('pdf.imgToPdfPageSize')}
         </Typography>
         <Select
           native
@@ -110,7 +116,7 @@ export function ImagesToPdfTool({ initialFiles: _initialFiles, onInitialFilesCon
           sx={{ mt: 0.5, minWidth: 140 }}
         >
           {PDF_PAGE_SIZES.map((s) => (
-            <option key={s} value={s}>{s === 'Original' ? 'Original image size' : s}</option>
+            <option key={s} value={s}>{s === 'Original' ? t('pdf.imgToPdfOriginal') : s}</option>
           ))}
         </Select>
       </Box>

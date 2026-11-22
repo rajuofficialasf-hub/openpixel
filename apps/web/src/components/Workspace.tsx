@@ -41,6 +41,7 @@ import ViewListIcon from '@mui/icons-material/ViewList'
 import FolderOpenIcon from '@mui/icons-material/FolderOpen'
 import {
   activityStoreBytes,
+  formatActivityResult,
   formatBytes,
   formatDate,
   loadActivity,
@@ -56,14 +57,14 @@ interface WorkspaceProps {
   onNavigate: (route: RouteId) => void
 }
 
-function typeLabel(fileType: string): string {
-  if (!fileType) return 'File'
+function typeLabel(fileType: string, lang: 'en' | 'bn' = 'en'): string {
+  if (!fileType) return lang === 'bn' ? 'ফাইল' : 'File'
   const lower = fileType.toLowerCase()
   if (lower.startsWith('image/')) return lower.slice(6).toUpperCase()
   if (lower === 'application/pdf' || lower === 'pdf') return 'PDF'
   if (lower.includes('word') || lower.endsWith('.docx')) return 'DOCX'
   if (lower.includes('sheet') || lower.endsWith('.xlsx')) return 'XLSX'
-  if (lower.startsWith('text/')) return 'Text'
+  if (lower.startsWith('text/')) return lang === 'bn' ? 'লেখা' : 'Text'
   return fileType
 }
 
@@ -78,7 +79,7 @@ function useEntries() {
 }
 
 export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const { entries, refresh } = useEntries()
   const totalFiles = entries.length
   const toolsUsed = new Set(entries.map((e) => e.tool)).size
@@ -103,7 +104,7 @@ export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
           { label: t('ws.statTotal'), value: String(totalFiles) },
           { label: t('ws.statTools'), value: String(toolsUsed) },
           { label: t('ws.statHistory'), value: formatBytes(storeBytes) },
-          { label: t('ws.statLast'), value: last ? formatDate(last.at) : '—' },
+          { label: t('ws.statLast'), value: last ? formatDate(last.at, lang) : '—' },
         ].map((card) => (
           <Grid key={card.label} size={{ xs: 6, lg: 3 }}>
             <Card>
@@ -133,7 +134,7 @@ export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
           <EmptyHistory onNavigate={onNavigate} />
         ) : (
           <TableContainer component={Card}>
-            <Table size="small" aria-label="Recent files">
+            <Table size="small" aria-label={t('ws.ariaRecent')}>
               <TableHead>
                 <TableRow>
                   <TableCell>{t('ws.fileName')}</TableCell>
@@ -148,10 +149,10 @@ export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
                 {recent.map((e) => (
                   <TableRow key={e.id}>
                     <TableCell>{e.fileName}</TableCell>
-                    <TableCell>{typeLabel(e.fileType)}</TableCell>
+                    <TableCell>{typeLabel(e.fileType, lang)}</TableCell>
                     <TableCell>{formatBytes(e.fileSize)}</TableCell>
                     <TableCell>{toolLabel(e.tool)}</TableCell>
-                    <TableCell>{formatDate(e.at)}</TableCell>
+                    <TableCell>{formatDate(e.at, lang)}</TableCell>
                     <TableCell align="right">
                       <Button size="small" onClick={() => onNavigate(e.tool as RouteId)}>
                         {t('common.openTool')}
@@ -178,10 +179,10 @@ export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
             {entries.slice(0, 8).map((e) => (
               <Box key={e.id} sx={{ display: 'flex', gap: 2, alignItems: 'baseline' }}>
                 <Typography variant="caption" color="text.secondary" sx={{ minWidth: 150 }}>
-                  {formatDate(e.at)}
+                  {formatDate(e.at, lang)}
                 </Typography>
                 <Typography variant="body2">
-                  {e.fileName} — {toolLabel(e.tool)}: {e.result}
+                  {e.fileName} — {toolLabel(e.tool)}: {formatActivityResult(lang, e)}
                 </Typography>
               </Box>
             ))}
@@ -279,7 +280,7 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
         <TextField
           size="small"
           placeholder={t('ws.searchFiles')}
-          aria-label="Search files"
+          inputProps={{ 'aria-label': t('ws.ariaSearchFiles') }}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           sx={{ flex: 1, minWidth: 200 }}
@@ -305,13 +306,13 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
           value={view}
           exclusive
           onChange={(_, next) => next && setView(next)}
-          aria-label="File view"
+          aria-label={t('ws.ariaFileView')}
           size="small"
         >
-          <ToggleButton value="grid" aria-label="Grid view">
+          <ToggleButton value="grid" aria-label={t('ws.ariaGrid')}>
             <GridViewIcon />
           </ToggleButton>
-          <ToggleButton value="list" aria-label="List view">
+          <ToggleButton value="list" aria-label={t('ws.ariaList')}>
             <ViewListIcon />
           </ToggleButton>
         </ToggleButtonGroup>
@@ -331,15 +332,15 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
                         {e.fileName}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" display="block">
-                        {typeLabel(e.fileType)} · {formatBytes(e.fileSize)} · {formatDate(e.at)}
+                        {typeLabel(e.fileType, lang)} · {formatBytes(e.fileSize)} · {formatDate(e.at, lang)}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                        {toolLabel(e.tool)}: {e.result}
+                        {toolLabel(e.tool)}: {formatActivityResult(lang, e)}
                       </Typography>
                     </Box>
                     <IconButton
                       size="small"
-                      aria-label={e.starred ? `Unstar ${e.fileName}` : `Star ${e.fileName}`}
+                      aria-label={e.starred ? t('ws.ariaUnstar', { name: e.fileName }) : t('ws.ariaStar', { name: e.fileName })}
                       onClick={() => star(e.id)}
                     >
                       {e.starred ? <StarIcon color="primary" /> : <StarBorderIcon />}
@@ -360,7 +361,7 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
         </Grid>
       ) : (
         <TableContainer component={Card}>
-          <Table size="small" aria-label="My files">
+          <Table size="small" aria-label={t('ws.ariaMyFiles')}>
             <TableHead>
               <TableRow>
                 <TableCell>{t('ws.fileName')}</TableCell>
@@ -375,15 +376,19 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
               {filtered.map((e) => (
                 <TableRow key={e.id}>
                   <TableCell>{e.fileName}</TableCell>
-                  <TableCell>{typeLabel(e.fileType)}</TableCell>
+                  <TableCell>{typeLabel(e.fileType, lang)}</TableCell>
                   <TableCell>{formatBytes(e.fileSize)}</TableCell>
                   <TableCell>{toolLabel(e.tool)}</TableCell>
-                  <TableCell>{formatDate(e.at)}</TableCell>
+                  <TableCell>{formatDate(e.at, lang)}</TableCell>
                   <TableCell align="right">
-                    <IconButton size="small" aria-label={`Star ${e.fileName}`} onClick={() => star(e.id)}>
+                    <IconButton
+                      size="small"
+                      aria-label={e.starred ? t('ws.ariaUnstar', { name: e.fileName }) : t('ws.ariaStar', { name: e.fileName })}
+                      onClick={() => star(e.id)}
+                    >
                       {e.starred ? <StarIcon color="primary" fontSize="small" /> : <StarBorderIcon fontSize="small" />}
                     </IconButton>
-                    <IconButton size="small" aria-label={`Remove ${e.fileName}`} onClick={() => remove(e.id)}>
+                    <IconButton size="small" aria-label={t('ws.ariaRemove', { name: e.fileName })} onClick={() => remove(e.id)}>
                       <DeleteIcon fontSize="small" />
                     </IconButton>
                   </TableCell>
@@ -403,7 +408,7 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
 }
 
 export function RecentFilesPage({ onNavigate }: WorkspaceProps) {
-  const { t } = useI18n()
+  const { t, lang } = useI18n()
   const { entries } = useEntries()
   const [query, setQuery] = useState('')
 
@@ -425,7 +430,7 @@ export function RecentFilesPage({ onNavigate }: WorkspaceProps) {
       <TextField
         size="small"
         placeholder={t('ws.searchRecent')}
-        aria-label="Search recent files"
+        inputProps={{ 'aria-label': t('ws.ariaSearchRecent') }}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         sx={{ maxWidth: 360 }}
@@ -434,7 +439,7 @@ export function RecentFilesPage({ onNavigate }: WorkspaceProps) {
         <EmptyHistory onNavigate={onNavigate} />
       ) : (
         <TableContainer component={Card}>
-          <Table size="small" aria-label="Recent files">
+          <Table size="small" aria-label={t('ws.ariaRecent')}>
             <TableHead>
               <TableRow>
                 <TableCell>{t('ws.fileName')}</TableCell>
@@ -450,11 +455,11 @@ export function RecentFilesPage({ onNavigate }: WorkspaceProps) {
               {filtered.map((e) => (
                 <TableRow key={e.id}>
                   <TableCell>{e.fileName}</TableCell>
-                  <TableCell>{typeLabel(e.fileType)}</TableCell>
+                  <TableCell>{typeLabel(e.fileType, lang)}</TableCell>
                   <TableCell>{formatBytes(e.fileSize)}</TableCell>
                   <TableCell>{toolLabel(e.tool)}</TableCell>
-                  <TableCell>{e.result}</TableCell>
-                  <TableCell>{formatDate(e.at)}</TableCell>
+                  <TableCell>{formatActivityResult(lang, e)}</TableCell>
+                  <TableCell>{formatDate(e.at, lang)}</TableCell>
                   <TableCell align="right">
                     <Button size="small" onClick={() => onNavigate(e.tool as RouteId)}>
                       {t('common.openTool')}

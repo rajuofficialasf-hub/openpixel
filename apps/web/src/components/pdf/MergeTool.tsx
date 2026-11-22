@@ -7,9 +7,11 @@ import { useRef, useState } from 'react'
 import { Box, Button, Stack, Typography } from '@mui/material'
 import { getPdfInfo, pdfMerge, pdfOutputName } from '../../lib/pdf'
 import { PdfToolPage } from './shared'
-import { usePdfFile, wasmMissing, type PdfToolProps } from './usePdfFile'
+import { useI18n } from '../../lib/use-i18n'
+import { usePdfFile, type PdfToolProps } from './usePdfFile'
 
 export function MergeTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps) {
+  const { t } = useI18n()
   const pdf = usePdfFile('pdf-merge', initialFiles, onInitialFilesConsumed)
   const [secondFile, setSecondFile] = useState<File | null>(null)
   const [secondBytes, setSecondBytes] = useState<Uint8Array<ArrayBuffer> | null>(null)
@@ -29,7 +31,7 @@ export function MergeTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps
     pdf.setStatus(null)
     const merged = await pdfMerge([pdf.bytes, secondBytes])
     if (!merged) {
-      pdf.setError(wasmMissing('Merged PDF'))
+      pdf.setError(pdf.wasmMissing('Merged PDF'))
       pdf.setBusy(null)
       return
     }
@@ -42,7 +44,7 @@ export function MergeTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps
         pages: mergedInfo?.page_count ?? null,
       },
     ])
-    pdf.setStatus(`Merged PDF: ${mergedInfo?.page_count ?? '?'} pages`)
+    pdf.setStatusKey('pdf.opStatusPages', { label: 'Merged PDF', n: mergedInfo?.page_count ?? '?' })
     pdf.setBusy(null)
   }
 
@@ -50,12 +52,11 @@ export function MergeTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps
     <PdfToolPage
       headingId="pdf-merge-heading"
       title="Merge PDF"
-      description="Combine two PDFs into one — the second is appended after the first."
-      pdf={pdf}
+      description={t('pdf.mergeDesc')}      pdf={pdf}
       primary={{
         id: 'pdf-merge-button',
-        label: 'Merge PDFs',
-        busyLabel: 'Merging…',
+        label: t('pdf.mergeButton'),
+        busyLabel: t('pdf.merging'),
         busyKey: 'Merged PDF',
         onClick: () => void run(),
         disabled: !secondBytes,
@@ -67,8 +68,8 @@ export function MergeTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps
       <Stack spacing={2} sx={{ position: 'relative' }}>
         <Typography variant="body2">
           {secondFile
-            ? `Second PDF: ${secondFile.name} — it will be appended after ${pdf.file?.name ?? 'the first PDF'}.`
-            : 'Choose a second PDF to append after this one.'}
+            ? t('pdf.mergeSecondWith', { second: secondFile.name, first: pdf.file?.name ?? t('pdf.mergeFirstFallback') })
+            : t('pdf.mergeSecond')}
         </Typography>
         <Box
           component="input"
@@ -76,13 +77,13 @@ export function MergeTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps
           id="pdf-merge-file"
           type="file"
           accept="application/pdf,.pdf"
-          aria-label="Second PDF to merge"
+          aria-label={t('pdf.mergeSecondAria')}
           onChange={(e) => void handleMergeFiles(e.target.files)}
           sx={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden' }}
         />
         <Stack direction="row" spacing={1.5} flexWrap="wrap">
           <Button type="button" variant="outlined" onClick={() => mergeInputRef.current?.click()}>
-            Choose second PDF
+            {t('pdf.mergeChooseSecond')}
           </Button>
         </Stack>
       </Stack>

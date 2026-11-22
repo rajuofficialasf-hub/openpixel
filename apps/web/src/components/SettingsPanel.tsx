@@ -119,7 +119,7 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                   {t('settings.quality', { n: settings.defaultQuality })}
                 </Typography>
                 <Slider
-                  aria-label="Default JPEG / WebP quality"
+                  aria-label={t('settings.ariaQuality')}
                   min={1}
                   max={100}
                   value={settings.defaultQuality}
@@ -163,14 +163,14 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                     size="small"
                     value={settings.defaultBackground}
                     onChange={(e) => update({ defaultBackground: e.target.value })}
-                    inputProps={{ 'aria-label': 'Default background colour picker' }}
+                    inputProps={{ 'aria-label': t('cv.bgPicker') }}
                     sx={{ width: 56, '& input': { p: 0.5, height: 40, cursor: 'pointer' } }}
                   />
                   <TextField
                     size="small"
                     value={settings.defaultBackground}
                     onChange={(e) => update({ defaultBackground: e.target.value })}
-                    inputProps={{ 'aria-label': 'Default background colour hex value' }}
+                    inputProps={{ 'aria-label': t('cv.bgHex') }}
                     sx={{ width: 120, '& input': { fontFamily: 'monospace' } }}
                   />
                 </Stack>
@@ -181,7 +181,7 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                   {t('settings.batch', { n: settings.batchWorkers, s: plural(lang, settings.batchWorkers) })}
                 </Typography>
                 <Slider
-                  aria-label="Batch concurrency"
+                  aria-label={t('settings.ariaBatch')}
                   min={1}
                   max={4}
                   step={1}
@@ -199,7 +199,9 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                     <Switch
                       checked={settings.show3dBackground}
                       onChange={(_, checked) => update({ show3dBackground: checked })}
-                      inputProps={{ 'aria-label': '3D background' }}
+                      // inputProps does not reach the checkbox input
+                      // in MUI v7 — the input slot does.
+                      slotProps={{ input: { 'aria-label': t('settings.ariaBg3d') } }}
                     />
                   }
                   label={t('settings.bg3d')}
@@ -240,12 +242,7 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
               {t('settings.aboutTitle')}
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              OpenPixel Studio is a React + TypeScript web app — the file tools run in your
-              browser, and the heavy work is done by the real Rust engine compiled to
-              WebAssembly. The browser canvas handles PNG / JPEG / WebP; the WASM engine
-              handles the formats the canvas cannot (including BMP, which the canvas cannot
-              encode at all). AVIF is not available in the browser — it needs the native
-              libdav1d library.
+              {t('settings.aboutBody')}
             </Typography>
           </CardContent>
         </Card>
@@ -265,7 +262,9 @@ export function SettingsPanel({ settings, onSettingsChange }: SettingsPanelProps
                         setActivityRecording(checked)
                         setRecording(checked)
                       }}
-                      inputProps={{ 'aria-label': 'Record processed files in My Files' }}
+                      // inputProps does not reach the checkbox input
+                      // in MUI v7 — the input slot does.
+                      slotProps={{ input: { 'aria-label': t('settings.ariaRecord') } }}
                     />
                   }
                   label={t('settings.record')}

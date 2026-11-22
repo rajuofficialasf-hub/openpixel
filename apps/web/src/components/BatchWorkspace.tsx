@@ -24,6 +24,7 @@ import { recordActivity } from '../lib/activity'
 import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
 import { DropZone } from './DropZone'
 import { ToolPageHeader } from './ToolPage'
+import { useI18n } from '../lib/use-i18n'
 
 type ItemStatus = 'queued' | 'probing' | 'ready' | 'converting' | 'done' | 'failed' | 'skipped'
 
@@ -62,26 +63,33 @@ function downloadBlob(blob: Blob, filename: string): void {
 
 let nextId = 0
 
-function statusTextProps(status: ItemStatus): {
+function statusTextProps(
+  status: ItemStatus,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): {
   color: 'success.main' | 'error.main' | 'info.main' | 'text.secondary'
   label: string
 } {
   switch (status) {
     case 'done':
-      return { color: 'success.main', label: 'done' }
+      return { color: 'success.main', label: t('st.done') }
     case 'failed':
+      return { color: 'error.main', label: t('st.failed') }
     case 'skipped':
-      return { color: 'error.main', label: status }
+      return { color: 'error.main', label: t('st.skipped') }
     case 'converting':
-      return { color: 'info.main', label: 'Converting…' }
+      return { color: 'info.main', label: t('st.converting') }
     case 'probing':
-      return { color: 'info.main', label: 'Reading…' }
+      return { color: 'info.main', label: t('st.reading') }
+    case 'queued':
+      return { color: 'text.secondary', label: t('st.queued') }
     default:
-      return { color: 'text.secondary', label: status }
+      return { color: 'text.secondary', label: t('st.ready') }
   }
 }
 
 export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed }: BatchWorkspaceProps) {
+  const { t, lang } = useI18n()
   const [items, setItems] = useState<BatchItem[]>([])
   const [targetFormat, setTargetFormat] = useState(settings.defaultFormat)
   const [running, setRunning] = useState(false)
@@ -126,7 +134,7 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
     setItems((prev) => [...prev, ...fresh])
     for (const item of fresh) {
       try {
-        const info = await probeImage(item.file)
+        const info = await probeImage(item.file, lang)
         setItems((prev) =>
           prev.map((p) =>
             p.id === item.id
@@ -138,7 +146,7 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
                   status: decodableFormats.includes(info.format) ? 'ready' : 'skipped',
                   error: decodableFormats.includes(info.format)
                     ? null
-                    : `${formatLabel(info.format)} cannot be decoded in this browser — use the native CLI.`,
+                    : t('bt.cannotDecode', { format: formatLabel(info.format) }),
                 }
               : p,
           ),
@@ -156,19 +164,19 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
                 ...p,
                 sourceFormat: err.format,
                 status: 'skipped',
-                error: `${formatLabel(err.format)} cannot be decoded in this browser — use the native CLI.`,
+                error: t('bt.cannotDecode', { format: formatLabel(err.format) }),
               }
             }
             return {
               ...p,
               status: 'failed',
-              error: err instanceof Error ? err.message : 'Could not read this image.',
+              error: err instanceof Error ? err.message : t('cv.errRead'),
             }
           }),
         )
       }
     }
-  }, [decodableFormats])
+  }, [decodableFormats, lang, t])
 
   // Homepage hand-off: files dropped on the home page arrive here
   // already loaded. Consume them once; the ref guard also covers
@@ -193,18 +201,29 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
         const item = queue[cursor++]
         setItems((prev) => prev.map((p) => (p.id === item.id ? { ...p, status: 'converting', error: null } : p)))
         try {
-          const converted = await convertImage(item.file, {
-            targetFormat,
-            quality: settings.defaultQuality,
-            background: settings.defaultBackground,
-            pngCompression: 1,
-          })
+          const converted = await convertImage(
+            item.file,
+            {
+              targetFormat,
+              quality: settings.defaultQuality,
+              background: settings.defaultBackground,
+              pngCompression: 1,
+            },
+            lang,
+          )
           recordActivity({
             fileName: item.file.name,
             fileSize: item.file.size,
             fileType: item.file.type || 'image',
             tool: 'batch',
             result: `Converted to ${formatLabel(targetFormat)} · ${converted.width}×${converted.height} · ${formatBytes(converted.bytes)}`,
+            resultKey: 'act.convert',
+            resultParams: {
+              format: formatLabel(targetFormat),
+              w: converted.width,
+              h: converted.height,
+              bytes: formatBytes(converted.bytes),
+            },
           })
           setItems((prev) =>
             prev.map((p) =>
@@ -224,7 +243,7 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
           setItems((prev) =>
             prev.map((p) =>
               p.id === item.id
-                ? { ...p, status: 'failed', error: err instanceof Error ? err.message : 'Conversion failed.' }
+                ? { ...p, status: 'failed', error: err instanceof Error ? err.message : t('bt.errConvert') }
                 : p,
             ),
           )
@@ -233,7 +252,7 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
     }
     await Promise.all(Array.from({ length: Math.max(1, workers) }, () => runOne()))
     setRunning(false)
-  }, [running, settings.batchWorkers, settings.defaultBackground, settings.defaultQuality, targetFormat])
+  }, [running, settings.batchWorkers, settings.defaultBackground, settings.defaultQuality, targetFormat, lang, t])
 
   const downloadAllAsZip = useCallback(async () => {
     const done = itemsRef.current.filter((i) => i.status === 'done' && i.resultBlob)
@@ -248,11 +267,11 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
       const blob = await zip.generateAsync({ type: 'blob' })
       downloadBlob(blob, `openpixel-${targetFormat}.zip`)
     } catch (err) {
-      setZipError(err instanceof Error ? err.message : 'Could not build the zip file.')
+      setZipError(err instanceof Error ? err.message : t('bt.errZip'))
     } finally {
       setZipping(false)
     }
-  }, [targetFormat])
+  }, [targetFormat, t])
 
   const removeItem = useCallback((id: string) => {
     setItems((prev) => {
@@ -277,20 +296,14 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
       <Stack spacing={3}>
         <ToolPageHeader
           headingId="batch-heading"
-          title="Batch conversion"
-          description={
-            <>
-              Add several images and convert them together — still entirely on your device. Files are processed
-              up to {settings.batchWorkers} at a time (see Settings). A file that fails never stops the rest of
-              the batch. Files this browser cannot decode are skipped with a reason.
-            </>
-          }
+          title={t('bt.title')}
+          description={t('bt.desc', { n: settings.batchWorkers })}
         />
 
         <DropZone
           inputId="batch-files"
-          label="Drop images here"
-          hint="PNG, JPEG, WebP, GIF, BMP, SVG, AVIF (browser-dependent) — plus TIFF, QOI, HEIC, JXL and JPEG 2000 when the WASM engine is built."
+          label={t('bt.dropLabel')}
+          hint={t('bt.dropHint')}
           multiple
           accept="image/*"
           onFiles={addFiles}
@@ -301,7 +314,7 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
             <Stack direction="row" flexWrap="wrap" alignItems="flex-end" spacing={1.5}>
               <Box>
                 <Typography variant="subtitle2" component="label" htmlFor="batch-target-format">
-                  Output format for all files
+                  {t('bt.outputForAll')}
                 </Typography>
                 <Select
                   native
@@ -318,7 +331,7 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
                 </Select>
               </Box>
               <Button type="button" variant="contained" onClick={convertAll} disabled={running || readyCount === 0}>
-                {running ? 'Converting…' : `Convert ${readyCount} file${readyCount === 1 ? '' : 's'}`}
+                {running ? t('bt.converting') : t('bt.convertN', { n: readyCount, s: readyCount === 1 ? '' : 's' })}
               </Button>
               <Button
                 type="button"
@@ -327,26 +340,31 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
                 onClick={downloadAllAsZip}
                 disabled={zipping || doneCount === 0}
               >
-                {zipping ? 'Building zip…' : `Download all (${doneCount}) as .zip`}
+                {zipping ? t('bt.zipping') : t('bt.downloadAll', { n: doneCount })}
               </Button>
               <Button type="button" variant="outlined" onClick={clearAll} disabled={running}>
-                Clear list
+                {t('bt.clear')}
               </Button>
             </Stack>
 
             <Typography role="status" aria-live="polite" variant="body2" color="text.secondary">
-              {items.length} file{items.length === 1 ? '' : 's'} — {doneCount} converted, {failedCount}{' '}
-              failed, {skippedCount} skipped (cannot decode in this browser)
+              {t('bt.status', {
+                n: items.length,
+                pl: items.length === 1 ? '' : 's',
+                d: doneCount,
+                f: failedCount,
+                sk: skippedCount,
+              })}
             </Typography>
             {zipError && (
               <Typography role="alert" variant="body2" color="error">
-                Zip download failed: {zipError} — individual downloads below still work.
+                {t('bt.zipFailed', { msg: zipError })}
               </Typography>
             )}
 
             <Stack component="ul" spacing={1.5} sx={{ listStyle: 'none', m: 0, p: 0 }}>
               {items.map((item) => {
-                const status = statusTextProps(item.status)
+                const status = statusTextProps(item.status, t)
                 return (
                   <Card key={item.id} component="li">
                     <CardContent
@@ -392,8 +410,7 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
                           item.width > 0 &&
                           (item.resultWidth < item.width || item.resultHeight < item.height) && (
                             <Typography variant="caption" display="block">
-                              Resized to {item.resultWidth}×{item.resultHeight} for ICO — ICO supports max
-                              256×256.
+                              {t('cv.icoResized', { w: item.resultWidth, h: item.resultHeight })}
                             </Typography>
                           )}
                       </Box>
@@ -409,7 +426,7 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
                             downloadBlob(item.resultBlob as Blob, outputFileName(item.file.name, targetFormat))
                           }
                         >
-                          Download
+                          {t('common.download')}
                         </Button>
                       )}
                       <Button
@@ -417,9 +434,9 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
                         variant="outlined"
                         size="small"
                         onClick={() => removeItem(item.id)}
-                        aria-label={`Remove ${item.file.name} from the batch`}
+                        aria-label={t('bt.removeAria', { name: item.file.name })}
                       >
-                        Remove
+                        {t('common.remove')}
                       </Button>
                     </CardContent>
                   </Card>

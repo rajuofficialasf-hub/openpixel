@@ -76,7 +76,10 @@ export function getTheme(mode: ThemeMode): Theme {
       },
       text: {
         primary: dark ? '#F1F5FB' : '#172033',
-        secondary: dark ? '#A3AEC2' : '#64748B',
+        // 12px meta text (sidebar group labels, ToolCard foot,
+        // "Example" captions) reads dimmest in dark — #B9C4D6
+        // keeps it legible while still reading as secondary.
+        secondary: dark ? '#B9C4D6' : '#64748B',
       },
       divider: dark ? '#26344D' : '#E2E8F0',
       success: { main: dark ? '#39C98A' : '#16A36A' },
@@ -110,17 +113,32 @@ export function getTheme(mode: ThemeMode): Theme {
           // Visible keyboard focus everywhere — accessibility
           // requirement carried over from the old global stylesheet.
           ':focus-visible': {
-            outline: '2px solid #3157D5',
+            outline: dark ? '2px solid #829BFF' : '2px solid #3157D5',
             outlineOffset: '2px',
           },
         },
       },
       MuiButton: {
         styleOverrides: {
-          root: { borderRadius: 8, textTransform: 'none', fontWeight: 600 },
+          root: {
+            borderRadius: 8,
+            textTransform: 'none',
+            fontWeight: 600,
+            // Disabled buttons were near-unreadable in dark mode
+            // (dim text on a dim fill): lift both in dark.
+            '&.Mui-disabled': dark
+              ? { color: '#C7D2E4', opacity: 0.85 }
+              : undefined,
+          },
           // Contained buttons: flat, no heavy MUI shadow — the
           // colour does the work, the shadow does not.
-          contained: { boxShadow: 'none', '&:hover': { boxShadow: 'none' } },
+          contained: {
+            boxShadow: 'none',
+            '&:hover': { boxShadow: 'none' },
+            '&.Mui-disabled': dark
+              ? { backgroundColor: 'rgba(130, 155, 255, 0.28)', color: '#DCE4F7' }
+              : undefined,
+          },
           sizeLarge: { padding: '10px 22px' },
         },
       },
@@ -187,7 +205,7 @@ export function getTheme(mode: ThemeMode): Theme {
             fontWeight: 500,
             letterSpacing: 0,
             textTransform: 'none',
-            color: dark ? '#A3AEC2' : '#64748B',
+            color: dark ? '#B9C4D6' : '#64748B',
           },
           body: { padding: '12px 16px' },
         },

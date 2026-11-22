@@ -141,7 +141,7 @@ try {
   const nopePath = await page.evaluate(() => window.location.pathname);
   check(
     'unknown /nope lands on home',
-    nopePath === '/' && (await bodyText()).includes('Everything You Need to Work With Files'),
+    nopePath === '/' && (await bodyText()).includes('File tools that never upload your files'),
     `pathname=${nopePath} url=${page.url()}`,
   );
 

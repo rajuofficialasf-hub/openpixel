@@ -57,7 +57,10 @@ async function uploadResize(files) {
 
 async function resizeAndDownload() {
   await page.locator('#resize-button').click();
-  await page.waitForSelector('text=Resized:', { timeout: 60000 });
+  // The result line has no "Resized:" prefix — the engine note is
+  // the stable marker ("Resized with the built-in WASM engine
+  // (Lanczos3)." or "...browser canvas (bilinear)...").
+  await page.waitForSelector('text=Resized with the', { timeout: 60000 });
   const [dl] = await Promise.all([
     page.waitForEvent('download', { timeout: 30000 }),
     page.locator('#resize-download').click(),
@@ -93,7 +96,7 @@ check('aspect lock: width 800 -> height 600', (await page.inputValue('#resize-he
 const fitPath = await resizeAndDownload();
 const fitInfo = verify(fitPath, 'jpeg', '800x600');
 check('photo ResizeFit 800x600 is a real JPEG 800x600', fitInfo.ok, fitInfo.detail);
-const resizedLine = await page.locator('text=Resized:').first().innerText();
+const resizedLine = await page.locator('text=/% (smaller|larger)|same size/').first().innerText();
 check('result line shows the real size change', /% (smaller|larger)|same size/.test(resizedLine), resizedLine);
 const engineNote = await page.locator('text=WASM engine (Lanczos3)').count();
 check('WASM engine (Lanczos3) note shown', engineNote > 0);

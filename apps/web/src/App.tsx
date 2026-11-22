@@ -23,6 +23,7 @@ import { FlattenTool, MetadataTool, RedactTool, RepairTool, SanitizeTool } from 
 import { AppShell } from './components/layout/AppShell'
 import { loadSettings, resolveTheme, saveSettings, type Settings } from './lib/settings'
 import { I18nProvider } from './lib/i18n-context'
+import { translate } from './lib/i18n'
 import { getTheme } from './theme/theme'
 import { ROUTE_PATHS, routeFromPath, type RouteId, type ToolCategory } from './lib/routes'
 
@@ -61,6 +62,8 @@ function App() {
     // itself does not need it.
     document.documentElement.classList.toggle('dark', mode === 'dark')
     document.documentElement.lang = settings.language === 'bn' ? 'bn' : 'en'
+    // The tab title follows the language; the product name stays.
+    document.title = `OpenPixel Studio — ${translate(settings.language, 'home.heroTitle')}`
     saveSettings(settings)
   }, [settings, mode])
 

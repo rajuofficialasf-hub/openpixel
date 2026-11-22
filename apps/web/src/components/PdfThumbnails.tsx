@@ -12,6 +12,7 @@
 import { useEffect, useState } from 'react'
 import { Box, Button, Card, CardContent, Stack, Typography } from '@mui/material'
 import { renderPdfPage } from '../lib/pdf'
+import { useI18n } from '../lib/use-i18n'
 
 const MAX_THUMBNAILS = 12
 
@@ -23,6 +24,7 @@ interface PdfThumbnailsProps {
 }
 
 export function PdfThumbnails({ bytes, pageCount, currentPage, onSelect }: PdfThumbnailsProps) {
+  const { t } = useI18n()
   const [thumbs, setThumbs] = useState<Map<number, string>>(new Map())
 
   useEffect(() => {
@@ -54,7 +56,7 @@ export function PdfThumbnails({ bytes, pageCount, currentPage, onSelect }: PdfTh
     <Card>
       <CardContent>
         <Typography variant="overline" color="text.secondary">
-          Pages
+          {t('common.pages')}
         </Typography>
         <Stack
           spacing={1}
@@ -72,7 +74,7 @@ export function PdfThumbnails({ bytes, pageCount, currentPage, onSelect }: PdfTh
               <Button
                 key={page}
                 onClick={() => onSelect(page)}
-                aria-label={`Go to page ${page}`}
+                aria-label={t('pdf.thumbsGoTo', { n: page })}
                 aria-current={selected ? 'true' : undefined}
                 sx={{
                   display: 'flex',
@@ -114,7 +116,7 @@ export function PdfThumbnails({ bytes, pageCount, currentPage, onSelect }: PdfTh
                   </Box>
                 )}
                 <Typography variant="caption" color="text.secondary">
-                  Page {page}
+                  {t('pdf.pageN', { n: page })}
                 </Typography>
               </Button>
             )
@@ -123,8 +125,7 @@ export function PdfThumbnails({ bytes, pageCount, currentPage, onSelect }: PdfTh
         {restPages.length > 0 && (
           <Box sx={{ mt: 1 }}>
             <Typography variant="caption" color="text.secondary">
-              …and {restPages.length} more page{restPages.length === 1 ? '' : 's'} — use the page selector in
-              the preview to jump to them.
+              {t('pdf.thumbsMore', { n: restPages.length, s: restPages.length === 1 ? '' : 's' })}
             </Typography>
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 1 }}>
               {restPages.map((page) => (
@@ -133,7 +134,7 @@ export function PdfThumbnails({ bytes, pageCount, currentPage, onSelect }: PdfTh
                   size="small"
                   variant={page === currentPage ? 'contained' : 'outlined'}
                   onClick={() => onSelect(page)}
-                  aria-label={`Go to page ${page}`}
+                  aria-label={t('pdf.thumbsGoTo', { n: page })}
                   sx={{ minWidth: 36, px: 1 }}
                 >
                   {page}

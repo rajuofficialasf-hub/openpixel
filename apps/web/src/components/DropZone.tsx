@@ -22,6 +22,13 @@ interface DropZoneProps {
   radius?: number
   /** Picker link text (default "Choose files or drag them here"). */
   chooseLabel?: string
+  /**
+   * Where the content sits when the zone stretches taller than its
+   * content (empty PDF tool pages). Default 'center'; 'top' puts the
+   * prompt right under the page title instead of floating it in the
+   * middle of a tall empty box.
+   */
+  alignContent?: 'center' | 'top'
 }
 
 /**
@@ -41,10 +48,17 @@ export function DropZone({
   compact = false,
   radius = 1.5,
   chooseLabel,
+  alignContent = 'center',
 }: DropZoneProps) {
   const { t } = useI18n()
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
+  // Touch devices have no drag-and-drop: the default picker line
+  // must not mention dragging there ("Choose files" instead of
+  // "Choose files or drag them here"). A caller-supplied
+  // chooseLabel always wins.
+  const coarsePointer =
+    typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches
 
   const handleDrop = useCallback(
     (event: React.DragEvent) => {
@@ -84,6 +98,15 @@ export function DropZone({
         bgcolor: dragging ? (t) => alpha(t.palette.primary.main, 0.06) : 'background.paper',
         p: compact ? 3 : 5,
         textAlign: 'center',
+        // Vertically centred content by default; 'top' when the
+        // zone stretches to fill the remaining height on empty PDF
+        // tool pages (the prompt belongs under the title, not in
+        // the middle of a tall empty box).
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: alignContent === 'top' ? 'flex-start' : 'center',
+        alignItems: 'center',
+        pt: alignContent === 'top' ? (compact ? 6 : 8) : undefined,
         transition: (theme) =>
           theme.transitions.create(['border-color', 'background-color'], {
             duration: theme.transitions.duration.short,
@@ -112,7 +135,7 @@ export function DropZone({
         {hint}
       </Typography>
       <Typography variant="body2" color="primary" fontWeight={600} sx={{ mt: compact ? 1.5 : 2 }}>
-        {chooseLabel ?? t('common.chooseFiles')}
+        {chooseLabel ?? t(coarsePointer ? 'common.chooseFilesTouch' : 'common.chooseFiles')}
       </Typography>
       <Box
         component="input"

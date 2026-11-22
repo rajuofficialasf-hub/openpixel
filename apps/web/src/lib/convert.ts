@@ -44,6 +44,7 @@
  * conversion strips metadata and the CLI is needed to preserve it.
  */
 import { canvasMimeType, targetHasNoAlpha } from './capabilities'
+import { translate, type Language } from './i18n'
 import { detectFileFormat, type DetectedFormat } from './detect'
 import {
   convertWithWasm,
@@ -88,18 +89,18 @@ export interface ProbedImage {
 export class ProbeError extends Error {
   readonly format: DetectedFormat
 
-  constructor(format: DetectedFormat) {
-    super('This browser cannot decode this image. Try the native CLI instead.')
+  constructor(format: DetectedFormat, lang: Language = 'en') {
+    super(translate(lang, 'lib.cv.probe'))
     this.name = 'ProbeError'
     this.format = format
   }
 }
 
 /** Read dimensions + detected format without converting. */
-export async function probeImage(file: Blob): Promise<ProbedImage> {
+export async function probeImage(file: Blob, lang: Language = 'en'): Promise<ProbedImage> {
   const format = await detectFileFormat(file)
   try {
-    const bitmap = await decodeBitmap(file)
+    const bitmap = await decodeBitmap(file, lang)
     const width = bitmap.width
     const height = bitmap.height
     bitmap.close()
@@ -125,17 +126,17 @@ export async function probeImage(file: Blob): Promise<ProbedImage> {
     // SVG reports the browser's 300×150 default here, where the
     // WASM route uses the viewBox size.
     try {
-      const img = await loadImageElement(file)
+      const img = await loadImageElement(file, lang)
       return { format, width: img.naturalWidth, height: img.naturalHeight }
     } catch {
       // A failed probe still throws below — the file is genuinely
       // unreadable in this browser, and the native CLI is the answer.
-      throw new ProbeError(format)
+      throw new ProbeError(format, lang)
     }
   }
 }
 
-async function decodeBitmap(file: Blob): Promise<ImageBitmap> {
+async function decodeBitmap(file: Blob, lang: Language = 'en'): Promise<ImageBitmap> {
   try {
     return await createImageBitmap(file)
   } catch {
@@ -150,14 +151,14 @@ async function decodeBitmap(file: Blob): Promise<ImageBitmap> {
       }
       img.onerror = () => {
         URL.revokeObjectURL(url)
-        reject(new Error('This browser cannot decode this image. Try the native CLI instead.'))
+        reject(new Error(translate(lang, 'lib.cv.probe')))
       }
       img.src = url
     })
   }
 }
 
-export async function convertImage(file: Blob, options: ConvertOptions): Promise<ConvertedImage> {
+export async function convertImage(file: Blob, options: ConvertOptions, lang: Language = 'en'): Promise<ConvertedImage> {
   const sourceFormat = await detectFileFormat(file)
   const flattenBackground = targetHasNoAlpha(options.targetFormat) ? options.background : null
   // WASM first — but only for conversions the canvas path cannot do
@@ -192,14 +193,11 @@ export async function convertImage(file: Blob, options: ConvertOptions): Promise
   const targetMime = canvasMimeType(options.targetFormat)
   if (!targetMime) {
     throw new Error(
-      `The browser cannot encode ${options.targetFormat.toUpperCase()} — use the native CLI (` +
-        `openpixel convert) for that format. In-browser targets are PNG, JPEG and WebP` +
-        ` (plus the WASM engine's TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA, BMP and GIF when` +
-        ` the WASM module is built — see Settings, About).`,
+      translate(lang, 'lib.cv.encodeTarget', { fmt: options.targetFormat.toUpperCase() }),
     )
   }
   try {
-    return await convertInWorker(file, targetMime, options.quality, flattenBackground)
+    return await convertInWorker(file, targetMime, options.quality, flattenBackground, undefined, lang)
   } catch {
     // The worker is an optimisation, not the only decode path: a
     // failure there must not be terminal when the main thread can
@@ -210,7 +208,7 @@ export async function convertImage(file: Blob, options: ConvertOptions): Promise
     // same holds for any format the worker rejects but `<img>`
     // accepts. The main-thread attempt throws its own, more
     // actionable error when it also cannot decode the file.
-    return await convertOnMainThread(file, targetMime, options.quality, flattenBackground)
+    return await convertOnMainThread(file, targetMime, options.quality, flattenBackground, undefined, lang)
   }
 }
 
@@ -222,12 +220,13 @@ async function convertInWorker(
   quality: number,
   flattenBackground: string | null,
   targetSize?: { width: number; height: number },
+  lang: Language = 'en',
 ): Promise<ConvertedImage> {
   let worker: Worker
   try {
     worker = new Worker(new URL('../worker.ts', import.meta.url), { type: 'module' })
   } catch {
-    throw new WorkerUnavailableError('Web Worker could not be created.')
+    throw new WorkerUnavailableError(translate(lang, 'lib.cv.workerCreate'))
   }
   try {
     const buffer = await file.arrayBuffer()
@@ -242,16 +241,23 @@ async function convertInWorker(
     }
     const result = await new Promise<WorkerConvertSuccess>((resolve, reject) => {
       const timeout = window.setTimeout(() => {
-        reject(new WorkerUnavailableError('Conversion worker timed out.'))
+        reject(new WorkerUnavailableError(translate(lang, 'lib.cv.workerTimeout')))
       }, 120_000)
       worker.onmessage = (event: MessageEvent<WorkerConvertSuccess | WorkerConvertFailure>) => {
         window.clearTimeout(timeout)
-        if ('error' in event.data) reject(new Error(event.data.error))
+        if ('error' in event.data)
+          reject(
+            new Error(
+              event.data.error === 'Conversion failed in the worker.'
+                ? translate(lang, 'lib.cv.workerFailed')
+                : event.data.error,
+            ),
+          )
         else resolve(event.data)
       }
       worker.onerror = () => {
         window.clearTimeout(timeout)
-        reject(new WorkerUnavailableError('Conversion worker failed to load.'))
+        reject(new WorkerUnavailableError(translate(lang, 'lib.cv.workerLoad')))
       }
       worker.postMessage(request, [buffer])
     })
@@ -268,16 +274,17 @@ async function convertOnMainThread(
   quality: number,
   flattenBackground: string | null,
   targetSize?: { width: number; height: number },
+  lang: Language = 'en',
 ): Promise<ConvertedImage> {
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
   if (!ctx) {
-    throw new Error('Could not get a 2D canvas context.')
+    throw new Error(translate(lang, 'lib.cv.canvasCtx'))
   }
   let width: number
   let height: number
   try {
-    const bitmap = await decodeBitmap(file)
+    const bitmap = await decodeBitmap(file, lang)
     // With a target size the canvas is exactly that size and the
     // bitmap is drawn scaled into it (the resize fallback); without
     // one the canvas keeps the source size (plain conversion).
@@ -301,7 +308,7 @@ async function convertOnMainThread(
     // to resvg first). Dimensions come from the element itself, so a
     // viewBox-only SVG renders at the browser's 300×150 default
     // here, where the WASM route uses the viewBox size.
-    const img = await loadImageElement(file)
+    const img = await loadImageElement(file, lang)
     width = targetSize?.width ?? img.naturalWidth
     height = targetSize?.height ?? img.naturalHeight
     canvas.width = width
@@ -316,7 +323,7 @@ async function convertOnMainThread(
     canvas.toBlob(resolve, targetMime, quality / 100)
   })
   if (!blob) {
-    throw new Error(`This browser cannot encode ${targetMime}. Try PNG or JPEG instead.`)
+    throw new Error(translate(lang, 'lib.cv.encodeMime', { mime: targetMime }))
   }
   return { blob, width, height, bytes: blob.size, engine: 'canvas' }
 }
@@ -334,18 +341,18 @@ export async function resizeOnCanvas(
   options: ConvertOptions,
   width: number,
   height: number,
+  lang: Language = 'en',
 ): Promise<ConvertedImage> {
   const targetMime = canvasMimeType(options.targetFormat)
   if (!targetMime) {
     throw new Error(
-      `The browser cannot encode ${options.targetFormat.toUpperCase()} without the WASM engine — ` +
-        `build it with npm run build:wasm, or use the native CLI (openpixel process).`,
+      translate(lang, 'lib.cv.resizeNoEncode', { fmt: options.targetFormat.toUpperCase() }),
     )
   }
   const flattenBackground = targetHasNoAlpha(options.targetFormat) ? options.background : null
   const targetSize = { width, height }
   try {
-    return await convertInWorker(file, targetMime, options.quality, flattenBackground, targetSize)
+    return await convertInWorker(file, targetMime, options.quality, flattenBackground, targetSize, lang)
   } catch {
     return await convertOnMainThread(
       file,
@@ -353,12 +360,13 @@ export async function resizeOnCanvas(
       options.quality,
       flattenBackground,
       targetSize,
+      lang,
     )
   }
 }
 
 /** Load a file into an `<img>` element (main thread only — workers have no DOM). */
-function loadImageElement(file: Blob): Promise<HTMLImageElement> {
+function loadImageElement(file: Blob, lang: Language = 'en'): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file)
     const img = new Image()
@@ -368,7 +376,7 @@ function loadImageElement(file: Blob): Promise<HTMLImageElement> {
     }
     img.onerror = () => {
       URL.revokeObjectURL(url)
-      reject(new Error('This browser cannot decode this image. Try the native CLI instead.'))
+      reject(new Error(translate(lang, 'lib.cv.probe')))
     }
     img.src = url
   })

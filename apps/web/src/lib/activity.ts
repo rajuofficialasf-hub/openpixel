@@ -12,6 +12,8 @@
  * deletes the whole history.
  */
 
+import { translate, type Language } from './i18n'
+
 export interface ActivityEntry {
   id: string
   fileName: string
@@ -19,8 +21,23 @@ export interface ActivityEntry {
   fileType: string
   tool: string
   result: string
+  /**
+   * Language-neutral result, when the recorder supplied one: the
+   * i18n key plus its params, rendered localised at read time by
+   * `formatActivityResult`. `result` stays the English text, so
+   * entries recorded before this field existed (and any entry
+   * without a key) still render as-is — never blank, never a crash.
+   */
+  resultKey?: string
+  resultParams?: Record<string, string | number>
   at: number
   starred: boolean
+}
+
+/** Render an entry's result in the given language. */
+export function formatActivityResult(lang: Language, entry: ActivityEntry): string {
+  if (entry.resultKey) return translate(lang, entry.resultKey, entry.resultParams)
+  return entry.result
 }
 
 const STORAGE_KEY = 'openpixel.activity.v1'
@@ -118,12 +135,19 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
-/** Short date, e.g. "17 Nov 2026, 13:40". */
-export function formatDate(at: number): string {
-  const d = new Date(at)
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  const day = d.getDate()
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  return `${day} ${months[d.getMonth()]} ${d.getFullYear()}, ${hh}:${mm}`
+/**
+ * Short date, e.g. "17 Nov 2026, 13:40" in English. The month
+ * (and digits) follow the language: `Intl.DateTimeFormat` with
+ * `bn-BD` renders the Bengali month name, `en-GB` the English
+ * one — no hand-kept month list to drift out of sync.
+ */
+export function formatDate(at: number, lang: Language = 'en'): string {
+  return new Intl.DateTimeFormat(lang === 'bn' ? 'bn-BD' : 'en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(new Date(at))
 }

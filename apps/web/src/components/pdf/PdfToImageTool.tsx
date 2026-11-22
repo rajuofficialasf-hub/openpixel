@@ -14,6 +14,7 @@ import {
   renderPdfPageBlob,
   PDF_RENDER_SCALES,
 } from '../../lib/pdf'
+import { useI18n } from '../../lib/use-i18n'
 import { PdfJsCaption, PdfToolPage } from './shared'
 import { downloadBlob, usePdfFile, type PdfToolProps } from './usePdfFile'
 
@@ -22,6 +23,7 @@ function metaRow(label: string, value: string | null | undefined): { label: stri
 }
 
 export function PdfToImageTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps) {
+  const { t, lang } = useI18n()
   const pdf = usePdfFile('pdf-to-image', initialFiles, onInitialFilesConsumed)
   const [previewPage, setPreviewPage] = useState(1)
   const [renderScale, setRenderScale] = useState<number>(2)
@@ -53,34 +55,34 @@ export function PdfToImageTool({ initialFiles, onInitialFilesConsumed }: PdfTool
       .catch((err: unknown) => {
         if (!cancelled) {
           setPreviewDims(null)
-          setPreviewError(err instanceof Error ? err.message : 'Could not render this page.')
+          setPreviewError(err instanceof Error ? err.message : t('pdf.renderError'))
         }
       })
     return () => {
       cancelled = true
     }
-  }, [bytes, previewPage, renderScale])
+  }, [bytes, previewPage, renderScale, t])
 
   const run = async () => {
     if (!bytes || !file) return
     pdf.setBusy('Rendered page')
     pdf.setError(null)
     try {
-      const { blob, width, height } = await renderPdfPageBlob(bytes, previewPage, renderScale, renderFormat)
+      const { blob, width, height } = await renderPdfPageBlob(bytes, previewPage, renderScale, renderFormat, lang)
       downloadBlob(blob, `${file.name.replace(/\.pdf$/i, '')}-p${previewPage}.${renderFormat === 'png' ? 'png' : 'jpg'}`)
-      pdf.setStatus(`Rendered page ${previewPage} as ${renderFormat.toUpperCase()}: ${width} × ${height} px`)
+      pdf.setStatusKey('pdf.rendered', { n: previewPage, fmt: renderFormat.toUpperCase(), w: width, h: height })
     } catch (err) {
-      pdf.setError(err instanceof Error ? err.message : 'Could not render this page.')
+      pdf.setError(err instanceof Error ? err.message : t('pdf.renderError'))
     }
     pdf.setBusy(null)
   }
 
   const meta = info
     ? [
-        metaRow('Title', info.title),
-        metaRow('Author', info.author),
-        metaRow('Creator', info.creator),
-        metaRow('Producer', info.producer),
+        metaRow(t('pdf.docTitle'), info.title),
+        metaRow(t('pdf.docAuthor'), info.author),
+        metaRow(t('pdf.docCreator'), info.creator),
+        metaRow(t('pdf.docProducer'), info.producer),
       ].filter((r): r is { label: string; value: string } => r !== null)
     : []
   const pageSizesShown = info?.page_sizes.slice(0, 6) ?? []
@@ -90,28 +92,28 @@ export function PdfToImageTool({ initialFiles, onInitialFilesConsumed }: PdfTool
     <Card id="pdf-info">
       <CardContent>
         <Typography variant="overline" color="text.secondary">
-          Document
+          {t('pdf.editDoc')}
         </Typography>
         <Box
           component="dl"
           sx={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 2, rowGap: 1, mt: 2, mx: 0, mb: 0 }}
         >
-          <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>File</Box>
+          <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>{t('pdf.docFile')}</Box>
           <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {file.name}
           </Box>
-          <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>Size</Box>
+          <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>{t('pdf.docSize')}</Box>
           <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>{formatBytes(file.size)}</Box>
-          <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>Pages</Box>
+          <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>{t('pdf.docPages')}</Box>
           <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }} id="pdf-page-count">
             {pageCount}
           </Box>
           {info && (
             <>
-              <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>Version</Box>
+              <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>{t('pdf.docVersion')}</Box>
               <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>PDF {info.version}</Box>
-              <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>Encrypted</Box>
-              <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>{info.encrypted ? 'Yes' : 'No'}</Box>
+              <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>{t('pdf.docEncrypted')}</Box>
+              <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>{info.encrypted ? t('fmt.yes') : t('fmt.no')}</Box>
             </>
           )}
           {meta.map((row) => (
@@ -122,20 +124,20 @@ export function PdfToImageTool({ initialFiles, onInitialFilesConsumed }: PdfTool
           ))}
           {info && (
             <>
-              <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>Page sizes</Box>
+              <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>{t('pdf.docPageSizes')}</Box>
               <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>
                 {pageSizesShown.map((s, i) => (
                   <span key={i}>
                     {i > 0 ? '; ' : ''}p{i + 1}: {formatPageSize(s)}
                   </span>
                 ))}
-                {pageSizesExtra > 0 && `; … and ${pageSizesExtra} more`}
+                {pageSizesExtra > 0 && t('pdf.docMore', { n: pageSizesExtra })}
               </Box>
             </>
           )}
         </Box>
         <Button type="button" variant="outlined" onClick={pdf.clearFile} sx={{ mt: 2 }}>
-          Choose a different file
+          {t('common.chooseDifferentFile')}
         </Button>
       </CardContent>
     </Card>
@@ -145,7 +147,7 @@ export function PdfToImageTool({ initialFiles, onInitialFilesConsumed }: PdfTool
     <PdfToolPage
       headingId="pdf-to-image-heading"
       title="PDF to Image"
-      description="Render PDF pages to PNG or JPEG and download them."
+      description={t('pdf.toImageDesc')}
       pdf={pdf}
       // The info card below already shows file/size/pages (and owns
       // #pdf-page-count), so the default file summary is suppressed
@@ -154,8 +156,8 @@ export function PdfToImageTool({ initialFiles, onInitialFilesConsumed }: PdfTool
       beforeSettings={infoCard}
       primary={{
         id: 'pdf-render-download',
-        label: `Download page ${previewPage} as ${renderFormat.toUpperCase()}`,
-        busyLabel: 'Rendering…',
+        label: t('pdf.downloadPage', { n: previewPage, fmt: renderFormat.toUpperCase() }),
+        busyLabel: t('pdf.rendering'),
         busyKey: 'Rendered page',
         onClick: () => void run(),
       }}
@@ -163,7 +165,7 @@ export function PdfToImageTool({ initialFiles, onInitialFilesConsumed }: PdfTool
       <Stack direction="row" spacing={2} alignItems="flex-end" flexWrap="wrap">
         <Box>
           <Typography variant="subtitle2" component="label" htmlFor="pdf-preview-page" sx={{ display: 'block' }}>
-            Page
+            {t('pdf.pageLabel')}
           </Typography>
           <Select
             native
@@ -174,14 +176,14 @@ export function PdfToImageTool({ initialFiles, onInitialFilesConsumed }: PdfTool
           >
             {Array.from({ length: pageCount }, (_, i) => i + 1).map((n) => (
               <option key={n} value={n}>
-                Page {n}
+                {t('pdf.pageN', { n })}
               </option>
             ))}
           </Select>
         </Box>
         <Box>
           <Typography variant="subtitle2" component="label" htmlFor="pdf-render-scale" sx={{ display: 'block' }}>
-            Render scale
+            {t('pdf.renderScale')}
           </Typography>
           <Select
             native
@@ -199,7 +201,7 @@ export function PdfToImageTool({ initialFiles, onInitialFilesConsumed }: PdfTool
         </Box>
         <Box>
           <Typography variant="subtitle2" component="label" htmlFor="pdf-render-format" sx={{ display: 'block' }}>
-            Download format
+            {t('pdf.downloadFormat')}
           </Typography>
           <Select
             native
@@ -230,7 +232,7 @@ export function PdfToImageTool({ initialFiles, onInitialFilesConsumed }: PdfTool
       </Box>
       {previewDims && (
         <Typography variant="body2" color="text.secondary" id="pdf-preview-dims">
-          Page {previewPage} preview: {previewDims.width} × {previewDims.height} px at {renderScale}× scale
+          {t('pdf.previewDims', { n: previewPage, w: previewDims.width, h: previewDims.height, s: renderScale })}
         </Typography>
       )}
       {previewError && <Alert severity="error">{previewError}</Alert>}

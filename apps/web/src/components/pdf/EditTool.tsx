@@ -34,13 +34,15 @@ import {
 import { PdfThumbnails } from '../PdfThumbnails'
 import { DropZone } from '../DropZone'
 import { PdfJsCaption, PdfResultBoxes, WasmWarning } from './shared'
-import { downloadBlob, usePdfFile, wasmMissing, type PdfToolProps } from './usePdfFile'
+import { useI18n } from '../../lib/use-i18n'
+import { downloadBlob, usePdfFile, type PdfToolProps } from './usePdfFile'
 
 function metaRow(label: string, value: string | null | undefined): { label: string; value: string } | null {
   return value == null || value === '' ? null : { label, value }
 }
 
 export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps) {
+  const { t, lang } = useI18n()
   const pdf = usePdfFile('pdf-edit', initialFiles, onInitialFilesConsumed)
   const { file, bytes, info, pageCount } = pdf
 
@@ -101,13 +103,13 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
       .catch((err: unknown) => {
         if (!cancelled) {
           setPreviewDims(null)
-          setPreviewError(err instanceof Error ? err.message : 'Could not render this page.')
+          setPreviewError(err instanceof Error ? err.message : t('pdf.renderError'))
         }
       })
     return () => {
       cancelled = true
     }
-  }, [bytes, previewPage, renderScale])
+  }, [bytes, previewPage, renderScale, t])
 
   const editPageNumber = (): number | null => {
     const n = Number(editPage)
@@ -123,7 +125,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
     if (!bytes || !file) return
     if (ops.length === 0) {
       pdf.setResults([])
-      pdf.setStatus('All edits undone — no changes to download yet.')
+      pdf.setStatus(t('pdf.editUndone'))
       pdf.setBusy(null)
       return
     }
@@ -132,7 +134,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
     pdf.setStatus(null)
     const result = await pdfEdit(bytes, ops, [])
     if (!result) {
-      pdf.setError(wasmMissing(label))
+      pdf.setError(pdf.wasmMissing(label))
       pdf.setBusy(null)
       return
     }
@@ -144,9 +146,20 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
         pages: pageCount,
       },
     ])
-    pdf.setStatus(
-      `${label}: ${result.opsApplied} op${result.opsApplied === 1 ? '' : 's'} on ${result.pagesTouched} page${result.pagesTouched === 1 ? '' : 's'}${result.commentsAdded > 0 ? `, ${result.commentsAdded} comment${result.commentsAdded === 1 ? '' : 's'}` : ''}${result.warnings.length > 0 ? ` — ${result.warnings.join('; ')}` : ''}`,
-    )
+    let done = t('pdf.editDoneBase', {
+      label,
+      ops: result.opsApplied,
+      opsS: result.opsApplied === 1 ? '' : 's',
+      pages: result.pagesTouched,
+      pagesS: result.pagesTouched === 1 ? '' : 's',
+    })
+    if (result.commentsAdded > 0) {
+      done += t('pdf.editDoneComments', { n: result.commentsAdded, s: result.commentsAdded === 1 ? '' : 's' })
+    }
+    if (result.warnings.length > 0) {
+      done += t('pdf.editDoneWarnings', { w: result.warnings.join('; ') })
+    }
+    pdf.setStatus(done)
     pdf.setBusy(null)
   }
 
@@ -219,7 +232,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
     const size = editNumber(editSize)
     const color = hexToRgb(editColor)
     if (!page || x === null || y === null || size === null || size <= 0 || !color || editText.trim() === '') {
-      pdf.setError('Check the text overlay — page 1–' + pageCount + ', numbers for X/Y/size, a #RRGGBB colour, and some text.')
+      pdf.setError(t('pdf.editTextError', { n: pageCount }))
       return
     }
     pushAction([{ kind: 'text', page, x, y, text: editText, size, color, font: 'helvetica' }])
@@ -227,7 +240,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
 
   const handlePageNumbers = () => {
     if (pageNumFormat.trim() === '') {
-      pdf.setError('Give a page-number format, e.g. "Page {n} of {total}".')
+      pdf.setError(t('pdf.editPageNumError'))
       return
     }
     pushAction([{ kind: 'page_numbers', pages: null, format: pageNumFormat, position: pageNumPosition, size: 10 }])
@@ -235,7 +248,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
 
   const handleHeaderFooter = () => {
     if (headerText.trim() === '' && footerText.trim() === '') {
-      pdf.setError('Give a header, a footer, or both.')
+      pdf.setError(t('pdf.editHeaderError'))
       return
     }
     pushAction([{ kind: 'header_footer', pages: null, header: headerText.trim() || null, footer: footerText.trim() || null, size: 10 }])
@@ -249,7 +262,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
     const h = editNumber(highlightH)
     const color = hexToRgb(highlightColor)
     if (!Number.isInteger(page) || page < 1 || page > pageCount || x === null || y === null || w === null || h === null || w <= 0 || h <= 0 || !color) {
-      pdf.setError('Check the highlight — page 1–' + pageCount + ', numbers for X/Y/width/height, and a #RRGGBB colour.')
+      pdf.setError(t('pdf.editHighlightError', { n: pageCount }))
       return
     }
     pushAction([{ kind: 'highlight', page, x, y, width: w, height: h, color, opacity: 0.4 }])
@@ -260,21 +273,21 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
     pdf.setBusy('Rendered page')
     pdf.setError(null)
     try {
-      const { blob, width, height } = await renderPdfPageBlob(bytes, previewPage, renderScale, renderFormat)
+      const { blob, width, height } = await renderPdfPageBlob(bytes, previewPage, renderScale, renderFormat, lang)
       downloadBlob(blob, `${file.name.replace(/\.pdf$/i, '')}-p${previewPage}.${renderFormat === 'png' ? 'png' : 'jpg'}`)
-      pdf.setStatus(`Rendered page ${previewPage} as ${renderFormat.toUpperCase()}: ${width} × ${height} px`)
+      pdf.setStatusKey('pdf.rendered', { n: previewPage, fmt: renderFormat.toUpperCase(), w: width, h: height })
     } catch (err) {
-      pdf.setError(err instanceof Error ? err.message : 'Could not render this page.')
+      pdf.setError(err instanceof Error ? err.message : t('pdf.renderError'))
     }
     pdf.setBusy(null)
   }
 
   const meta = info
     ? [
-        metaRow('Title', info.title),
-        metaRow('Author', info.author),
-        metaRow('Creator', info.creator),
-        metaRow('Producer', info.producer),
+        metaRow(t('pdf.docTitle'), info.title),
+        metaRow(t('pdf.docAuthor'), info.author),
+        metaRow(t('pdf.docCreator'), info.creator),
+        metaRow(t('pdf.docProducer'), info.producer),
       ].filter((r): r is { label: string; value: string } => r !== null)
     : []
   const pageSizesShown = info?.page_sizes.slice(0, 6) ?? []
@@ -299,7 +312,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
             Edit PDF
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Add text, highlights, page numbers and headers.
+            {t('pdf.editDesc')}
           </Typography>
         </Box>
 
@@ -309,11 +322,12 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
           <Stack spacing={2} sx={{ flex: { lg: 1 }, minHeight: { lg: 0 }, '& > *': { flexShrink: 0 } }}>
             <DropZone
               inputId="pdf-file"
-              label="Drop a PDF here"
-              hint="One PDF at a time. Info, preview and editing run locally — nothing is uploaded."
+              label={t('pdf.dropLabel')}
+              hint={t('pdf.editDropHint')}
               multiple={false}
               accept="application/pdf,.pdf"
               compact
+              alignContent="top"
               onFiles={loadFile}
             />
           </Stack>
@@ -321,7 +335,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
 
         {pdf.loading && (
           <Typography role="status" variant="body2" color="text.secondary">
-            Reading PDF…
+            {t('common.readingPdf')}
           </Typography>
         )}
 
@@ -343,28 +357,28 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                 <Card id="pdf-info">
                   <CardContent>
                     <Typography variant="overline" color="text.secondary">
-                      Document
+                      {t('pdf.editDoc')}
                     </Typography>
                     <Box
                       component="dl"
                       sx={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 2, rowGap: 1, mt: 2, mx: 0, mb: 0 }}
                     >
-                      <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>File</Box>
+                      <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>{t('pdf.docFile')}</Box>
                       <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {file.name}
                       </Box>
-                      <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>Size</Box>
+                      <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>{t('pdf.docSize')}</Box>
                       <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>{formatBytes(file.size)}</Box>
-                      <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>Pages</Box>
+                      <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>{t('pdf.docPages')}</Box>
                       <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }} id="pdf-page-count">
                         {pageCount}
                       </Box>
                       {info && (
                         <>
-                          <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>Version</Box>
+                          <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>{t('pdf.docVersion')}</Box>
                           <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>PDF {info.version}</Box>
-                          <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>Encrypted</Box>
-                          <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>{info.encrypted ? 'Yes' : 'No'}</Box>
+                          <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>{t('pdf.docEncrypted')}</Box>
+                          <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>{info.encrypted ? t('fmt.yes') : t('fmt.no')}</Box>
                         </>
                       )}
                       {meta.map((row) => (
@@ -375,20 +389,20 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                       ))}
                       {info && (
                         <>
-                          <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>Page sizes</Box>
+                          <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>{t('pdf.docPageSizes')}</Box>
                           <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>
                             {pageSizesShown.map((s, i) => (
                               <span key={i}>
                                 {i > 0 ? '; ' : ''}p{i + 1}: {formatPageSize(s)}
                               </span>
                             ))}
-                            {pageSizesExtra > 0 && `; … and ${pageSizesExtra} more`}
+                            {pageSizesExtra > 0 && t('pdf.docMore', { n: pageSizesExtra })}
                           </Box>
                         </>
                       )}
                     </Box>
                     <Button type="button" variant="outlined" onClick={clearAll} sx={{ mt: 2 }}>
-                      Choose a different file
+                      {t('common.chooseDifferentFile')}
                     </Button>
                   </CardContent>
                 </Card>
@@ -396,13 +410,13 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                 <Card>
                   <CardContent>
                     <Typography variant="overline" color="text.secondary">
-                      Preview
+                      {t('pdf.editPreview')}
                     </Typography>
                     <Stack spacing={2} sx={{ mt: 1 }}>
                       <Stack direction="row" spacing={2} alignItems="flex-end" flexWrap="wrap">
                         <Box>
                           <Typography variant="subtitle2" component="label" htmlFor="pdf-preview-page" sx={{ display: 'block' }}>
-                            Page
+                            {t('pdf.pageLabel')}
                           </Typography>
                           <Select
                             native
@@ -420,7 +434,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                         </Box>
                         <Box>
                           <Typography variant="subtitle2" component="label" htmlFor="pdf-render-scale" sx={{ display: 'block' }}>
-                            Render scale
+                            {t('pdf.renderScale')}
                           </Typography>
                           <Select
                             native
@@ -438,7 +452,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                         </Box>
                         <Box>
                           <Typography variant="subtitle2" component="label" htmlFor="pdf-render-format" sx={{ display: 'block' }}>
-                            Download format
+                            {t('pdf.downloadFormat')}
                           </Typography>
                           <Select
                             native
@@ -469,7 +483,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                       </Box>
                       {previewDims && (
                         <Typography variant="body2" color="text.secondary" id="pdf-preview-dims">
-                          Page {previewPage} preview: {previewDims.width} × {previewDims.height} px at {renderScale}× scale
+                          {t('pdf.previewDims', { n: previewPage, w: previewDims.width, h: previewDims.height, s: renderScale })}
                         </Typography>
                       )}
                       {previewError && <Alert severity="error">{previewError}</Alert>}
@@ -483,8 +497,8 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                           disabled={pdf.busy !== null}
                         >
                           {pdf.busy === 'Rendered page'
-                            ? 'Rendering…'
-                            : `Download page ${previewPage} as ${renderFormat.toUpperCase()}`}
+                            ? t('pdf.rendering')
+                            : t('pdf.downloadPage', { n: previewPage, fmt: renderFormat.toUpperCase() })}
                         </Button>
                       </Stack>
                       <PdfJsCaption />
@@ -503,9 +517,9 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                     id="pdf-edit-undo"
                     onClick={handleUndo}
                     disabled={undoStack.length === 0 || pdf.busy !== null}
-                    title="Undo last edit (Ctrl+Z)"
+                    title={t('pdf.editUndoTitle')}
                   >
-                    Undo
+                    {t('pdf.editUndo')}
                   </Button>
                   <Button
                     type="button"
@@ -513,79 +527,78 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                     id="pdf-edit-redo"
                     onClick={handleRedo}
                     disabled={redoStack.length === 0 || pdf.busy !== null}
-                    title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
+                    title={t('pdf.editRedoTitle')}
                   >
-                    Redo
+                    {t('pdf.editRedo')}
                   </Button>
                   <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center' }}>
                     {undoStack.length === 0
-                      ? 'No edits yet.'
-                      : `${undoStack.length} edit${undoStack.length === 1 ? '' : 's'} applied — Undo removes the last one.`}
+                      ? t('pdf.editNoEdits')
+                      : t('pdf.editCount', { n: undoStack.length, s: undoStack.length === 1 ? '' : 's' })}
                   </Typography>
                 </Stack>
                 <Card>
                   <CardContent>
                     <Typography variant="overline" color="text.secondary">
-                      Edit — add content
+                      {t('pdf.editAddContent')}
                     </Typography>
                     <Stack spacing={2} sx={{ mt: 1 }}>
                       <Typography variant="body2" color="text.secondary">
-                        Overlays are new content layered on top of the page. Existing text is never edited in
-                        place — coordinates are PDF points, origin bottom left.
+                        {t('pdf.editOverlayNote')}
                       </Typography>
                       <Box>
-                        <Typography variant="subtitle2">Add text</Typography>
+                        <Typography variant="subtitle2">{t('pdf.editAddText')}</Typography>
                         <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap" sx={{ mt: 0.5 }}>
-                          <TextField id="pdf-edit-text" size="small" label="Text" value={editText} onChange={(e) => setEditText(e.target.value)} sx={{ width: 220 }} />
-                          <TextField id="pdf-edit-page" size="small" label="Page" type="number" value={editPage} onChange={(e) => setEditPage(e.target.value)} sx={{ width: 90 }} />
+                          <TextField id="pdf-edit-text" size="small" label={t('pdf.editText')} value={editText} onChange={(e) => setEditText(e.target.value)} sx={{ width: 220 }} />
+                          <TextField id="pdf-edit-page" size="small" label={t('pdf.redactPage')} type="number" value={editPage} onChange={(e) => setEditPage(e.target.value)} sx={{ width: 90 }} />
                           <TextField id="pdf-edit-x" size="small" label="X (pt)" type="number" value={editX} onChange={(e) => setEditX(e.target.value)} sx={{ width: 90 }} />
                           <TextField id="pdf-edit-y" size="small" label="Y (pt)" type="number" value={editY} onChange={(e) => setEditY(e.target.value)} sx={{ width: 90 }} />
-                          <TextField id="pdf-edit-size" size="small" label="Size (pt)" type="number" value={editSize} onChange={(e) => setEditSize(e.target.value)} sx={{ width: 90 }} />
-                          <TextField id="pdf-edit-color" size="small" label="Colour" type="color" value={editColor} onChange={(e) => setEditColor(e.target.value)} sx={{ width: 70 }} />
+                          <TextField id="pdf-edit-size" size="small" label={t('pdf.editSizePt')} type="number" value={editSize} onChange={(e) => setEditSize(e.target.value)} sx={{ width: 90 }} />
+                          <TextField id="pdf-edit-color" size="small" label={t('pdf.editColour')} type="color" value={editColor} onChange={(e) => setEditColor(e.target.value)} sx={{ width: 70 }} />
                           <Button type="button" variant="outlined" id="pdf-edit-text-button" onClick={handleEditText} disabled={pdf.busy !== null || pdf.wasmReady === false}>
-                            {editing ? 'Adding…' : 'Add text'}
+                            {editing ? t('pdf.editAdding') : t('pdf.editAddText')}
                           </Button>
                         </Stack>
                       </Box>
                       <Box>
-                        <Typography variant="subtitle2">Page numbers &amp; header / footer</Typography>
+                        <Typography variant="subtitle2">{t('pdf.editPageNumHeader')}</Typography>
                         <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap" sx={{ mt: 0.5 }}>
-                          <TextField id="pdf-edit-pagenum-format" size="small" label="Page-number format" value={pageNumFormat} onChange={(e) => setPageNumFormat(e.target.value)} sx={{ width: 220 }} />
+                          <TextField id="pdf-edit-pagenum-format" size="small" label={t('pdf.editPageNumFormat')} value={pageNumFormat} onChange={(e) => setPageNumFormat(e.target.value)} sx={{ width: 220 }} />
                           <Select
                             native
                             id="pdf-edit-pagenum-position"
                             value={pageNumPosition}
                             onChange={(e) => setPageNumPosition(e.target.value as typeof pageNumPosition)}
-                            aria-label="Page-number position"
+                            aria-label={t('pdf.editPosAria')}
                           >
-                            <option value="bottom_center">Bottom centre</option>
-                            <option value="bottom_right">Bottom right</option>
-                            <option value="top_center">Top centre</option>
-                            <option value="top_right">Top right</option>
+                            <option value="bottom_center">{t('pdf.editPosBottomCentre')}</option>
+                            <option value="bottom_right">{t('pdf.editPosBottomRight')}</option>
+                            <option value="top_center">{t('pdf.editPosTopCentre')}</option>
+                            <option value="top_right">{t('pdf.editPosTopRight')}</option>
                           </Select>
                           <Button type="button" variant="outlined" id="pdf-edit-pagenum-button" onClick={handlePageNumbers} disabled={pdf.busy !== null || pdf.wasmReady === false}>
-                            {editing ? 'Adding…' : 'Add page numbers'}
+                            {editing ? t('pdf.editAdding') : t('pdf.editAddPageNumbers')}
                           </Button>
                         </Stack>
                         <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap" sx={{ mt: 1.5 }}>
-                          <TextField id="pdf-edit-header" size="small" label="Header" value={headerText} onChange={(e) => setHeaderText(e.target.value)} sx={{ width: 220 }} />
-                          <TextField id="pdf-edit-footer" size="small" label="Footer" value={footerText} onChange={(e) => setFooterText(e.target.value)} sx={{ width: 220 }} />
+                          <TextField id="pdf-edit-header" size="small" label={t('pdf.editHeader')} value={headerText} onChange={(e) => setHeaderText(e.target.value)} sx={{ width: 220 }} />
+                          <TextField id="pdf-edit-footer" size="small" label={t('pdf.editFooter')} value={footerText} onChange={(e) => setFooterText(e.target.value)} sx={{ width: 220 }} />
                           <Button type="button" variant="outlined" id="pdf-edit-header-footer-button" onClick={handleHeaderFooter} disabled={pdf.busy !== null || pdf.wasmReady === false}>
-                            {editing ? 'Adding…' : 'Add header / footer'}
+                            {editing ? t('pdf.editAdding') : t('pdf.editAddHeaderFooter')}
                           </Button>
                         </Stack>
                       </Box>
                       <Box>
-                        <Typography variant="subtitle2">Highlight an area</Typography>
+                        <Typography variant="subtitle2">{t('pdf.editHighlight')}</Typography>
                         <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap" sx={{ mt: 0.5 }}>
-                          <TextField id="pdf-highlight-page" size="small" label="Page" type="number" value={highlightPage} onChange={(e) => setHighlightPage(e.target.value)} sx={{ width: 90 }} />
+                          <TextField id="pdf-highlight-page" size="small" label={t('pdf.redactPage')} type="number" value={highlightPage} onChange={(e) => setHighlightPage(e.target.value)} sx={{ width: 90 }} />
                           <TextField id="pdf-highlight-x" size="small" label="X (pt)" type="number" value={highlightX} onChange={(e) => setHighlightX(e.target.value)} sx={{ width: 90 }} />
                           <TextField id="pdf-highlight-y" size="small" label="Y (pt)" type="number" value={highlightY} onChange={(e) => setHighlightY(e.target.value)} sx={{ width: 90 }} />
                           <TextField id="pdf-highlight-w" size="small" label="Width (pt)" type="number" value={highlightW} onChange={(e) => setHighlightW(e.target.value)} sx={{ width: 90 }} />
                           <TextField id="pdf-highlight-h" size="small" label="Height (pt)" type="number" value={highlightH} onChange={(e) => setHighlightH(e.target.value)} sx={{ width: 90 }} />
-                          <TextField id="pdf-highlight-color" size="small" label="Colour" type="color" value={highlightColor} onChange={(e) => setHighlightColor(e.target.value)} sx={{ width: 70 }} />
+                          <TextField id="pdf-highlight-color" size="small" label={t('pdf.editColour')} type="color" value={highlightColor} onChange={(e) => setHighlightColor(e.target.value)} sx={{ width: 70 }} />
                           <Button type="button" variant="outlined" id="pdf-highlight-button" onClick={handleHighlight} disabled={pdf.busy !== null || pdf.wasmReady === false}>
-                            {editing ? 'Highlighting…' : 'Highlight'}
+                            {editing ? t('pdf.editHighlighting') : t('pdf.editHighlightBtn')}
                           </Button>
                         </Stack>
                       </Box>

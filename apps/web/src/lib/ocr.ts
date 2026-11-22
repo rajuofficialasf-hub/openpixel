@@ -45,6 +45,8 @@
  * with accuracy that can differ, and with no preprocessing pipeline
  * like the CLI. The UI says so wherever a result is shown.
  */
+import { translate, type Language } from './i18n'
+
 export type OcrLanguage = 'eng' | 'ben' | 'eng+ben'
 export type OcrPsmId = 'auto' | 'single-block' | 'single-line'
 
@@ -151,6 +153,8 @@ export interface RecognizeOptions {
   /** Grayscale + contrast the image on a canvas first. */
   enhance: boolean
   onProgress?: (progress: OcrProgress) => void
+  /** UI language for progress/error strings (default English). */
+  lang?: Language
 }
 
 type TesseractWorker = {
@@ -162,13 +166,13 @@ type TesseractWorker = {
 let cachedWorker: { language: OcrLanguage; worker: TesseractWorker } | null = null
 let progressListener: ((progress: OcrProgress) => void) | null = null
 
-const STATUS_LABELS: Record<string, string> = {
-  'initializing tesseract': 'Loading recognition engine…',
-  'loading language traineddata': 'Loading language data…',
-  'recognizing text': 'Recognising text…',
+const STATUS_LABEL_KEYS: Record<string, string> = {
+  'initializing tesseract': 'ocr.progressLoadingEngine',
+  'loading language traineddata': 'ocr.progressLoadingLang',
+  'recognizing text': 'ocr.progressRecognising',
 }
 
-async function getWorker(language: OcrLanguage): Promise<TesseractWorker> {
+async function getWorker(language: OcrLanguage, lang: Language = 'en'): Promise<TesseractWorker> {
   if (cachedWorker && cachedWorker.language === language) return cachedWorker.worker
   if (cachedWorker) {
     await cachedWorker.worker.terminate().catch(() => undefined)
@@ -186,7 +190,9 @@ async function getWorker(language: OcrLanguage): Promise<TesseractWorker> {
     workerBlobURL: false,
     logger: (message: { status: string; progress: number }) => {
       progressListener?.({
-        status: STATUS_LABELS[message.status] ?? message.status,
+        status: STATUS_LABEL_KEYS[message.status]
+          ? translate(lang, STATUS_LABEL_KEYS[message.status])
+          : message.status,
         progress: message.progress,
       })
     },
@@ -200,14 +206,14 @@ async function getWorker(language: OcrLanguage): Promise<TesseractWorker> {
  * A manual pixel loop (not `ctx.filter`) so the result is identical
  * in every browser. Throws when canvas APIs are unavailable.
  */
-export async function enhanceImageForOcr(blob: Blob): Promise<Blob> {
+export async function enhanceImageForOcr(blob: Blob, lang: Language = 'en'): Promise<Blob> {
   const bitmap = await createImageBitmap(blob)
   try {
     const canvas = document.createElement('canvas')
     canvas.width = bitmap.width
     canvas.height = bitmap.height
     const ctx = canvas.getContext('2d')
-    if (!ctx) throw new Error('This browser cannot prepare images for OCR.')
+    if (!ctx) throw new Error(translate(lang, 'ocr.enhanceError'))
     ctx.drawImage(bitmap, 0, 0)
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
     const data = imageData.data
@@ -222,7 +228,7 @@ export async function enhanceImageForOcr(blob: Blob): Promise<Blob> {
     }
     ctx.putImageData(imageData, 0, 0)
     const out = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-    if (!out) throw new Error('This browser cannot prepare images for OCR.')
+    if (!out) throw new Error(translate(lang, 'ocr.enhanceError'))
     return out
   } finally {
     bitmap.close()
@@ -238,9 +244,9 @@ export async function recognizeImage(image: Blob, options: RecognizeOptions): Pr
   const startedAt = Date.now()
   progressListener = options.onProgress ?? null
   try {
-    const worker = await getWorker(options.language)
+    const worker = await getWorker(options.language, options.lang ?? 'en')
     await worker.setParameters({ tessedit_pageseg_mode: psmValueFor(options.psm) })
-    const input = options.enhance ? await enhanceImageForOcr(image) : image
+    const input = options.enhance ? await enhanceImageForOcr(image, options.lang ?? 'en') : image
     const { data } = await worker.recognize(input)
     return shapeOcrResult(data, options.language, options.psm, Date.now() - startedAt)
   } finally {

@@ -415,6 +415,7 @@ export const TOOLS: ToolEntry[] = [
     status: 'web',
     route: 'pdf-extract-text',
     keywords: ['extract', 'text', 'copy', 'content', 'pdf'],
+    formatChip: 'PDF → TXT',
   },
   // ---- PDF (CLI-only / coming soon) ----
   {
@@ -590,6 +591,70 @@ export const TOOLS: ToolEntry[] = [
   },
 ]
 
+
+/**
+ * Bengali tool descriptions (Nov 2026 policy change — see
+ * `lib/i18n.ts`): descriptions are user-facing prose and are
+ * translated, like the rest of the chrome. Tool NAMES stay
+ * English. `toolDescription()` is the single lookup — cards
+ * never read `description` directly when a language is known.
+ * A missing entry falls back to the English description.
+ */
+export const TOOL_DESCRIPTIONS_BN: Record<string, string> = {
+  convert: 'PNG, JPEG, WebP, BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA আর GIF-এর মধ্যে কনভার্ট করুন — আপনার ব্রাউজারেই।',
+  resize: 'Fit, fill, pad বা ঠিক মাপে Resize করুন — প্রিসেট, অনুপাতের তালা আর কখনো বড় না করার সুরক্ষাসহ। আগে/পরে প্রিভিউ আছে।',
+  'compress-image': 'লক্ষ্য সাইজ মোড দিয়ে ছবি ঠিক ফাইল সাইজে কমপ্রেস করুন, অথবা quality বেছে নিন। ব্যাচ + zip আছে।',
+  batch: 'ছবির পুরো ফোল্ডার একসাথে কনভার্ট করুন — একসাথে সর্বোচ্চ ৪টি ফাইল, ফলাফলের zip-সহ।',
+  metadata: 'যেকোনো ছবির ফরম্যাট, মাপ, রং, alpha, EXIF, ICC আর XMP তথ্য দেখুন।',
+  crop: 'ছবি ঠিক আয়তক্ষেত্রে কেটে নিন। CLI-তে চলে — ওয়েবে ক্রপ টুল এখনো তৈরি হয়নি।',
+  rotate: '৯০/১৮০/২৭০° ঘোরান বা অনুভূমিক/উল্লম্বভাবে উল্টান। CLI-তে চলে।',
+  'bg-remove': 'ছবি থেকে ব্যাকগ্রাউন্ড সরান। এখনো তৈরি হয়নি — কোনো সংস্করণেই নয়।',
+  'pdf-merge': 'একাধিক PDF একত্রে একটি করুন, আপনার বেছে নেওয়া ক্রমে।',
+  'pdf-split': 'পেজের রেঞ্জ দিয়ে PDF ভাগ করুন — প্রতিটি রেঞ্জের জন্য একটি করে ডকুমেন্ট।',
+  'pdf-rotate': 'পৃষ্ঠা ৯০°, ১৮০° বা ২৭০° ঘোরান — সব পৃষ্ঠা, অথবা শুধু বেছে নেওয়াগুলো।',
+  'pdf-extract': 'PDF থেকে পৃষ্ঠা বের করে নতুন ডকুমেন্ট করুন।',
+  'pdf-remove': 'PDF থেকে পৃষ্ঠা মুছে ফেলুন — বাকিগুলো ঠিক আগের মতোই থাকে।',
+  'pdf-reorder': 'পৃষ্ঠাগুলো নতুন ক্রমে সাজান — প্রতিটি পৃষ্ঠা ঠিক একবার করে লিখুন।',
+  'pdf-duplicate': 'PDF-এর ভেতরে পৃষ্ঠা কপি করুন — কপিগুলো আসলটির ঠিক পরেই যায়।',
+  'pdf-reverse': 'পৃষ্ঠার ক্রম উল্টে দিন — শেষ পৃষ্ঠা প্রথমে।',
+  'pdf-booklet': 'পৃষ্ঠাগুলো বুকলেট আকারে সাজান, ছাপিয়ে ভাঁজ করার জন্য প্রস্তুত।',
+  'pdf-nup': 'এক পাতায় একাধিক পৃষ্ঠা রাখুন — কলাম আর সারি বেছে নিন।',
+  'pdf-compress': 'PDF ছোট করুন — স্ক্রিন, ইবুক বা প্রিন্টার quality। ছবি ছোট করে আবার এনকোড করা হয়।',
+  'pdf-edit': 'PDF-এ লেখা, হাইলাইট, পৃষ্ঠা নম্বর আর হেডার যোগ করুন।',
+  'pdf-redact': 'PDF থেকে লেখা স্থায়ীভাবে মুছে ফেলুন — ফাইল থেকে মুছে যায়, ঢেকে দেওয়া হয় না।',
+  'pdf-metadata': 'PDF-এর শিরোনাম, লেখক, বিষয় আর কীওয়ার্ড বদলান।',
+  'pdf-sanitize': 'PDF-এ JavaScript, এমবেড করা ফাইল আর লঞ্চ অ্যাকশন আছে কি না দেখুন — তারপর সেগুলো সরিয়ে ফেলুন।',
+  'pdf-flatten': 'অ্যানোটেশনগুলো পেজের ভেতরে বসিয়ে দিন আর ফর্ম ফিল্ড সরান।',
+  'pdf-repair': 'নষ্ট PDF-এর ক্রস-রেফারেন্স টেবিল আবার তৈরি করুন, যাতে সেটি আবার খোলে।',
+  'pdf-to-image': 'PDF-এর পৃষ্ঠাগুলো PNG বা JPEG হিসেবে রেন্ডার করে ডাউনলোড করুন।',
+  'image-to-pdf': 'এক বা একাধিক ছবি থেকে PDF ডকুমেন্ট বানান।',
+  'pdf-text': 'PDF থেকে লেখা পড়ুন — পেজে দেখানো হয় আর TXT হিসেবে ডাউনলোড করা যায়। EPUB/DOCX এক্সপোর্ট CLI-তে চলে।',
+  'pdf-ocr': 'স্ক্যান করা PDF থেকে খোঁজার মতো PDF বানান, আসল টেক্সট লেয়ারসহ। CLI-তে চলে।',
+  'pdf-protect': 'PDF পাসওয়ার্ড দিয়ে সুরক্ষিত করুন (RC4-128), প্রিন্ট/কপি/বদলানোর অনুমতিসহ। CLI-তে চলে।',
+  'pdf-unlock': 'আপনার মালিকানাধীন PDF থেকে পাসওয়ার্ড সরান। CLI-তে চলে।',
+  'pdf-watermark': 'প্রতিটি পেজে তির্যক লেখার ওয়াটারমার্ক যোগ করুন। CLI-তে চলে।',
+  'pdf-sign': 'আসল CMS/PKCS#7 ডিজিটাল স্বাক্ষর যোগ করুন (RSA, SHA-256)। CLI-তে চলে — প্রাইভেট কি কখনো ব্রাউজারে আসবে না।',
+  'pdf-to-word': 'ওয়েবে এক ক্লিকে DOCX এক্সপোর্ট এখনো তৈরি হয়নি। টেক্সট নিষ্কাশন (TXT/HTML) PDF ওয়ার্কস্পেসে চলে; সম্পূর্ণ DOCX এক্সপোর্ট CLI-তে চলে।',
+  'docx-to-pdf': 'LibreOffice দিয়ে Word ডকুমেন্ট PDF-এ কনভার্ট করুন। CLI / ডেস্কটপ অ্যাপে চলে।',
+  'pdf-to-docx': 'PDF Word ডকুমেন্টে কনভার্ট করুন (শুধু লেখা — লেআউট থাকে না)। CLI-তে চলে।',
+  'txt-to-pdf': 'সাধারণ টেক্সট ফাইল PDF-এ কনভার্ট করুন। CLI / ডেস্কটপ অ্যাপে চলে।',
+  'html-to-pdf': 'HTML ফাইল PDF-এ কনভার্ট করুন। CLI / ডেস্কটপ অ্যাপে চলে।',
+  'md-to-pdf': 'Markdown ফাইল PDF-এ কনভার্ট করুন। CLI / ডেস্কটপ অ্যাপে চলে।',
+  'doc-text': 'Office বা টেক্সট ডকুমেন্টের সাধারণ লেখা বের করুন। CLI-তে চলে।',
+  'doc-viewer': 'ব্রাউজারে Office ডকুমেন্টের প্রিভিউ দেখুন। এখনো তৈরি হয়নি।',
+  ocr: 'ছবি থেকে লেখা পড়ুন — ইংরেজি আর বাংলা, আপনার ব্রাউজারেই।',
+  'ocr-bengali': 'ছবি থেকে বাংলা লেখা পড়ুন। OCR ওয়ার্কস্পেসে বাংলা বেছে নিন।',
+  'ocr-table': 'ছবি আর স্ক্যান করা পেজ থেকে টেবিল বের করুন, গঠনবদ্ধ ডেটা হিসেবে। এখনো তৈরি হয়নি।',
+  'audio-convert': 'অডিও ফাইল এক ফরম্যাট থেকে আরেক ফরম্যাটে কনভার্ট করুন। এখনো তৈরি হয়নি।',
+  'video-convert': 'ভিডিও ফাইল এক ফরম্যাট থেকে আরেক ফরম্যাটে কনভার্ট করুন। এখনো তৈরি হয়নি।',
+  'media-metadata': 'অডিও আর ভিডিওর মেটাডেটা পড়ুন। এখনো তৈরি হয়নি।',
+}
+
+/** The description to show for a tool in the given language. */
+export function toolDescription(lang: 'en' | 'bn', tool: ToolEntry): string {
+  return lang === 'bn' ? (TOOL_DESCRIPTIONS_BN[tool.id] ?? tool.description) : tool.description
+}
+
 export const POPULAR_TOOLS = TOOLS.filter((t) => t.popular)
 
 /** Sidebar groups (prompt §8) — only destinations that exist. */
@@ -667,14 +732,17 @@ export const ROUTE_TITLES: Record<RouteId, { title: string; crumb: string }> = {
   help: { title: 'Help Center', crumb: 'Help Center' },
 }
 
-/** Case-insensitive tool search across name, description and keywords. */
-export function searchTools(query: string): ToolEntry[] {
+/** Case-insensitive tool search across name, description and keywords.
+    In Bengali mode the Bengali description is searched too, so a
+    Bengali query finds the tool whose card shows Bengali text. */
+export function searchTools(query: string, lang: 'en' | 'bn' = 'en'): ToolEntry[] {
   const q = query.trim().toLowerCase()
   if (!q) return TOOLS
   return TOOLS.filter(
     (t) =>
       t.name.toLowerCase().includes(q) ||
       t.description.toLowerCase().includes(q) ||
+      (lang === 'bn' && (TOOL_DESCRIPTIONS_BN[t.id] ?? '').toLowerCase().includes(q)) ||
       t.keywords.some((k) => k.includes(q)),
   )
 }

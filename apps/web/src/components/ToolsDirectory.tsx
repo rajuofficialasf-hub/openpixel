@@ -40,7 +40,7 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
   const [sort, setSort] = useState<'recommended' | 'name'>('recommended')
   const activity = useMemo(() => loadActivity(), [])
 
-  const searched = useMemo(() => searchTools(query), [query])
+  const searched = useMemo(() => searchTools(query, lang), [query, lang])
   const filtered = useMemo(
     () => (category === 'all' ? searched : searched.filter((t) => t.categories.includes(category))),
     [searched, category],
@@ -80,10 +80,16 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
         <TextField
           size="small"
           placeholder={t('tools.searchPlaceholder')}
-          aria-label="Search tools"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          slotProps={{ input: { startAdornment: <SearchIcon color="action" sx={{ mr: 1 }} /> } }}
+          // inputProps (not slotProps.input) is what reaches the
+          // real <input> — slotProps.input lands on the Input root.
+          inputProps={{ 'aria-label': t('header.searchTools') }}
+          slotProps={{
+            input: {
+              startAdornment: <SearchIcon color="action" sx={{ mr: 1 }} />,
+            },
+          }}
           sx={{ flex: 1, minWidth: 240 }}
         />
         <FormControl size="small" sx={{ minWidth: 180 }}>
@@ -100,7 +106,7 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
         </FormControl>
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }} role="group" aria-label="Filter by category">
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }} role="group" aria-label={t('tools.filterByCategory')}>
         <Chip
           label={t('tools.all')}
           clickable
@@ -145,7 +151,7 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
                     {ROUTE_TITLES[r.route].title} — {r.fileName}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {formatDate(r.at)}
+                    {formatDate(r.at, lang)}
                   </Typography>
                 </Box>
                 <Button size="small" onClick={() => onNavigate(r.route)}>
@@ -177,11 +183,28 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
                 </Typography>
               ) : (
                 <Grid container spacing={2}>
-                  {tools.map((tool) => (
-                    <Grid key={tool.id} size={{ xs: 12, sm: 6, lg: 4 }}>
-                      <ToolCard tool={tool} onNavigate={onNavigate} />
-                    </Grid>
-                  ))}
+                  {tools.map((tool, i) => {
+                    // Orphan rule (same as the homepage Categories
+                    // section): a last card alone on its row spans
+                    // the full row, horizontally — 3 columns on lg,
+                    // 2 on sm. A section with exactly 1 tool is the
+                    // same case (1 % 3 === 1).
+                    const isLast = i === tools.length - 1
+                    const orphanLg = isLast && tools.length % 3 === 1
+                    const orphanSm = isLast && tools.length % 2 === 1
+                    return (
+                      <Grid
+                        key={tool.id}
+                        size={{
+                          xs: 12,
+                          sm: orphanLg || orphanSm ? 12 : 6,
+                          lg: orphanLg ? 12 : 4,
+                        }}
+                      >
+                        <ToolCard tool={tool} onNavigate={onNavigate} wideSm={orphanSm} wideLg={orphanLg} />
+                      </Grid>
+                    )
+                  })}
                 </Grid>
               )}
             </Box>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ROUTE_PATHS, routeFromPath, type RouteId } from './routes'
+import { ROUTE_PATHS, routeFromPath, searchTools, TOOLS, toolDescription, TOOL_DESCRIPTIONS_BN, type RouteId } from './routes'
 
 const ALL_ROUTES = Object.keys(ROUTE_PATHS) as RouteId[]
 
@@ -42,5 +42,23 @@ describe('ROUTE_PATHS — one shareable URL per page', () => {
   it('falls back to the PDF picker for unknown /pdf/* paths', () => {
     expect(routeFromPath('/pdf/extra')).toBe('pdf')
     expect(routeFromPath('/pdf/nope')).toBe('pdf')
+  })
+})
+
+describe('tool descriptions — every tool has a Bengali description', () => {
+  it('covers every tool, tool names stay English', () => {
+    expect(TOOLS.length).toBeGreaterThan(0)
+    for (const tool of TOOLS) {
+      const bn = TOOL_DESCRIPTIONS_BN[tool.id]
+      expect(bn, `missing BN description for ${tool.id}`).toBeTruthy()
+      expect(toolDescription('bn', tool)).toBe(bn)
+      expect(toolDescription('en', tool)).toBe(tool.description)
+    }
+  })
+
+  it('searches Bengali descriptions in Bengali mode', () => {
+    const found = searchTools('একত্রে', 'bn')
+    expect(found.some((t) => t.id === 'pdf-merge')).toBe(true)
+    expect(searchTools('একত্রে', 'en')).toEqual([])
   })
 })

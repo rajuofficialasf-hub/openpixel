@@ -31,6 +31,7 @@
  * is CLI/desktop-only too (`openpixel pdf render`).
  */
 import { loadWasmEngine, type PdfInfo } from './wasm-engine'
+import { translate, type Language } from './i18n'
 
 export type { PdfInfo }
 
@@ -658,12 +659,13 @@ export async function renderPdfPageBlob(
   pageNumber: number,
   scale: number,
   format: 'png' | 'jpeg',
+  lang: Language = 'en',
 ): Promise<{ blob: Blob; width: number; height: number }> {
   const { canvas, width, height } = await renderPdfPage(bytes, pageNumber, scale)
   const blob = await new Promise<Blob | null>((resolve) => {
     canvas.toBlob(resolve, format === 'png' ? 'image/png' : 'image/jpeg', 0.9)
   })
-  if (!blob) throw new Error(`This browser could not encode the rendered page as ${format.toUpperCase()}.`)
+  if (!blob) throw new Error(translate(lang, 'pdf.encodeError', { fmt: format.toUpperCase() }))
   return { blob, width, height }
 }
 

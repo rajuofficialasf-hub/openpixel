@@ -43,6 +43,7 @@ import { recordActivity } from '../lib/activity'
 import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
 import { DropZone } from './DropZone'
 import { ToolPageHeader } from './ToolPage'
+import { useI18n } from '../lib/use-i18n'
 
 type ItemStatus = 'queued' | 'probing' | 'ready' | 'resizing' | 'done' | 'failed' | 'skipped'
 
@@ -90,33 +91,41 @@ let nextId = 0
 
 /** Quiet mono status text for a list row — the status carries
     its meaning in words and a muted semantic colour, not a pill. */
-function statusTextProps(status: ItemStatus): {
+type TFn = (key: string, vars?: Record<string, string | number>) => string
+
+function statusTextProps(status: ItemStatus, t: TFn): {
   color: 'success.main' | 'error.main' | 'info.main' | 'text.secondary'
   label: string
 } {
   switch (status) {
     case 'done':
-      return { color: 'success.main', label: 'done' }
+      return { color: 'success.main', label: t('st.done') }
     case 'failed':
+      return { color: 'error.main', label: t('st.failed') }
     case 'skipped':
-      return { color: 'error.main', label: status }
+      return { color: 'error.main', label: t('st.skipped') }
     case 'resizing':
-      return { color: 'info.main', label: 'Resizing…' }
+      return { color: 'info.main', label: t('st.resizing') }
     case 'probing':
-      return { color: 'info.main', label: 'Reading…' }
+      return { color: 'info.main', label: t('st.reading') }
+    case 'queued':
+      return { color: 'text.secondary', label: t('st.queued') }
     default:
-      return { color: 'text.secondary', label: status }
+      return { color: 'text.secondary', label: t('st.ready') }
   }
 }
 
-const MODE_LABELS: { id: ResizeMode; label: string; hint: string }[] = [
-  { id: 'fit', label: 'Fit (keep aspect)', hint: 'Scales down to fit inside the size, keeping the aspect ratio. Never stretches.' },
-  { id: 'fill', label: 'Fill (crop to exact size)', hint: 'Scales and centre-crops so the result is exactly the size, keeping the aspect ratio.' },
-  { id: 'pad', label: 'Pad (exact size, no crop)', hint: 'Fits inside the size, then pads with the background colour to exactly the size.' },
-  { id: 'exact', label: 'Exact size (stretch)', hint: 'Scales to exactly the size, ignoring the aspect ratio — this distorts the image.' },
-]
+function modeLabels(t: TFn): { id: ResizeMode; label: string; hint: string }[] {
+  return [
+    { id: 'fit', label: t('rs.modeFit'), hint: t('rs.modeFitHint') },
+    { id: 'fill', label: t('rs.modeFill'), hint: t('rs.modeFillHint') },
+    { id: 'pad', label: t('rs.modePad'), hint: t('rs.modePadHint') },
+    { id: 'exact', label: t('rs.modeExact'), hint: t('rs.modeExactHint') },
+  ]
+}
 
 export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceProps) {
+  const { t, lang } = useI18n()
   const [items, setItems] = useState<ResizeItem[]>([])
   const [mode, setMode] = useState<ResizeMode>(settings.resize.mode)
   const [presetId, setPresetId] = useState(settings.resize.preset)
@@ -212,7 +221,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
       setItems((prev) => [...prev, ...fresh])
       for (const item of fresh) {
         try {
-          const info = await probeImage(item.file)
+          const info = await probeImage(item.file, lang)
           setItems((prev) =>
             prev.map((p) =>
               p.id === item.id
@@ -224,7 +233,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                     status: decodableFormats.includes(info.format) ? 'ready' : 'skipped',
                     error: decodableFormats.includes(info.format)
                       ? null
-                      : `${formatLabel(info.format)} cannot be decoded in this browser — use the native CLI.`,
+                      : t('bt.cannotDecode', { format: formatLabel(info.format) }),
                   }
                 : p,
             ),
@@ -238,20 +247,20 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                   ...p,
                   sourceFormat: err.format,
                   status: 'skipped',
-                  error: `${formatLabel(err.format)} cannot be decoded in this browser — use the native CLI.`,
+                  error: t('bt.cannotDecode', { format: formatLabel(err.format) }),
                 }
               }
               return {
                 ...p,
                 status: 'failed',
-                error: err instanceof Error ? err.message : 'Could not read this image.',
+                error: err instanceof Error ? err.message : t('cv.errRead'),
               }
             }),
           )
         }
       }
     },
-    [decodableFormats],
+    [decodableFormats, lang, t],
   )
 
   const clearFiles = useCallback(() => {
@@ -310,16 +319,20 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
           item.width,
           item.height,
         )
-        const resized = await resizeImage(item.file, {
-          targetFormat,
-          ops,
-          width: expected?.width ?? width,
-          height: expected?.height ?? height,
-          quality,
-          background,
-          pngCompression,
-          targetBytes,
-        })
+        const resized = await resizeImage(
+          item.file,
+          {
+            targetFormat,
+            ops,
+            width: expected?.width ?? width,
+            height: expected?.height ?? height,
+            quality,
+            background,
+            pngCompression,
+            targetBytes,
+          },
+          lang,
+        )
         const url = URL.createObjectURL(resized.blob)
         recordActivity({
           fileName: item.file.name,
@@ -327,6 +340,13 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
           fileType: item.file.type || 'image',
           tool: 'resize',
           result: `Resized to ${resized.width}×${resized.height} · ${formatBytes(item.file.size)} → ${formatBytes(resized.bytes)}`,
+          resultKey: 'act.resize',
+          resultParams: {
+            w: resized.width,
+            h: resized.height,
+            from: formatBytes(item.file.size),
+            to: formatBytes(resized.bytes),
+          },
         })
         setItems((prev) =>
           prev.map((p) =>
@@ -343,7 +363,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                     engine: resized.engine,
                     qualityUsed: resized.qualityUsed,
                     targetMet: resized.targetMet,
-                    warnings: [...resized.warnings, ...(clamped ? ['Never upscale is on — the requested size was clamped to the original size.'] : [])],
+                    warnings: [...resized.warnings, ...(clamped ? [t('rs.warnClamped')] : [])],
                   },
                 }
               : p,
@@ -353,7 +373,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
         setItems((prev) =>
           prev.map((p) =>
             p.id === item.id
-              ? { ...p, status: 'failed', error: err instanceof Error ? err.message : 'Resize failed.' }
+              ? { ...p, status: 'failed', error: err instanceof Error ? err.message : t('rs.errResize') }
               : p,
           ),
         )
@@ -375,11 +395,11 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
       const blob = await zip.generateAsync({ type: 'blob' })
       downloadBlob(blob, 'resized-images.zip')
     } catch (err) {
-      setZipError(err instanceof Error ? err.message : 'Could not build the zip file.')
+      setZipError(err instanceof Error ? err.message : t('bt.errZip'))
     } finally {
       setZipping(false)
     }
-  }, [targetFormat])
+  }, [targetFormat, t])
 
   // Output targets: the canvas targets first, then whatever the
   // WASM engine adds — the same 16 browser targets as Convert.
@@ -392,28 +412,20 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
   const warnings: string[] = []
   if (firstReady) {
     if (firstReady.sourceFormat === 'jpeg' && (targetFormat === 'jpeg' || targetFormat === 'webp')) {
-      warnings.push(
-        'Lossy to lossy: the source is a JPEG and the target is lossy too — some quality will be lost in the re-encode, even at quality 100. For the smallest loss, keep the target JPEG at a high quality, or resize a PNG original instead.',
-      )
+      warnings.push(t('rs.warnLossy'))
     }
     if (allowUpscale && requestsUpscale(mode, width, height, firstReady.width, firstReady.height)) {
-      warnings.push(
-        'Upscaling is on: making the image bigger adds no detail — the result will look softer and blurrier than the original. Turn it off to keep the original size as the ceiling.',
-      )
+      warnings.push(t('rs.warnUpscale'))
     }
     if (mode === 'exact') {
-      warnings.push('Exact size stretches the image to the requested dimensions — the aspect ratio is ignored, so circles become ovals.')
+      warnings.push(t('rs.warnExact'))
     }
   }
   if (targetSizeUnsupported) {
-    warnings.push(
-      'Target size is not available for WebP in this build — the engine encodes WebP losslessly only, so quality cannot shrink it. Pick JPEG (or PNG) for target size, or leave target size empty.',
-    )
+    warnings.push(t('rs.warnTargetWebp'))
   }
   if (targetFormat === 'webp') {
-    warnings.push(
-      'WebP is encoded losslessly by the engine in this browser — there is no quality setting for it. For lossy compression use JPEG, or resize to smaller dimensions.',
-    )
+    warnings.push(t('rs.warnWebpLossless'))
   }
 
   const single = items.length === 1 ? items[0] : null
@@ -424,15 +436,15 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
       <Stack spacing={3}>
         <ToolPageHeader
           headingId="resize-heading"
-          title="Resize & compress"
-          description="Change dimensions and shrink file size — how much quality is kept depends on the format. The resize runs through the real engine (Lanczos3), always from the original file. Files never leave your device."
+          title={t('rs.title')}
+          description={t('rs.desc')}
         />
 
         {items.length === 0 && (
           <DropZone
             inputId="resize-file"
-            label="Drop images here"
-            hint="One image for a detailed preview, or several to resize them all with the same settings."
+            label={t('bt.dropLabel')}
+            hint={t('rs.dropHint')}
             multiple
             accept="image/*"
             onFiles={handleFiles}
@@ -449,7 +461,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                 <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' } }}>
                   <Box>
                     <Typography variant="subtitle2" component="label" htmlFor="resize-mode">
-                      Resize mode
+                      {t('rs.modeLabel')}
                     </Typography>
                     <Select
                       native
@@ -463,20 +475,20 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                       }}
                       sx={{ mt: 0.5 }}
                     >
-                      {MODE_LABELS.map((m) => (
+                      {modeLabels(t).map((m) => (
                         <option key={m.id} value={m.id}>
                           {m.label}
                         </option>
                       ))}
                     </Select>
                     <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                      {MODE_LABELS.find((m) => m.id === mode)?.hint}
+                      {modeLabels(t).find((m) => m.id === mode)?.hint}
                     </Typography>
                   </Box>
 
                   <Box>
                     <Typography variant="subtitle2" component="label" htmlFor="resize-preset">
-                      Size preset
+                      {t('rs.presetLabel')}
                     </Typography>
                     <Select
                       native
@@ -488,7 +500,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                     >
                       {RESIZE_PRESETS.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.label}
+                          {p.id === 'custom' ? t('rs.presetCustom') : p.label}
                         </option>
                       ))}
                     </Select>
@@ -498,25 +510,25 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                 <Box>
                   <Stack direction="row" spacing={2} alignItems="flex-end" flexWrap="wrap">
                     <TextField
-                      label="Width (px)"
+                      label={t('rs.width')}
                       type="number"
                       id="resize-width"
                       value={widthText}
                       onChange={(e) => handleWidthChange(e.target.value)}
-                      inputProps={{ min: 1, max: 16384, 'aria-label': 'Width in pixels' }}
+                      inputProps={{ min: 1, max: 16384, 'aria-label': t('rs.widthAria') }}
                       error={!widthValid}
-                      helperText={!widthValid ? 'Width must be 1–16384 px.' : undefined}
+                      helperText={!widthValid ? t('rs.widthError') : undefined}
                       sx={{ width: 160 }}
                     />
                     <TextField
-                      label="Height (px)"
+                      label={t('rs.height')}
                       type="number"
                       id="resize-height"
                       value={heightText}
                       onChange={(e) => handleHeightChange(e.target.value)}
-                      inputProps={{ min: 1, max: 16384, 'aria-label': 'Height in pixels' }}
+                      inputProps={{ min: 1, max: 16384, 'aria-label': t('rs.heightAria') }}
                       error={!heightValid}
-                      helperText={!heightValid ? 'Height must be 1–16384 px.' : undefined}
+                      helperText={!heightValid ? t('rs.heightError') : undefined}
                       sx={{ width: 160 }}
                     />
                     <FormControlLabel
@@ -527,7 +539,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                           onChange={(e) => setLockAspect(e.target.checked)}
                         />
                       }
-                      label="Lock aspect ratio"
+                      label={t('rs.lockAspect')}
                     />
                     <FormControlLabel
                       control={
@@ -537,13 +549,13 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                           onChange={(e) => setAllowUpscale(e.target.checked)}
                         />
                       }
-                      label="Allow upscaling"
+                      label={t('rs.allowUpscale')}
                     />
                   </Stack>
                   {expected && firstReady && (
                     <Typography variant="body2" sx={{ mt: 1 }} id="resize-expected">
-                      Expected result: {expected.width} × {expected.height} px
-                      {` (from ${firstReady.width} × ${firstReady.height} px)`}
+                      {t('rs.expected', { w: expected.width, h: expected.height })}
+                      {t('rs.expectedFrom', { w: firstReady.width, h: firstReady.height })}
                     </Typography>
                   )}
                 </Box>
@@ -551,7 +563,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                 <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' } }}>
                   <Box>
                     <Typography variant="subtitle2" component="label" htmlFor="resize-target-format">
-                      Output format
+                      {t('rs.outputFormat')}
                     </Typography>
                     <Select
                       native
@@ -571,26 +583,23 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                       ))}
                     </Select>
                     <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                      The same 16 browser targets as Convert. AVIF is not offered — the WASM engine
-                      cannot encode it (see the Formats tab).
+                      {t('rs.targetsNote')}
                     </Typography>
                   </Box>
 
                   <Box>
                     <Typography variant="subtitle2" component="label" htmlFor="resize-target-size">
-                      Target file size (optional)
+                      {t('rs.targetSize')}
                     </Typography>
                     <TextField
                       fullWidth
                       id="resize-target-size"
-                      placeholder="e.g. 200 KB"
+                      placeholder={t('rs.targetSizePlaceholder')}
                       value={targetSizeText}
                       onChange={(e) => setTargetSizeText(e.target.value)}
                       error={targetSizeInvalid}
                       helperText={
-                        targetSizeInvalid
-                          ? 'Use e.g. 200 KB, 1.5 MB, or plain bytes.'
-                          : 'When set, quality is chosen for you to fit this size.'
+                        targetSizeInvalid ? t('rs.targetSizeInvalid') : t('rs.targetSizeHelp')
                       }
                       sx={{ mt: 0.5 }}
                     />
@@ -600,10 +609,10 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                 {isLossyFormat(targetFormat) && (
                   <Box>
                     <Typography variant="subtitle2" component="label">
-                      Quality: {quality}
+                      {t('rs.quality', { n: quality })}
                     </Typography>
                     <Slider
-                      aria-label="Resize quality"
+                      aria-label={t('rs.qualityAria')}
                       min={1}
                       max={100}
                       value={quality}
@@ -615,7 +624,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                     />
                     {targetBytes !== null && (
                       <Typography variant="caption" color="text.secondary">
-                        Disabled — the target-size search picks the quality.
+                        {t('rs.qualityDisabled')}
                       </Typography>
                     )}
                   </Box>
@@ -624,10 +633,10 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                 {targetFormat === 'png' && (
                   <Box>
                     <Typography variant="subtitle2" component="label">
-                      PNG compression: {pngCompression} (0 = fast, 1 = default, 2 = best)
+                      {t('cv.pngCompression', { n: pngCompression })}
                     </Typography>
                     <Slider
-                      aria-label="PNG compression"
+                      aria-label={t('cv.pngCompressionAria')}
                       min={0}
                       max={2}
                       step={1}
@@ -639,7 +648,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
 
                 <Box>
                   <Typography variant="subtitle2" component="label">
-                    Background colour (pads and flattens transparency)
+                    {t('rs.background')}
                   </Typography>
                   <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
                     <TextField
@@ -647,14 +656,14 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                       size="small"
                       value={background}
                       onChange={(e) => setBackground(e.target.value)}
-                      inputProps={{ 'aria-label': 'Background colour picker' }}
+                      inputProps={{ 'aria-label': t('cv.bgPicker') }}
                       sx={{ width: 56, '& input': { p: 0.5, height: 40, cursor: 'pointer' } }}
                     />
                     <TextField
                       size="small"
                       value={background}
                       onChange={(e) => setBackground(e.target.value)}
-                      inputProps={{ 'aria-label': 'Background colour hex value' }}
+                      inputProps={{ 'aria-label': t('cv.bgHex') }}
                       sx={{ width: 120, '& input': { fontFamily: 'monospace' } }}
                     />
                   </Stack>
@@ -670,13 +679,13 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                     disabled={!canResize}
                   >
                     {running
-                      ? 'Resizing…'
+                      ? t('rs.resizing')
                       : items.length > 1
-                        ? `Resize all (${items.length} files)`
-                        : 'Resize'}
+                        ? t('rs.resizeAll', { n: items.length })
+                        : t('rs.resize')}
                   </Button>
                   <Button type="button" variant="outlined" onClick={clearFiles}>
-                    Choose different files
+                    {t('rs.chooseDifferent')}
                   </Button>
                   {doneCount > 1 && (
                     <Button
@@ -687,7 +696,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                       onClick={downloadAllAsZip}
                       disabled={zipping}
                     >
-                      {zipping ? 'Zipping…' : 'Download all (.zip)'}
+                      {zipping ? t('rs.zipping') : t('rs.downloadAll')}
                     </Button>
                   )}
                 </Stack>
@@ -722,12 +731,12 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
           <Card>
             <CardContent>
               <Typography variant="overline" color="text.secondary">
-                Before / after
+                {t('rs.beforeAfter')}
               </Typography>
               <Stack spacing={2} sx={{ mt: 1 }}>
                 <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' } }}>
                   <Box>
-                    <Typography variant="subtitle2">Original</Typography>
+                    <Typography variant="subtitle2">{t('rs.original')}</Typography>
                     {single.sourceFormat !== 'unknown' && BROWSER_DECODABLE.includes(single.sourceFormat) ? (
                       <Box
                         component="img"
@@ -737,7 +746,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                       />
                     ) : (
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                        No preview for {formatLabel(single.sourceFormat)} in this browser.
+                        {t('rs.noPreview', { format: formatLabel(single.sourceFormat) })}
                       </Typography>
                     )}
                     <Typography variant="body2" sx={{ mt: 1 }}>
@@ -746,7 +755,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                     </Typography>
                   </Box>
                   <Box>
-                    <Typography variant="subtitle2">Result</Typography>
+                    <Typography variant="subtitle2">{t('rs.result')}</Typography>
                     {single.result ? (
                       <>
                         <Box
@@ -770,20 +779,22 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                               single.file.size > 0
                                 ? Math.round((1 - single.result!.bytes / single.file.size) * 100)
                                 : 0
-                            return pct > 0 ? `${pct}% smaller` : pct < 0 ? `${-pct}% larger` : 'same size'
+                            return pct > 0
+                              ? t('rs.smaller', { n: pct })
+                              : pct < 0
+                                ? t('rs.larger', { n: -pct })
+                                : t('rs.sameSize')
                           })()}
                         </Typography>
                         {single.result.qualityUsed !== null && (
                           <Typography variant="body2" color="text.secondary">
-                            Quality used: {single.result.qualityUsed}
-                            {single.result.targetMet === true && ' — target size met.'}
-                            {single.result.targetMet === false && ' — target size NOT met (smallest result kept).'}
+                            {t('rs.qualityUsed', { n: single.result.qualityUsed })}
+                            {single.result.targetMet === true && t('rs.targetMet')}
+                            {single.result.targetMet === false && t('rs.targetNotMet')}
                           </Typography>
                         )}
                         <Typography variant="body2" color="text.secondary">
-                          {single.result.engine === 'wasm'
-                            ? 'Resized with the built-in WASM engine (Lanczos3).'
-                            : 'Resized with the browser canvas (bilinear) — the WASM engine was not available.'}
+                          {t(single.result.engine === 'wasm' ? 'rs.engineWasm' : 'rs.engineCanvas')}
                         </Typography>
                         {single.result.warnings.length > 0 && (
                           <Box component="ul" sx={{ m: 0, mt: 1, pl: 2.5, typography: 'body2' }}>
@@ -795,7 +806,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                       </>
                     ) : (
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                        {single.status === 'resizing' ? 'Resizing…' : 'Press Resize to see the result here.'}
+                        {single.status === 'resizing' ? t('rs.resizing') : t('rs.pressResize')}
                       </Typography>
                     )}
                   </Box>
@@ -809,7 +820,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                       startIcon={<DownloadIcon />}
                       onClick={() => downloadBlob(single.result!.blob, outputFileName(single.file.name, targetFormat))}
                     >
-                      Download {outputFileName(single.file.name, targetFormat)}
+                      {t('common.download')} {outputFileName(single.file.name, targetFormat)}
                     </Button>
                     <Button
                       type="button"
@@ -818,7 +829,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                         setItems((prev) => prev.map((p) => (p.id === single.id ? { ...p, status: 'ready', result: null } : p)))
                       }
                     >
-                      Resize again with different settings
+                      {t('rs.resizeAgain')}
                     </Button>
                   </Stack>
                 )}
@@ -836,7 +847,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
             <CardContent>
               <Stack spacing={1.5}>
                 {items.map((item) => {
-                  const status = statusTextProps(item.status)
+                  const status = statusTextProps(item.status, t)
                   return (
                     <Box
                       key={item.id}
@@ -875,7 +886,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                         )}
                         {item.result?.targetMet === false && (
                           <Typography variant="body2" color="warning.main">
-                            Target size not met — smallest result kept.
+                            {t('rs.targetNotMetRow')}
                           </Typography>
                         )}
                       </Box>
@@ -890,7 +901,7 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
                           startIcon={<DownloadIcon />}
                           onClick={() => downloadBlob(item.result!.blob, outputFileName(item.file.name, targetFormat))}
                         >
-                          Download
+                          {t('common.download')}
                         </Button>
                       )}
                     </Box>

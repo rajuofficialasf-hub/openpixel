@@ -31,6 +31,8 @@ import {
 } from '../lib/ocr'
 import { DropZone } from './DropZone'
 import { ToolPageHeader } from './ToolPage'
+import { plural } from '../lib/i18n'
+import { useI18n } from '../lib/use-i18n'
 
 function downloadText(text: string, filename: string): void {
   const blob = new Blob([text], { type: 'text/plain;charset=utf-8' })
@@ -45,6 +47,7 @@ function downloadText(text: string, filename: string): void {
 }
 
 export function OcrWorkspace() {
+  const { t, lang } = useI18n()
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [language, setLanguage] = useState<OcrLanguage>('eng')
@@ -66,7 +69,7 @@ export function OcrWorkspace() {
     const next = files[0]
     if (!next) return
     if (!next.type.startsWith('image/')) {
-      setError('That file is not an image — OCR reads printed text from an image file.')
+      setError(t('ocr.notImage'))
       return
     }
     if (previewUrl) URL.revokeObjectURL(previewUrl)
@@ -94,12 +97,13 @@ export function OcrWorkspace() {
     setError(null)
     setResult(null)
     setCopied(false)
-    setProgress({ status: 'Starting…', progress: 0 })
+    setProgress({ status: t('ocr.starting'), progress: 0 })
     try {
       const recognised = await recognizeImage(file, {
         language,
         psm,
         enhance,
+        lang,
         onProgress: (p) => setProgress(p),
       })
       setResult(recognised)
@@ -109,14 +113,26 @@ export function OcrWorkspace() {
         fileType: file.type || 'image',
         tool: 'ocr',
         result: `OCR (${OCR_LANGUAGE_LABELS[recognised.language]}) · ${recognised.wordCount} words · ${formatConfidence(recognised.confidence)} mean confidence`,
+        resultKey: 'act.ocr',
+        resultParams: {
+          lang: t(
+            recognised.language === 'eng'
+              ? 'ocr.langEng'
+              : recognised.language === 'ben'
+                ? 'ocr.langBen'
+                : 'ocr.langBoth',
+          ),
+          words: recognised.wordCount,
+          conf: formatConfidence(recognised.confidence),
+        },
       })
       setProgress(null)
     } catch (err) {
       setProgress(null)
       setError(
         err instanceof Error
-          ? `OCR failed: ${err.message} Check the image and try again, or use the native CLI (openpixel ocr).`
-          : 'OCR failed. Check the image and try again, or use the native CLI (openpixel ocr).',
+          ? t('ocr.failed', { msg: err.message })
+          : t('ocr.failedPlain'),
       )
     }
     setRunning(false)
@@ -129,7 +145,7 @@ export function OcrWorkspace() {
       setCopied(true)
       window.setTimeout(() => setCopied(false), 2000)
     } catch {
-      setError('Could not copy — select the text and copy it manually.')
+      setError(t('ocr.copyFailed'))
     }
   }
 
@@ -138,8 +154,8 @@ export function OcrWorkspace() {
       <Stack spacing={3}>
         <ToolPageHeader
           headingId="ocr-heading"
-          title="Text recognition (OCR)"
-          description="Read the text out of a photo or scan. Files never leave your device — the engine and language data load from this site only when you run OCR."
+          title={t('ocr.title')}
+          description={t('ocr.desc')}
         />
 
         <Box
@@ -153,19 +169,17 @@ export function OcrWorkspace() {
           }}
         >
           <Typography variant="body2">
-            Browser OCR runs tesseract.js — the same Tesseract engine family as the native CLI,
-            but slower, with accuracy that can differ, and without the CLI&apos;s preprocessing
-            pipeline. For large batches or the best accuracy use the native CLI (
-            <Typography component="code" variant="body2">openpixel ocr</Typography>).
-            Handwriting is out of scope — printed text only.
+            {t('ocr.infoA')}
+            <Typography component="code" variant="body2">openpixel ocr</Typography>
+            {t('ocr.infoB')}
           </Typography>
         </Box>
 
         {!file && (
           <DropZone
             inputId="ocr-file"
-            label="Drop an image here"
-            hint="Printed text in a photo or scan — PNG, JPEG, WebP and the other formats this browser decodes."
+            label={t('cv.dropLabel')}
+            hint={t('ocr.dropHint')}
             multiple={false}
             accept="image/*"
             onFiles={handleFiles}
@@ -176,7 +190,7 @@ export function OcrWorkspace() {
           <Card>
             <CardContent>
               <Typography variant="overline" color="text.secondary">
-                Image
+                {t('ocr.image')}
               </Typography>
               <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
                 <Box
@@ -194,7 +208,7 @@ export function OcrWorkspace() {
                 <Stack direction="row" spacing={2} alignItems="flex-start" flexWrap="wrap">
                   <Box>
                     <Typography variant="subtitle2" component="label" htmlFor="ocr-language" sx={{ display: 'block' }}>
-                      Language
+                      {t('ocr.language')}
                     </Typography>
                     <Select
                       native
@@ -203,20 +217,25 @@ export function OcrWorkspace() {
                       onChange={(e) => setLanguage(e.target.value as OcrLanguage)}
                       sx={{ mt: 0.5, minWidth: 200 }}
                     >
-                      {OCR_LANGUAGES.map((lang) => (
-                        <option key={lang} value={lang}>
-                          {OCR_LANGUAGE_LABELS[lang]}
+                      {OCR_LANGUAGES.map((code) => (
+                        <option key={code} value={code}>
+                          {t(
+                            code === 'eng'
+                              ? 'ocr.langEng'
+                              : code === 'ben'
+                                ? 'ocr.langBen'
+                                : 'ocr.langBoth',
+                          )}
                         </option>
                       ))}
                     </Select>
                     <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                      English is the default — add Bengali only when the image has Bengali
-                      text. Each language loads its own file on first use.
+                      {t('ocr.langCaption')}
                     </Typography>
                   </Box>
                   <Box>
                     <Typography variant="subtitle2" component="label" htmlFor="ocr-psm" sx={{ display: 'block' }}>
-                      Page layout
+                      {t('ocr.psm')}
                     </Typography>
                     <Select
                       native
@@ -227,12 +246,18 @@ export function OcrWorkspace() {
                     >
                       {OCR_PSM_MODES.map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.label}
+                          {t(
+                            m.id === 'auto'
+                              ? 'ocr.psmAuto'
+                              : m.id === 'single-block'
+                                ? 'ocr.psmBlock'
+                                : 'ocr.psmLine',
+                          )}
                         </option>
                       ))}
                     </Select>
                     <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                      Auto works for most pages; single line suits one line of text.
+                      {t('ocr.psmCaption')}
                     </Typography>
                   </Box>
                 </Stack>
@@ -244,11 +269,10 @@ export function OcrWorkspace() {
                       onChange={(e) => setEnhance(e.target.checked)}
                     />
                   }
-                  label="Enhance image (grayscale + contrast before recognition)"
+                  label={t('ocr.enhance')}
                 />
                 <Typography variant="caption" color="text.secondary">
-                  Enhancing helps faint scans, and can hurt clean images — try it only if the
-                  first run misses text.
+                  {t('ocr.enhanceCaption')}
                 </Typography>
                 <Stack direction="row" spacing={1.5} flexWrap="wrap">
                   <Button
@@ -258,10 +282,10 @@ export function OcrWorkspace() {
                     onClick={() => void handleRun()}
                     disabled={running}
                   >
-                    {running ? 'Recognising…' : 'Run OCR'}
+                    {running ? t('ocr.running') : t('ocr.run')}
                   </Button>
                   <Button type="button" variant="outlined" onClick={clearFile} disabled={running}>
-                    Choose a different image
+                    {t('ocr.chooseDifferent')}
                   </Button>
                 </Stack>
               </Stack>
@@ -295,17 +319,27 @@ export function OcrWorkspace() {
           <Card id="ocr-result">
             <CardContent>
               <Typography variant="overline" color="text.secondary">
-                Recognised text
+                {t('ocr.resultTitle')}
               </Typography>
               <Typography variant="body2" color="text.secondary" id="ocr-stats" sx={{ mt: 1 }}>
-                Mean confidence: {formatConfidence(result.confidence)} · {result.wordCount}{' '}
-                word{result.wordCount === 1 ? '' : 's'} · {formatDurationMs(result.durationMs)} ·{' '}
-                {OCR_LANGUAGE_LABELS[result.language]} · {result.engine}
+                {t('ocr.stats', {
+                  conf: formatConfidence(result.confidence),
+                  words: result.wordCount,
+                  s: plural(lang, result.wordCount),
+                  dur: formatDurationMs(result.durationMs),
+                  lang: t(
+                    result.language === 'eng'
+                      ? 'ocr.langEng'
+                      : result.language === 'ben'
+                        ? 'ocr.langBen'
+                        : 'ocr.langBoth',
+                  ),
+                  engine: result.engine,
+                })}
               </Typography>
               {result.text === '' ? (
                 <Typography variant="body2" sx={{ mt: 2 }}>
-                  No text was recognised — try enhancing the image, or a clearer photo with
-                  larger printed text.
+                  {t('ocr.noText')}
                 </Typography>
               ) : (
                 <Box
@@ -337,7 +371,7 @@ export function OcrWorkspace() {
                     startIcon={<ContentCopyIcon />}
                     onClick={() => void handleCopy()}
                   >
-                    {copied ? 'Copied' : 'Copy text'}
+                    {copied ? t('ocr.copied') : t('ocr.copy')}
                   </Button>
                   <Button
                     type="button"
@@ -346,7 +380,7 @@ export function OcrWorkspace() {
                     startIcon={<DownloadIcon />}
                     onClick={() => downloadText(result.text, ocrOutputName(file?.name ?? 'ocr'))}
                   >
-                    Download .txt
+                    {t('ocr.downloadTxt')}
                   </Button>
                 </Stack>
               )}

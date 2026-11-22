@@ -21,6 +21,7 @@
  * `--metadata preserve` for this.
  */
 import { formatById, targetHasNoAlpha } from './capabilities'
+import { translate, type Language } from './i18n'
 import { resizeOnCanvas } from './convert'
 import type { ResizeOp } from './resize'
 import { processToSizeWithWasm, processWithWasm } from './wasm-engine'
@@ -56,7 +57,7 @@ function mimeTypeFor(targetFormat: string): string {
   return formatById(targetFormat)?.mime_types[0] ?? 'application/octet-stream'
 }
 
-export async function resizeImage(file: Blob, req: ResizeRequest): Promise<ResizedImage> {
+export async function resizeImage(file: Blob, req: ResizeRequest, lang: Language = 'en'): Promise<ResizedImage> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   const opsJson = JSON.stringify(req.ops)
   const background = targetHasNoAlpha(req.targetFormat) ? req.background : null
@@ -69,11 +70,7 @@ export async function resizeImage(file: Blob, req: ResizeRequest): Promise<Resiz
       targetBytes: req.targetBytes,
     })
     if (!sized) {
-      throw new Error(
-        'Target size needs the built-in WASM engine — it is not available in this browser build, ' +
-          'or this target format cannot be searched (WebP is encoded losslessly only; use JPEG, ' +
-          'or leave target size empty).',
-      )
+      throw new Error(translate(lang, 'lib.rs.targetSize'))
     }
     const blob = new Blob([sized.bytes], { type: mimeTypeFor(req.targetFormat) })
     return {
@@ -116,6 +113,7 @@ export async function resizeImage(file: Blob, req: ResizeRequest): Promise<Resiz
     },
     req.width,
     req.height,
+    lang,
   )
   return {
     blob: canvas.blob,
@@ -125,8 +123,6 @@ export async function resizeImage(file: Blob, req: ResizeRequest): Promise<Resiz
     engine: 'canvas',
     qualityUsed: null,
     targetMet: null,
-    warnings: [
-      'Resized with the browser canvas (bilinear) — the WASM engine was not available, so this is not the Lanczos3 path.',
-    ],
+    warnings: [translate(lang, 'lib.rs.canvasWarn')],
   }
 }

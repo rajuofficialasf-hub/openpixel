@@ -24,6 +24,7 @@ import { downloadBlob, type UsePdfFile } from './usePdfFile'
 import { useI18n } from '../../lib/use-i18n'
 
 export function WasmWarning() {
+  const { t } = useI18n()
   return (
     <Box
       role="status"
@@ -36,8 +37,9 @@ export function WasmWarning() {
       }}
     >
       <Typography variant="body2">
-        The WASM engine is not loaded, so PDF page operations are unavailable here — previews and PDF to image
-        still work. Rebuild the web app with <Typography component="code" variant="body2">npm run build:wasm</Typography>.
+        {t('pdf.wasmWarningA')}
+        <Typography component="code" variant="body2">npm run build:wasm</Typography>
+        {t('pdf.wasmWarningB')}
       </Typography>
     </Box>
   )
@@ -131,10 +133,10 @@ export function PdfResultBoxes({ pdf }: { pdf: UsePdfFile }) {
     this browser, not with PDFium — shared by the Edit and PDF to
     Image tools so the same note is not written twice. */
 export function PdfJsCaption() {
+  const { t } = useI18n()
   return (
     <Typography variant="caption" color="text.secondary">
-      Preview and PDF to image render with pdf.js in this browser — not with PDFium, so very
-      complex pages may look slightly different from the CLI render.
+      {t('pdf.jsCaption')}
     </Typography>
   )
 }
@@ -202,8 +204,8 @@ export function PdfToolPage({
   title,
   description,
   pdf,
-  uploadLabel = 'Drop a PDF here',
-  uploadHint = 'One PDF at a time. Everything runs locally — nothing is uploaded.',
+  uploadLabel,
+  uploadHint,
   upload,
   summary,
   ready,
@@ -215,6 +217,8 @@ export function PdfToolPage({
   extra,
 }: PdfToolPageProps) {
   const { t } = useI18n()
+  const resolvedUploadLabel = uploadLabel ?? t('pdf.dropLabel')
+  const resolvedUploadHint = uploadHint ?? t('pdf.dropHint')
   const loaded = ready ?? pdf.file !== null
   return (
     <Box
@@ -231,30 +235,35 @@ export function PdfToolPage({
         overflowY: 'auto',
         display: 'flex',
         flexDirection: 'column',
-        // Empty state: the bench sits in the middle of the
-        // viewport-fit area instead of leaving a dead band below.
-        // Once a file is loaded the content starts at the top.
-        justifyContent: loaded ? 'flex-start' : 'center',
+        // Empty state: top-aligned like Convert / OCR — the
+        // header sits at the top and the dropzone takes the
+        // remaining height, instead of centring the bench in the
+        // middle of the viewport-fit area with a dead band above
+        // and below it.
+        justifyContent: 'flex-start',
       }}
     >
-      <Stack spacing={2} sx={{ maxWidth: 860, width: '100%', mx: 'auto' }}>
+      <Stack spacing={2} sx={{ maxWidth: 860, width: '100%', mx: 'auto', flex: 1, minHeight: 0 }}>
         <ToolPageHeader headingId={headingId} title={title} description={description} />
 
         {pdf.wasmReady === false && <WasmWarning />}
 
         {!loaded && (
-          upload ?? (
-            <DropZone
-              inputId="pdf-file"
-              label={uploadLabel}
-              hint={uploadHint}
-              chooseLabel={t('common.choosePdf')}
-              multiple={false}
-              accept="application/pdf,.pdf"
-              compact
-              onFiles={(files) => void pdf.handleFiles(files)}
-            />
-          )
+          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, '& > *': { flex: 1 } }}>
+            {upload ?? (
+              <DropZone
+                inputId="pdf-file"
+                label={resolvedUploadLabel}
+                hint={resolvedUploadHint}
+                chooseLabel={t('common.choosePdf')}
+                multiple={false}
+                accept="application/pdf,.pdf"
+                compact
+                alignContent="top"
+                onFiles={(files) => void pdf.handleFiles(files)}
+              />
+            )}
+          </Box>
         )}
 
         {pdf.loading && (

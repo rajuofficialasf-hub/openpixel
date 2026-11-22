@@ -15,6 +15,7 @@ import { TOOLS, type RouteId } from '../../lib/routes'
 import { DropZone } from '../DropZone'
 import { ToolCard } from '../ToolCard'
 import { ToolPageHeader } from '../ToolPage'
+import { useI18n } from '../../lib/use-i18n'
 import { PdfFileSummary } from './shared'
 import { usePdfFile, type PdfToolProps } from './usePdfFile'
 
@@ -25,6 +26,7 @@ interface PdfPickerProps extends PdfToolProps {
 }
 
 export function PdfPicker({ initialFiles, onInitialFilesConsumed, onNavigate }: PdfPickerProps) {
+  const { t } = useI18n()
   const pdf = usePdfFile('pdf', initialFiles, onInitialFilesConsumed)
 
   const pdfTools = useMemo(
@@ -51,15 +53,15 @@ export function PdfPicker({ initialFiles, onInitialFilesConsumed, onNavigate }: 
         <ToolPageHeader
           headingId="pdf-heading"
           title="PDF tools"
-          description="Pick a tool first — then drop your PDF on that tool's page. Everything runs in your browser; nothing is uploaded."
+          description={t('pdf.pickerDesc')}
         />
 
         {!pdf.file ? (
           <DropZone
             inputId="pdf-file"
-            label="Drop a PDF here — it travels with you to the tool you pick"
-            hint="Optional: you can also upload on the tool's own page. One PDF at a time."
-            chooseLabel="Choose a PDF"
+            label={t('pdf.pickerDropLabel')}
+            hint={t('pdf.pickerDropHint')}
+            chooseLabel={t('common.choosePdf')}
             multiple={false}
             accept="application/pdf,.pdf"
             compact
@@ -69,14 +71,14 @@ export function PdfPicker({ initialFiles, onInitialFilesConsumed, onNavigate }: 
           <>
             <PdfFileSummary pdf={pdf} />
             <Typography variant="body2" color="text.secondary">
-              This file will go with you to the tool you pick below.
+              {t('pdf.pickerTravels')}
             </Typography>
           </>
         )}
 
         {pdf.loading && (
           <Typography role="status" variant="body2" color="text.secondary">
-            Reading PDF…
+            {t('common.readingPdf')}
           </Typography>
         )}
         {pdf.error && <Alert severity="error">{pdf.error}</Alert>}
@@ -100,11 +102,11 @@ export function PdfPicker({ initialFiles, onInitialFilesConsumed, onNavigate }: 
           }}
         >
           <Typography variant="body2">
-            Insert and replace pages need the native CLI or desktop app — they are not available in the browser.
-            Rendering with PDFium is CLI/desktop-only too (<Typography component="code" variant="body2">openpixel pdf render</Typography>).
-            Office documents (Word, Excel, PowerPoint) convert only in the CLI or desktop app (
-            <Typography component="code" variant="body2">openpixel doc convert</Typography>) — LibreOffice cannot
-            run in a browser.
+            {t('pdf.pickerInfoA')}
+            <Typography component="code" variant="body2">openpixel pdf render</Typography>
+            {t('pdf.pickerInfoB')}
+            <Typography component="code" variant="body2">openpixel doc convert</Typography>
+            {t('pdf.pickerInfoC')}
           </Typography>
         </Box>
       </Stack>

@@ -33,6 +33,7 @@ import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
 import { DropZone } from './DropZone'
 import { EditorShell } from './EditorShell'
 import { ToolPageHeader } from './ToolPage'
+import { useI18n } from '../lib/use-i18n'
 
 type Status = 'idle' | 'probing' | 'ready' | 'converting' | 'done' | 'error'
 
@@ -56,6 +57,7 @@ function downloadBlob(blob: Blob, filename: string): void {
 }
 
 export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onInitialFilesConsumed }: ConvertWorkspaceProps) {
+  const { t, lang } = useI18n()
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [probed, setProbed] = useState<ProbedImage | null>(null)
@@ -105,27 +107,21 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
         return url
       })
       try {
-        const info = await probeImage(next)
+        const info = await probeImage(next, lang)
         setProbed(info)
         const notes: string[] = []
         if (info.format === 'unknown') {
-          notes.push(
-            'Format not recognised from the file signature — the browser may still be able to open it, but conversion is not guaranteed.',
-          )
+          notes.push(t('cv.warnUnknown'))
         } else if (!decodableFormats.includes(info.format)) {
-          notes.push(
-            `${formatLabel(info.format)} cannot be decoded in this browser. Use the native CLI (openpixel convert) for this file.`,
-          )
+          notes.push(t('cv.warnCannotDecode', { format: formatLabel(info.format) }))
         } else if (!BROWSER_DECODABLE.includes(info.format)) {
-          notes.push(
-            `${formatLabel(info.format)} was decoded by the built-in WASM engine (the real Rust engine, in your browser) — the preview below may not render here, but conversion works.`,
-          )
+          notes.push(t('cv.warnWasmDecoded', { format: formatLabel(info.format) }))
         }
         if (info.format === 'gif') {
-          notes.push('Animated GIF: only the first frame is converted (same as the engine’s plain decode).')
+          notes.push(t('cv.warnGif'))
         }
         if (info.format === 'avif') {
-          notes.push('AVIF decoding depends on this browser — if it fails here, use the native CLI.')
+          notes.push(t('cv.warnAvif'))
         }
         setWarnings(notes)
         setStatus('ready')
@@ -136,11 +132,11 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
         if (err instanceof ProbeError && err.format !== 'unknown') {
           setDetectedFormat(err.format)
         }
-        setError(err instanceof Error ? err.message : 'Could not read this image.')
+        setError(err instanceof Error ? err.message : t('cv.errRead'))
         setStatus('error')
       }
     },
-    [decodableFormats],
+    [decodableFormats, lang, t],
   )
 
   // Homepage hand-off: a file dropped on the home page arrives here
@@ -165,24 +161,24 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
     setWarnings((prev) => {
       const next = [...prev]
       if (settings.metadataPolicy === 'preserve') {
-        next.push(
-          'Metadata policy “Preserve” was requested, but in-browser conversion (canvas or WASM engine) always strips EXIF/ICC/XMP — the output has no metadata. Use the native CLI with --metadata preserve to keep it.',
-        )
+        next.push(t('cv.warnMetadata'))
       }
       if (targetFormat === 'png' && pngCompression !== 1) {
-        next.push(
-          `PNG compression ${pngCompression} is recorded but the browser’s canvas encoder has no PNG compression knob — the output uses the browser default.`,
-        )
+        next.push(t('cv.warnPng', { n: pngCompression }))
       }
       return next
     })
     try {
-      const converted = await convertImage(file, {
-        targetFormat,
-        quality,
-        background,
-        pngCompression,
-      })
+      const converted = await convertImage(
+        file,
+        {
+          targetFormat,
+          quality,
+          background,
+          pngCompression,
+        },
+        lang,
+      )
       const url = URL.createObjectURL(converted.blob)
       if (resultUrlRef.current) URL.revokeObjectURL(resultUrlRef.current)
       resultUrlRef.current = url
@@ -193,12 +189,16 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
         fileType: file.type || probed.format,
         tool: 'convert',
         result: `Converted to ${formatLabel(targetFormat)} · ${converted.width}×${converted.height} · ${formatBytes(converted.bytes)}`,
+        resultKey: 'act.convert',
+        resultParams: {
+          format: formatLabel(targetFormat),
+          w: converted.width,
+          h: converted.height,
+          bytes: formatBytes(converted.bytes),
+        },
       })
       if (converted.engine === 'wasm') {
-        setWarnings((prev) => [
-          ...prev,
-          'Converted with the built-in WASM engine (the real Rust engine, running in your browser).',
-        ])
+        setWarnings((prev) => [...prev, t('cv.warnWasm')])
       }
       setStatus('done')
     } catch (err) {
@@ -206,11 +206,11 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
       // attempted. Probe failures set their own message in
       // handleFiles and must never wear this label.
       setError(
-        err instanceof Error ? `Conversion failed: ${err.message}` : 'Conversion failed.',
+        err instanceof Error ? t('cv.errConvert', { msg: err.message }) : t('cv.errConvertPlain'),
       )
       setStatus('error')
     }
-  }, [file, probed, targetFormat, quality, background, pngCompression, settings.metadataPolicy])
+  }, [file, probed, targetFormat, quality, background, pngCompression, settings.metadataPolicy, lang, t])
 
   const clearFile = useCallback(() => {
     setFile(null)
@@ -243,22 +243,15 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
       <Stack spacing={3}>
         <ToolPageHeader
           headingId="convert-heading"
-          title="Convert one image"
-          description={
-            <>
-              Files never leave your device — conversion runs locally in your browser.{' '}
-              {wasmSupport
-                ? 'Canvas targets, plus the WASM engine’s extra formats — AVIF still needs the native CLI.'
-                : 'Canvas targets only — the WASM engine’s extra formats need its module built (see Settings, About).'}
-            </>
-          }
+          title={t('cv.title')}
+          description={t(wasmSupport ? 'cv.descWasm' : 'cv.descNoWasm')}
         />
 
         {!file && (
           <DropZone
             inputId="convert-file"
-            label="Drop an image here"
-            hint="PNG, JPEG, WebP, GIF, BMP, SVG, AVIF — plus TIFF, QOI, HEIC, JXL and JPEG 2000 when the WASM engine is built."
+            label={t('cv.dropLabel')}
+            hint={t('cv.dropHint')}
             multiple={false}
             accept="image/*"
             onFiles={handleFiles}
@@ -272,7 +265,7 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
               <Card>
                 <CardContent>
                   <Typography variant="overline" color="text.secondary">
-                    Source
+                    {t('cv.source')}
                   </Typography>
                   {previewUrl &&
                     (probed === null ||
@@ -298,8 +291,7 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
                         align="center"
                         sx={{ bgcolor: 'action.hover', borderRadius: 1, px: 2, py: 4 }}
                       >
-                        No preview for {formatLabel(probed.format)} — this browser cannot display it,
-                        but the WASM engine can convert it.
+                        {t('cv.noPreview', { format: formatLabel(probed.format) })}
                       </Typography>
                     ))}
                   <Box
@@ -315,7 +307,7 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
                     }}
                   >
                     <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>
-                      File
+                      {t('cv.file')}
                     </Box>
                     <Box
                       component="dd"
@@ -331,13 +323,13 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
                       {file.name}
                     </Box>
                     <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>
-                      Size
+                      {t('cv.size')}
                     </Box>
                     <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>
                       {formatBytes(file.size)}
                     </Box>
                     <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>
-                      Detected format
+                      {t('cv.detectedFormat')}
                     </Box>
                     <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>
                       {probed
@@ -345,28 +337,28 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
                         : detectedFormat
                           ? formatLabel(detectedFormat)
                           : status === 'probing'
-                            ? 'Reading…'
-                            : 'Unknown'}
+                            ? t('cv.reading')
+                            : t('cv.unknown')}
                       <Typography variant="caption" component="span" display="block" color="text.secondary">
-                        Detected from magic bytes, not the extension.
+                        {t('cv.detectedNote')}
                       </Typography>
                     </Box>
                     <Box component="dt" sx={{ color: 'text.secondary', typography: 'body2' }}>
-                      Dimensions
+                      {t('cv.dimensions')}
                     </Box>
                     <Box component="dd" sx={{ m: 0, typography: 'body2', fontWeight: 500 }}>
                       {probed ? `${probed.width} × ${probed.height} px` : '—'}
                     </Box>
                   </Box>
                   <Button type="button" variant="outlined" onClick={clearFile} sx={{ mt: 2 }}>
-                    Choose a different file
+                    {t('common.chooseDifferentFile')}
                   </Button>
                 </CardContent>
               </Card>
 
               {status === 'probing' && (
                 <Typography role="status" variant="body2" color="text.secondary">
-                  Reading image…
+                  {t('cv.readingImage')}
                 </Typography>
               )}
               </>
@@ -376,12 +368,12 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
             <Card>
               <CardContent>
                 <Typography variant="overline" color="text.secondary">
-                  Output
+                  {t('cv.output')}
                 </Typography>
                 <Stack spacing={2.5} sx={{ mt: 1 }}>
                   <Box>
                     <Typography variant="subtitle2" component="label" htmlFor="target-format">
-                      Output format
+                      {t('cv.outputFormat')}
                     </Typography>
                     <Select
                       native
@@ -398,19 +390,17 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
                       ))}
                     </Select>
                     <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                      {wasmSupport
-                        ? 'Canvas targets plus the WASM engine’s BMP, TIFF, QOI, HEIC, JXL, JPEG 2000, ICO, PNM, TGA and GIF. AVIF still needs the native CLI — see the Formats tab.'
-                        : 'Only formats this browser can encode. BMP, TIFF, AVIF, JXL, QOI and the rest need the WASM engine or the native CLI — see the Formats tab.'}
+                      {t(wasmSupport ? 'cv.targetsWasm' : 'cv.targetsCanvas')}
                     </Typography>
                   </Box>
 
                   {(targetFormat === 'jpeg' || targetFormat === 'webp') && (
                     <Box>
                       <Typography variant="subtitle2" component="label">
-                        Quality: {quality}
+                        {t('cv.quality', { n: quality })}
                       </Typography>
                       <Slider
-                        aria-label="Quality"
+                        aria-label={t('cv.qualityAria')}
                         min={1}
                         max={100}
                         value={quality}
@@ -422,10 +412,10 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
                   {targetFormat === 'png' && (
                     <Box>
                       <Typography variant="subtitle2" component="label">
-                        PNG compression: {pngCompression} (0 = fast, 1 = default, 2 = best)
+                        {t('cv.pngCompression', { n: pngCompression })}
                       </Typography>
                       <Slider
-                        aria-label="PNG compression"
+                        aria-label={t('cv.pngCompressionAria')}
                         min={0}
                         max={2}
                         step={1}
@@ -433,15 +423,14 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
                         onChange={(_, value) => setPngCompression(value as number)}
                       />
                       <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                        The browser’s canvas encoder has no PNG compression knob — this setting is
-                        recorded and honoured by the CLI, but does not change the in-browser output.
+                        {t('cv.pngCompressionNote')}
                       </Typography>
                     </Box>
                   )}
 
                   <Box>
                     <Typography variant="subtitle2" component="label">
-                      Background colour (flattens transparency for JPEG/BMP)
+                      {t('cv.background')}
                     </Typography>
                     <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
                       <TextField
@@ -449,24 +438,23 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
                         size="small"
                         value={background}
                         onChange={(e) => setBackground(e.target.value)}
-                        inputProps={{ 'aria-label': 'Background colour picker' }}
+                        inputProps={{ 'aria-label': t('cv.bgPicker') }}
                         sx={{ width: 56, '& input': { p: 0.5, height: 40, cursor: 'pointer' } }}
                       />
                       <TextField
                         size="small"
                         value={background}
                         onChange={(e) => setBackground(e.target.value)}
-                        inputProps={{ 'aria-label': 'Background colour hex value' }}
+                        inputProps={{ 'aria-label': t('cv.bgHex') }}
                         sx={{ width: 120, '& input': { fontFamily: 'monospace' } }}
                       />
                     </Stack>
                   </Box>
 
                   <Box>
-                    <Typography variant="subtitle2">Metadata</Typography>
+                    <Typography variant="subtitle2">{t('cv.metadata')}</Typography>
                     <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                      Canvas conversion always strips EXIF/ICC/XMP. “Preserve” is offered so the choice
-                      is explicit, but in this browser it still strips — use the CLI to preserve.
+                      {t('cv.metadataNote')}
                     </Typography>
                     <FormControl sx={{ mt: 1 }}>
                       <RadioGroup
@@ -477,8 +465,8 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
                           onSettingsChange({ ...settings, metadataPolicy: value as Settings['metadataPolicy'] })
                         }
                       >
-                        <FormControlLabel value="strip" control={<Radio />} label="Strip (default)" />
-                        <FormControlLabel value="preserve" control={<Radio />} label="Preserve (CLI only)" />
+                        <FormControlLabel value="strip" control={<Radio />} label={t('cv.strip')} />
+                        <FormControlLabel value="preserve" control={<Radio />} label={t('cv.preserve')} />
                       </RadioGroup>
                     </FormControl>
                   </Box>
@@ -491,11 +479,11 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
                     onClick={handleConvert}
                     disabled={!canConvert || status === 'converting'}
                   >
-                    {status === 'converting' ? 'Converting…' : `Convert to ${formatLabel(targetFormat)}`}
+                    {status === 'converting' ? t('cv.converting') : t('cv.convertTo', { format: formatLabel(targetFormat) })}
                   </Button>
                   {!canConvert && probed && (
                     <Typography variant="body2" color="warning.main">
-                      This source format cannot be converted in the browser — use the native CLI.
+                      {t('cv.cannotConvert')}
                     </Typography>
                   )}
                 </Stack>
@@ -544,12 +532,16 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
               </Typography>
             )}
             <Typography variant="body1" fontWeight={500} color="success.main" sx={{ mt: 0.5 }}>
-              Converted: {formatBytes(file.size)} → {formatBytes(result.bytes)} ({result.width} ×{' '}
-              {result.height} px)
+              {t('cv.converted', {
+                from: formatBytes(file.size),
+                to: formatBytes(result.bytes),
+                w: result.width,
+                h: result.height,
+              })}
             </Typography>
             {targetFormat === 'ico' && probed && (result.width < probed.width || result.height < probed.height) && (
               <Typography variant="body2" sx={{ mt: 1 }}>
-                Resized to {result.width}×{result.height} for ICO — ICO supports max 256×256.
+                {t('cv.icoResized', { w: result.width, h: result.height })}
               </Typography>
             )}
             <Stack direction="row" flexWrap="wrap" spacing={1.5} sx={{ mt: 1.5 }}>
@@ -559,7 +551,7 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
                 startIcon={<DownloadIcon />}
                 onClick={() => downloadBlob(result.blob, outputFileName(file.name, targetFormat))}
               >
-                Download {outputFileName(file.name, targetFormat)}
+                {t('common.download')} {outputFileName(file.name, targetFormat)}
               </Button>
               <Button
                 type="button"
@@ -569,7 +561,7 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
                   setStatus('ready')
                 }}
               >
-                Convert again with different settings
+                {t('cv.convertAgain')}
               </Button>
             </Stack>
           </Box>

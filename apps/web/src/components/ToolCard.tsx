@@ -25,14 +25,24 @@ import {
   Typography,
 } from '@mui/material'
 import TerminalIcon from '@mui/icons-material/Terminal'
-import type { ToolEntry } from '../lib/routes'
+import { toolDescription, type ToolEntry } from '../lib/routes'
 import type { RouteId } from '../lib/routes'
+import { useI18n } from '../lib/use-i18n'
 import { useNotify } from './layout/notify'
 import { CategoryIcon } from './CategoryIcon'
 
 interface ToolCardProps {
   tool: ToolEntry
   onNavigate: (route: RouteId) => void
+  /**
+   * Full-width orphan card (last card of a section that would
+   * otherwise sit alone on its row): horizontal layout, icon left,
+   * text right — like the homepage Media category card. Split by
+   * breakpoint, because a card can be full-width at sm (2 columns)
+   * but a normal third at lg (3 columns), or the other way round.
+   */
+  wideSm?: boolean
+  wideLg?: boolean
 }
 
 /**
@@ -48,7 +58,8 @@ const MONO_META = {
   color: 'text.secondary',
 } as const
 
-export function ToolCard({ tool, onNavigate }: ToolCardProps) {
+export function ToolCard({ tool, onNavigate, wideSm = false, wideLg = false }: ToolCardProps) {
+  const { t, lang } = useI18n()
   const notify = useNotify()
   const [cliOpen, setCliOpen] = useState(false)
 
@@ -57,23 +68,42 @@ export function ToolCard({ tool, onNavigate }: ToolCardProps) {
       tool.formatChip ? <Typography sx={MONO_META}>{tool.formatChip}</Typography> : null
     ) : tool.status === 'cli-only' ? (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Typography sx={MONO_META}>CLI & desktop only</Typography>
+        <Typography sx={MONO_META}>{t('header.searchCliOnly')}</Typography>
         <TerminalIcon color="action" sx={{ fontSize: 16 }} />
       </Box>
     ) : (
-      <Typography sx={MONO_META}>Coming soon</Typography>
+      <Typography sx={MONO_META}>{t('header.searchComingSoon')}</Typography>
     )
 
   const body = (
-    <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1, height: '100%' }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+    <CardContent
+      sx={{
+        display: 'flex',
+        height: '100%',
+        // Horizontal only on the breakpoints where the card really
+        // spans the full row — a normal third at lg stays vertical
+        // even if it is full-width at sm.
+        flexDirection: {
+          xs: 'column',
+          sm: wideSm || wideLg ? 'row' : 'column',
+          lg: wideLg ? 'row' : 'column',
+        },
+        alignItems: {
+          xs: 'stretch',
+          sm: wideSm || wideLg ? 'center' : 'stretch',
+          lg: wideLg ? 'center' : 'stretch',
+        },
+        gap: { xs: 1, sm: wideSm || wideLg ? 2 : 1, lg: wideLg ? 2 : 1 },
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
         <CategoryIcon category={tool.categories[0]} />
         <Typography variant="subtitle1" component="h3" sx={{ lineHeight: 1.3 }}>
           {tool.name}
         </Typography>
       </Box>
       <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
-        {tool.description}
+        {toolDescription(lang, tool)}
       </Typography>
       {foot}
     </CardContent>
@@ -81,7 +111,7 @@ export function ToolCard({ tool, onNavigate }: ToolCardProps) {
 
   if (tool.status === 'coming-soon') {
     return (
-      <Card sx={{ height: '100%', opacity: 0.75 }} aria-label={`${tool.name} — coming soon`}>
+      <Card sx={{ height: '100%', opacity: 0.75 }} aria-label={t('tool.ariaComingSoon', { name: tool.name })}>
         {body}
       </Card>
     )
@@ -93,18 +123,19 @@ export function ToolCard({ tool, onNavigate }: ToolCardProps) {
         <Card sx={{ height: '100%' }}>
           <CardActionArea
             onClick={() => setCliOpen(true)}
-            aria-label={`${tool.name} — available in the CLI and desktop app, view the command`}
+            aria-label={t('tool.ariaCli', { name: tool.name })}
             sx={{ height: '100%' }}
           >
             {body}
           </CardActionArea>
         </Card>
         <Dialog open={cliOpen} onClose={() => setCliOpen(false)} maxWidth="sm" fullWidth>
-          <DialogTitle>{tool.name} — CLI & desktop only</DialogTitle>
+          <DialogTitle>
+            {tool.name} — {t('header.searchCliOnly')}
+          </DialogTitle>
           <DialogContent>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              {tool.description} It does not run in the browser: the desktop app and the CLI use the same
-              engine on your machine.
+              {toolDescription(lang, tool)} {t('tool.descCliExtra')}
             </Typography>
             <Box
               component="pre"
@@ -124,20 +155,19 @@ export function ToolCard({ tool, onNavigate }: ToolCardProps) {
               {tool.cliCommand}
             </Box>
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-              The CLI is the same openpixel binary the CI builds for Linux, Windows and macOS — see the GitHub
-              repository for downloads.
+              {t('tool.cliCaption')}
             </Typography>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => setCliOpen(false)}>Close</Button>
+            <Button onClick={() => setCliOpen(false)}>{t('tool.close')}</Button>
             <Button
               variant="contained"
               onClick={() => {
                 if (tool.cliCommand) void navigator.clipboard?.writeText(tool.cliCommand)
-                notify('Command copied')
+                notify(t('tool.copied'))
               }}
             >
-              Copy command
+              {t('tool.copyCommand')}
             </Button>
           </DialogActions>
         </Dialog>
@@ -149,7 +179,7 @@ export function ToolCard({ tool, onNavigate }: ToolCardProps) {
     <Card sx={{ height: '100%' }}>
       <CardActionArea
         onClick={() => tool.route && onNavigate(tool.route)}
-        aria-label={`${tool.name} — open the tool`}
+        aria-label={t('tool.ariaOpen', { name: tool.name })}
         sx={{ height: '100%' }}
       >
         {body}

@@ -190,7 +190,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
     onNavigate(next)
   }
 
-  const searchOptions = useMemo(() => searchTools(searchInput), [searchInput])
+  const searchOptions = useMemo(() => searchTools(searchInput, lang), [searchInput, lang])
 
   const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH
 
@@ -224,7 +224,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
         </IconButton>
       </Box>
       <Divider />
-      <List sx={{ flex: 1, overflowY: 'auto', py: 1 }} aria-label="OpenPixel Studio navigation">
+      <List sx={{ flex: 1, overflowY: 'auto', py: 1 }} aria-label={t('shell.navAria')}>
         {NAV_GROUPS.map((group) => (
           <Box key={group.label}>
             {!collapsed && (
@@ -376,7 +376,10 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                     {...params}
                     size="small"
                     placeholder={t('header.searchPlaceholder')}
-                    aria-label={t('header.searchTools')}
+                    // The bare aria-label prop lands on the TextField
+                    // root, not the <input> — merge it into
+                    // params.inputProps so the real input carries it.
+                    inputProps={{ ...params.inputProps, 'aria-label': t('header.searchTools') }}
                     sx={{
                       width: { xs: 140, sm: 220, md: 320 },
                       display: { xs: 'none', sm: 'block' },
@@ -464,10 +467,15 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
             }}
           >
             {crumbs.length > 0 && (
-              <Breadcrumbs aria-label="Breadcrumb" sx={{ mb: fitViewport ? 2 : 3 }}>
+              <Breadcrumbs aria-label={t('shell.crumbAria')} sx={{ mb: fitViewport ? 2 : 3 }}>
                 {crumbs.map((c, i) =>
                   i === crumbs.length - 1 ? (
-                    <Typography key={c.route} color="text.primary" variant="body2">
+                    <Typography
+                      key={c.route}
+                      color="text.primary"
+                      variant="body2"
+                      sx={{ minHeight: 24, display: 'inline-flex', alignItems: 'center' }}
+                    >
                       {c.label}
                     </Typography>
                   ) : (
@@ -477,6 +485,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                       variant="body2"
                       underline="hover"
                       onClick={() => onNavigate(c.route)}
+                      sx={{ minHeight: 24, py: 0.25, display: 'inline-flex', alignItems: 'center' }}
                     >
                       {c.label}
                     </Link>
@@ -519,25 +528,22 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                 <Typography variant="subtitle2" gutterBottom>
                   OpenPixel Studio
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {t('footer.tagline')}
-                </Typography>
               </Box>
               <Box>
                 <Typography variant="overline" color="text.secondary" display="block" gutterBottom>
                   {t('footer.tools')}
                 </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start' }}>
-                  <Button size="small" onClick={() => onNavigate('tools')} sx={{ px: 0 }}>
+                  <Button size="small" onClick={() => onNavigate('tools')} sx={{ px: 0, minWidth: 0 }}>
                     {t('nav.tools')}
                   </Button>
-                  <Button size="small" onClick={() => onNavigate('convert')} sx={{ px: 0 }}>
+                  <Button size="small" onClick={() => onNavigate('convert')} sx={{ px: 0, minWidth: 0 }}>
                     {t('nav.convert')}
                   </Button>
-                  <Button size="small" onClick={() => onNavigate('pdf')} sx={{ px: 0 }}>
+                  <Button size="small" onClick={() => onNavigate('pdf')} sx={{ px: 0, minWidth: 0 }}>
                     {t('nav.pdf')}
                   </Button>
-                  <Button size="small" onClick={() => onNavigate('ocr')} sx={{ px: 0 }}>
+                  <Button size="small" onClick={() => onNavigate('ocr')} sx={{ px: 0, minWidth: 0 }}>
                     {t('nav.ocr')}
                   </Button>
                 </Box>
@@ -547,13 +553,13 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                   {t('footer.resources')}
                 </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start' }}>
-                  <Button size="small" onClick={() => onNavigate('formats')} sx={{ px: 0 }}>
+                  <Button size="small" onClick={() => onNavigate('formats')} sx={{ px: 0, minWidth: 0 }}>
                     {t('nav.formats')}
                   </Button>
-                  <Button size="small" onClick={() => onNavigate('settings')} sx={{ px: 0 }}>
+                  <Button size="small" onClick={() => onNavigate('settings')} sx={{ px: 0, minWidth: 0 }}>
                     {t('nav.settings')}
                   </Button>
-                  <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0 }}>
+                  <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0, minWidth: 0 }}>
                     {t('nav.help')}
                   </Button>
                   <Button
@@ -562,7 +568,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                     href="https://github.com/rajuofficialasf-hub/openpixel"
                     target="_blank"
                     rel="noreferrer"
-                    sx={{ px: 0 }}
+                    sx={{ px: 0, minWidth: 0 }}
                   >
                     GitHub
                   </Button>
@@ -573,13 +579,13 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                   {t('footer.legal')}
                 </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start' }}>
-                  <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0 }}>
+                  <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0, minWidth: 0 }}>
                     {t('footer.privacy')}
                   </Button>
-                  <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0 }}>
+                  <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0, minWidth: 0 }}>
                     {t('footer.terms')}
                   </Button>
-                  <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0 }}>
+                  <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0, minWidth: 0 }}>
                     {t('footer.about')}
                   </Button>
                 </Box>

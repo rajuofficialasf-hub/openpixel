@@ -15,6 +15,8 @@ import {
 } from '../../lib/pdf'
 import { loadWasmEngine } from '../../lib/wasm-engine'
 import { recordActivity } from '../../lib/activity'
+import { translate, type Language } from '../../lib/i18n'
+import { useI18n } from '../../lib/use-i18n'
 
 export interface PdfToolProps {
   /** A PDF handed over from the homepage upload or the picker — consumed once. */
@@ -40,8 +42,8 @@ export function downloadBlob(blob: Blob, filename: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export const wasmMissing = (label: string): string =>
-  `${label} needs the WASM engine, which is not loaded — rebuild the web app with npm run build:wasm. No file was produced.`
+export const wasmMissing = (label: string, lang: Language = 'en'): string =>
+  translate(lang, 'pdf.wasmMissing', { label })
 
 export interface UsePdfFile {
   file: File | null
@@ -56,6 +58,15 @@ export interface UsePdfFile {
   busy: string | null
   setError: (error: string | null) => void
   setStatus: (status: string | null) => void
+  /**
+   * Set the status from an i18n key (+ params) — the displayed
+   * text is translated now, and the same key/params are stored
+   * with the activity entry so My Files / Recent Files render it
+   * localised at read time too.
+   */
+  setStatusKey: (key: string, vars?: Record<string, string | number>) => void
+  /** The translated `wasmMissing` error for an operation label. */
+  wasmMissing: (label: string) => string
   setResults: (results: PdfResult[]) => void
   setBusy: (busy: string | null) => void
   handleFiles: (files: File[]) => Promise<void>
@@ -80,10 +91,30 @@ export function usePdfFile(
   const [pdfjsPages, setPdfjsPages] = useState<number | null>(null)
   const [wasmReady, setWasmReady] = useState<boolean | null>(null)
   const [loading, setLoading] = useState(false)
+  const { t, lang } = useI18n()
   const [error, setError] = useState<string | null>(null)
-  const [status, setStatus] = useState<string | null>(null)
+  const [status, setStatusState] = useState<string | null>(null)
   const [results, setResults] = useState<PdfResult[]>([])
   const [busy, setBusy] = useState<string | null>(null)
+  // Language-neutral form of the current status, for the activity
+  // record. A plain setStatus() clears it (the string is already
+  // localised and has no key to re-render from).
+  const statusRecordRef = useRef<{ key: string; params: Record<string, string | number> } | null>(null)
+
+  const setStatus = useCallback((next: string | null) => {
+    statusRecordRef.current = null
+    setStatusState(next)
+  }, [])
+
+  const setStatusKey = useCallback(
+    (key: string, vars?: Record<string, string | number>) => {
+      statusRecordRef.current = { key, params: vars ?? {} }
+      setStatusState(t(key, vars))
+    },
+    [t],
+  )
+
+  const wasmMissingError = useCallback((label: string) => wasmMissing(label, lang), [lang])
 
   const pageCount = info?.page_count ?? pdfjsPages ?? 0
 
@@ -121,8 +152,8 @@ export function usePdfFile(
       setBytes(null)
       setError(
         pdfInfo.encryption
-          ? `This PDF is encrypted (${pdfInfo.encryption.algorithm}). Encrypted PDFs cannot be opened in the browser; use the native CLI.`
-          : 'This PDF is encrypted. Encrypted PDFs cannot be opened in the browser; use the native CLI.',
+          ? t('pdf.encryptedAlg', { alg: pdfInfo.encryption.algorithm })
+          : t('pdf.encrypted'),
       )
       setLoading(false)
       return
@@ -135,13 +166,11 @@ export function usePdfFile(
       } catch {
         setFile(null)
         setBytes(null)
-        setError(
-          'Could not read this PDF — it may be encrypted or damaged. Encrypted PDFs cannot be opened in the browser; use the native CLI.',
-        )
+        setError(t('pdf.unreadable'))
       }
     }
     setLoading(false)
-  }, [])
+  }, [t, setStatus])
 
   // Homepage / picker hand-off: a PDF dropped elsewhere arrives
   // here already loaded. Consume it once; the ref guard also
@@ -166,6 +195,8 @@ export function usePdfFile(
         fileType: 'application/pdf',
         tool,
         result: status,
+        resultKey: statusRecordRef.current?.key,
+        resultParams: statusRecordRef.current?.params,
       })
     }
   }, [results, status, file, tool])
@@ -178,7 +209,7 @@ export function usePdfFile(
     setResults([])
     setStatus(null)
     setError(null)
-  }, [])
+  }, [setStatus])
 
   const runOp = useCallback(
     async (label: string, opsJson: string, suffix: string) => {
@@ -188,7 +219,7 @@ export function usePdfFile(
       setStatus(null)
       const outputs = await pdfProcess(bytes, opsJson)
       if (!outputs) {
-        setError(wasmMissing(label))
+        setError(wasmMissing(label, lang))
         setBusy(null)
         return
       }
@@ -204,14 +235,18 @@ export function usePdfFile(
         })
       }
       setResults(next)
-      setStatus(
-        outputs.length > 1
-          ? `${label}: split into ${outputs.length} documents (${next.map((r) => `${r.pages ?? '?'} pages`).join(', ')})`
-          : `${label}: ${next[0].pages ?? '?'} pages`,
-      )
+      if (outputs.length > 1) {
+        setStatusKey('pdf.opStatusSplit', {
+          label,
+          n: outputs.length,
+          parts: next.map((r) => t('pdf.pagesCount', { n: r.pages ?? '?' })).join(', '),
+        })
+      } else {
+        setStatusKey('pdf.opStatusPages', { label, n: next[0].pages ?? '?' })
+      }
       setBusy(null)
     },
-    [bytes, file],
+    [bytes, file, lang, setStatus, setStatusKey, t],
   )
 
   return {
@@ -227,6 +262,8 @@ export function usePdfFile(
     busy,
     setError,
     setStatus,
+    setStatusKey,
+    wasmMissing: wasmMissingError,
     setResults,
     setBusy,
     handleFiles,

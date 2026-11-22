@@ -22,7 +22,8 @@ import {
   type PdfThreats,
 } from '../../lib/pdf'
 import { PdfToolPage } from './shared'
-import { usePdfFile, wasmMissing, type PdfToolProps } from './usePdfFile'
+import { useI18n } from '../../lib/use-i18n'
+import { usePdfFile, type PdfToolProps } from './usePdfFile'
 
 function editNumber(value: string): number | null {
   const n = Number(value)
@@ -30,6 +31,7 @@ function editNumber(value: string): number | null {
 }
 
 export function RedactTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps) {
+  const { t } = useI18n()
   const pdf = usePdfFile('pdf-redact', initialFiles, onInitialFilesConsumed)
   const [redactText, setRedactText] = useState('')
   const [redactPage, setRedactPage] = useState('1')
@@ -45,7 +47,7 @@ export function RedactTool({ initialFiles, onInitialFilesConsumed }: PdfToolProp
     pdf.setStatus(null)
     const result = await pdfRedact(pdf.bytes, redactions)
     if (!result) {
-      pdf.setError(wasmMissing(label))
+      pdf.setError(pdf.wasmMissing(label))
       pdf.setBusy(null)
       return
     }
@@ -57,17 +59,25 @@ export function RedactTool({ initialFiles, onInitialFilesConsumed }: PdfToolProp
         pages: pdf.pageCount,
       },
     ])
-    pdf.setStatus(
-      result.runsRemoved === 0
-        ? `${label}: nothing matched — the text was not found, so the file is unchanged.`
-        : `${label}: ${result.runsRemoved} run${result.runsRemoved === 1 ? '' : 's'}, ${result.charactersRemoved} character${result.charactersRemoved === 1 ? '' : 's'} removed on ${result.pagesTouched} page${result.pagesTouched === 1 ? '' : 's'} — the text is gone from the file, not covered up.`,
-    )
+    if (result.runsRemoved === 0) {
+      pdf.setStatusKey('pdf.redactNone', { label })
+    } else {
+      pdf.setStatusKey('pdf.redactDone', {
+        label,
+        runs: result.runsRemoved,
+        s: result.runsRemoved === 1 ? '' : 's',
+        chars: result.charactersRemoved,
+        s2: result.charactersRemoved === 1 ? '' : 's',
+        pages: result.pagesTouched,
+        s3: result.pagesTouched === 1 ? '' : 's',
+      })
+    }
     pdf.setBusy(null)
   }
 
   const handleRedactText = () => {
     if (redactText.trim() === '') {
-      pdf.setError('Type the text to redact.')
+      pdf.setError(t('pdf.redactTypeError'))
       return
     }
     void runRedact('Redacted PDF', [{ kind: 'text', page: null, text: redactText }])
@@ -80,7 +90,7 @@ export function RedactTool({ initialFiles, onInitialFilesConsumed }: PdfToolProp
     const w = editNumber(redactW)
     const h = editNumber(redactH)
     if (!Number.isInteger(page) || page < 1 || page > pdf.pageCount || x === null || y === null || w === null || h === null || w <= 0 || h <= 0) {
-      pdf.setError('Check the redaction area — page 1–' + pdf.pageCount + ' and numbers for X/Y/width/height.')
+      pdf.setError(t('pdf.redactAreaError', { n: pdf.pageCount }))
       return
     }
     void runRedact('Redacted PDF', [{ kind: 'rect', page, x, y, width: w, height: h }])
@@ -94,33 +104,33 @@ export function RedactTool({ initialFiles, onInitialFilesConsumed }: PdfToolProp
     <PdfToolPage
       headingId="pdf-redact-heading"
       title="Redact PDF"
-      description="Permanently remove text from a PDF — deleted from the file, not covered up. The removed text cannot be recovered from the output."
+      description={t('pdf.redactDesc')}
       pdf={pdf}
-      primary={{ id: 'pdf-redact-text-button', label: 'Redact text', busyLabel: 'Redacting…', busyKey: 'Redacted PDF', onClick: handleRedactText }}
+      primary={{ id: 'pdf-redact-text-button', label: t('pdf.redactTextButton'), busyLabel: t('pdf.redacting'), busyKey: 'Redacted PDF', onClick: handleRedactText }}
       secondaryActions={[
-        { id: 'pdf-redact-rect-button', label: 'Redact area', busyLabel: 'Redacting…', busyKey: 'Redacted PDF', onClick: handleRedactRect },
+        { id: 'pdf-redact-rect-button', label: t('pdf.redactAreaButton'), busyLabel: t('pdf.redacting'), busyKey: 'Redacted PDF', onClick: handleRedactRect },
       ]}
     >
       <Box>
-        <Typography variant="subtitle2">Redact text</Typography>
+        <Typography variant="subtitle2">{t('pdf.redactTextTitle')}</Typography>
         <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap" sx={{ mt: 0.5 }}>
           <TextField
             id="pdf-redact-text"
             size="small"
-            label="Text to remove"
+            label={t('pdf.redactTextLabel')}
             value={redactText}
             onChange={(e) => setRedactText(e.target.value)}
             sx={{ width: 280 }}
           />
         </Stack>
         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-          Every occurrence on every page, case-sensitive.
+          {t('pdf.redactTextNote')}
         </Typography>
       </Box>
       <Box>
-        <Typography variant="subtitle2">Redact an area</Typography>
+        <Typography variant="subtitle2">{t('pdf.redactAreaTitle')}</Typography>
         <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap" sx={{ mt: 0.5 }}>
-          {rectField('pdf-redact-page', 'Page', redactPage, setRedactPage, 90)}
+          {rectField('pdf-redact-page', t('pdf.redactPage'), redactPage, setRedactPage, 90)}
           {rectField('pdf-redact-x', 'X (pt)', redactX, setRedactX, 90)}
           {rectField('pdf-redact-y', 'Y (pt)', redactY, setRedactY, 90)}
           {rectField('pdf-redact-w', 'Width (pt)', redactW, setRedactW, 100)}
@@ -132,6 +142,7 @@ export function RedactTool({ initialFiles, onInitialFilesConsumed }: PdfToolProp
 }
 
 export function MetadataTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps) {
+  const { t } = useI18n()
   const pdf = usePdfFile('pdf-metadata', initialFiles, onInitialFilesConsumed)
   const [metaTitle, setMetaTitle] = useState('')
   const [metaAuthor, setMetaAuthor] = useState('')
@@ -141,7 +152,7 @@ export function MetadataTool({ initialFiles, onInitialFilesConsumed }: PdfToolPr
   const run = async () => {
     if (!pdf.bytes || !pdf.file) return
     if (metaTitle === '' && metaAuthor === '' && metaSubject === '' && metaKeywords === '') {
-      pdf.setError('Type at least one metadata field — leave a field blank to keep it, or clear it from the CLI with an empty string.')
+      pdf.setError(t('pdf.metaEmptyError'))
       return
     }
     pdf.setBusy('Metadata PDF')
@@ -154,7 +165,7 @@ export function MetadataTool({ initialFiles, onInitialFilesConsumed }: PdfToolPr
       keywords: metaKeywords === '' ? null : metaKeywords,
     })
     if (!out) {
-      pdf.setError(wasmMissing('Set metadata'))
+      pdf.setError(pdf.wasmMissing('Set metadata'))
       pdf.setBusy(null)
       return
     }
@@ -166,7 +177,7 @@ export function MetadataTool({ initialFiles, onInitialFilesConsumed }: PdfToolPr
         pages: pdf.pageCount,
       },
     ])
-    pdf.setStatus('Metadata PDF: title/author/subject/keywords updated (blank fields were left unchanged).')
+    pdf.setStatus(t('pdf.metaDone'))
     pdf.setBusy(null)
   }
 
@@ -178,25 +189,27 @@ export function MetadataTool({ initialFiles, onInitialFilesConsumed }: PdfToolPr
     <PdfToolPage
       headingId="pdf-metadata-heading"
       title="PDF Metadata"
-      description="Edit a PDF's title, author, subject and keywords."
+      description={t('pdf.metaDesc')}
       pdf={pdf}
-      primary={{ id: 'pdf-meta-button', label: 'Set metadata', busyLabel: 'Saving…', busyKey: 'Metadata PDF', onClick: () => void run() }}
+      primary={{ id: 'pdf-meta-button', label: t('pdf.metaButton'), busyLabel: t('pdf.metaSaving'), busyKey: 'Metadata PDF', onClick: () => void run() }}
     >
       <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap">
-        {field('pdf-meta-title', 'Title', metaTitle, setMetaTitle, 200)}
-        {field('pdf-meta-author', 'Author', metaAuthor, setMetaAuthor, 160)}
-        {field('pdf-meta-subject', 'Subject', metaSubject, setMetaSubject, 160)}
-        {field('pdf-meta-keywords', 'Keywords', metaKeywords, setMetaKeywords, 160)}
+        {field('pdf-meta-title', t('pdf.metaTitle'), metaTitle, setMetaTitle, 200)}
+        {field('pdf-meta-author', t('pdf.metaAuthor'), metaAuthor, setMetaAuthor, 160)}
+        {field('pdf-meta-subject', t('pdf.metaSubject'), metaSubject, setMetaSubject, 160)}
+        {field('pdf-meta-keywords', t('pdf.metaKeywords'), metaKeywords, setMetaKeywords, 160)}
       </Stack>
       <Typography variant="caption" color="text.secondary">
-        Blank fields are left unchanged. To clear a field, use the native CLI
-        (`openpixel pdf set-metadata --title ""`).
+        {t('pdf.metaNoteA')}
+        <Typography component="code" variant="caption">openpixel pdf set-metadata --title ""</Typography>
+        {t('pdf.metaNoteB')}
       </Typography>
     </PdfToolPage>
   )
 }
 
 export function SanitizeTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps) {
+  const { t } = useI18n()
   const pdf = usePdfFile('pdf-sanitize', initialFiles, onInitialFilesConsumed)
   const [threats, setThreats] = useState<PdfThreats | null>(null)
 
@@ -207,17 +220,27 @@ export function SanitizeTool({ initialFiles, onInitialFilesConsumed }: PdfToolPr
     pdf.setStatus(null)
     const found = await pdfInspect(pdf.bytes)
     if (!found) {
-      pdf.setError(wasmMissing('Threat check'))
+      pdf.setError(pdf.wasmMissing('Threat check'))
       pdf.setBusy(null)
       return
     }
     setThreats(found)
     const total = found.javascript.length + found.embedded_files.length + found.launch_actions.length + found.auto_actions.length
-    pdf.setStatus(
-      total === 0
-        ? 'Threat check: clean — no JavaScript, embedded files, launch actions or auto-actions found.'
-        : `Threat check: ${total} threat${total === 1 ? '' : 's'} found — ${found.javascript.length} JavaScript, ${found.embedded_files.length} embedded file${found.embedded_files.length === 1 ? '' : 's'}, ${found.launch_actions.length} launch action${found.launch_actions.length === 1 ? '' : 's'}, ${found.auto_actions.length} auto-action${found.auto_actions.length === 1 ? '' : 's'}. Use "Remove threats" to strip them.`,
-    )
+    if (total === 0) {
+      pdf.setStatus(t('pdf.threatClean'))
+    } else {
+      pdf.setStatusKey('pdf.threatFound', {
+        total,
+        s: total === 1 ? '' : 's',
+        js: found.javascript.length,
+        files: found.embedded_files.length,
+        s2: found.embedded_files.length === 1 ? '' : 's',
+        launch: found.launch_actions.length,
+        s3: found.launch_actions.length === 1 ? '' : 's',
+        auto: found.auto_actions.length,
+        s4: found.auto_actions.length === 1 ? '' : 's',
+      })
+    }
     pdf.setBusy(null)
   }
 
@@ -228,7 +251,7 @@ export function SanitizeTool({ initialFiles, onInitialFilesConsumed }: PdfToolPr
     pdf.setStatus(null)
     const result = await pdfSanitize(pdf.bytes)
     if (!result) {
-      pdf.setError(wasmMissing('Clean up'))
+      pdf.setError(pdf.wasmMissing('Clean up'))
       pdf.setBusy(null)
       return
     }
@@ -241,11 +264,19 @@ export function SanitizeTool({ initialFiles, onInitialFilesConsumed }: PdfToolPr
       },
     ])
     const total = result.javascriptRemoved + result.embeddedFilesRemoved + result.launchActionsRemoved + result.autoActionsRemoved
-    pdf.setStatus(
-      total === 0
-        ? 'Cleaned PDF: nothing dangerous was found — the file is unchanged.'
-        : `Cleaned PDF: ${result.javascriptRemoved} JavaScript, ${result.embeddedFilesRemoved} embedded file${result.embeddedFilesRemoved === 1 ? '' : 's'}, ${result.launchActionsRemoved} launch action${result.launchActionsRemoved === 1 ? '' : 's'}, ${result.autoActionsRemoved} auto-action${result.autoActionsRemoved === 1 ? '' : 's'} removed. The document is kept; the dangerous parts are gone, not hidden.`,
-    )
+    if (total === 0) {
+      pdf.setStatus(t('pdf.cleanNone'))
+    } else {
+      pdf.setStatusKey('pdf.cleanDone', {
+        js: result.javascriptRemoved,
+        files: result.embeddedFilesRemoved,
+        s: result.embeddedFilesRemoved === 1 ? '' : 's',
+        launch: result.launchActionsRemoved,
+        s2: result.launchActionsRemoved === 1 ? '' : 's',
+        auto: result.autoActionsRemoved,
+        s3: result.autoActionsRemoved === 1 ? '' : 's',
+      })
+    }
     pdf.setBusy(null)
   }
 
@@ -253,8 +284,13 @@ export function SanitizeTool({ initialFiles, onInitialFilesConsumed }: PdfToolPr
     threats !== null ? (
       <Typography variant="body2" role="status">
         {threats.javascript.length + threats.embedded_files.length + threats.launch_actions.length + threats.auto_actions.length === 0
-          ? 'Threat check: clean — no JavaScript, embedded files, launch actions or auto-actions.'
-          : `Threats found: ${threats.javascript.length} JavaScript, ${threats.embedded_files.length} embedded file(s), ${threats.launch_actions.length} launch action(s), ${threats.auto_actions.length} auto-action(s).`}
+          ? t('pdf.threatSummaryClean')
+          : t('pdf.threatSummaryFound', {
+              js: threats.javascript.length,
+              files: threats.embedded_files.length,
+              launch: threats.launch_actions.length,
+              auto: threats.auto_actions.length,
+            })}
       </Typography>
     ) : null
 
@@ -262,23 +298,25 @@ export function SanitizeTool({ initialFiles, onInitialFilesConsumed }: PdfToolPr
     <PdfToolPage
       headingId="pdf-sanitize-heading"
       title="Clean up PDF"
-      description="Check a PDF for JavaScript, embedded files and launch actions — then strip them out. The document is kept; only the dangerous parts go."
+      description={t('pdf.sanitizeDesc')}
       pdf={pdf}
       extra={threatsSummary}
-      primary={{ id: 'pdf-sanitize-button', label: 'Remove threats', busyLabel: 'Cleaning…', busyKey: 'Cleaned PDF', onClick: () => void handleSanitize() }}
+      primary={{ id: 'pdf-sanitize-button', label: t('pdf.sanitizeRemove'), busyLabel: t('pdf.sanitizeCleaning'), busyKey: 'Cleaned PDF', onClick: () => void handleSanitize() }}
       secondaryActions={[
-        { id: 'pdf-inspect-button', label: 'Check for threats', busyLabel: 'Checking…', busyKey: 'Threat check', onClick: () => void handleInspect(), variant: 'outlined' },
+        { id: 'pdf-inspect-button', label: t('pdf.sanitizeInspect'), busyLabel: t('pdf.sanitizeChecking'), busyKey: 'Threat check', onClick: () => void handleInspect(), variant: 'outlined' },
       ]}
     >
       <Typography variant="body2" color="text.secondary">
-        First check what is inside the file, then remove it. Digital signatures need a private key, so signing
-        stays in the native CLI (`openpixel pdf sign`) and the desktop app — the browser never receives your key.
+        {t('pdf.sanitizeNoteA')}
+        <Typography component="code" variant="body2">openpixel pdf sign</Typography>
+        {t('pdf.sanitizeNoteB')}
       </Typography>
     </PdfToolPage>
   )
 }
 
 export function FlattenTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps) {
+  const { t } = useI18n()
   const pdf = usePdfFile('pdf-flatten', initialFiles, onInitialFilesConsumed)
 
   const run = async () => {
@@ -288,7 +326,7 @@ export function FlattenTool({ initialFiles, onInitialFilesConsumed }: PdfToolPro
     pdf.setStatus(null)
     const result = await pdfFlatten(pdf.bytes)
     if (!result) {
-      pdf.setError(wasmMissing('Flatten'))
+      pdf.setError(pdf.wasmMissing('Flatten'))
       pdf.setBusy(null)
       return
     }
@@ -300,9 +338,13 @@ export function FlattenTool({ initialFiles, onInitialFilesConsumed }: PdfToolPro
         pages: pdf.pageCount,
       },
     ])
-    pdf.setStatus(
-      `Flattened PDF: ${result.annotationsFlattened} annotation${result.annotationsFlattened === 1 ? '' : 's'} flattened, ${result.annotationsDropped} dropped, ${result.formFieldsRemoved} form field${result.formFieldsRemoved === 1 ? '' : 's'} removed.`,
-    )
+    pdf.setStatusKey('pdf.flattenDone', {
+      a: result.annotationsFlattened,
+      s: result.annotationsFlattened === 1 ? '' : 's',
+      d: result.annotationsDropped,
+      f: result.formFieldsRemoved,
+      s2: result.formFieldsRemoved === 1 ? '' : 's',
+    })
     pdf.setBusy(null)
   }
 
@@ -310,18 +352,19 @@ export function FlattenTool({ initialFiles, onInitialFilesConsumed }: PdfToolPro
     <PdfToolPage
       headingId="pdf-flatten-heading"
       title="Flatten PDF"
-      description="Flatten annotations into the page content and remove form fields — what you see is what the file keeps."
+      description={t('pdf.flattenDesc')}
       pdf={pdf}
-      primary={{ id: 'pdf-flatten-button', label: 'Flatten annotations', busyLabel: 'Flattening…', busyKey: 'Flattened PDF', onClick: () => void run() }}
+      primary={{ id: 'pdf-flatten-button', label: t('pdf.flattenButton'), busyLabel: t('pdf.flattening'), busyKey: 'Flattened PDF', onClick: () => void run() }}
     >
       <Typography variant="body2" color="text.secondary">
-        Annotations without an appearance are dropped and counted — never faked into the output.
+        {t('pdf.flattenNote')}
       </Typography>
     </PdfToolPage>
   )
 }
 
 export function RepairTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps) {
+  const { t } = useI18n()
   const pdf = usePdfFile('pdf-repair', initialFiles, onInitialFilesConsumed)
 
   const run = async () => {
@@ -331,7 +374,7 @@ export function RepairTool({ initialFiles, onInitialFilesConsumed }: PdfToolProp
     pdf.setStatus(null)
     const result = await pdfRepair(pdf.bytes)
     if (!result) {
-      pdf.setError(wasmMissing('Repair'))
+      pdf.setError(pdf.wasmMissing('Repair'))
       pdf.setBusy(null)
       return
     }
@@ -343,7 +386,7 @@ export function RepairTool({ initialFiles, onInitialFilesConsumed }: PdfToolProp
         pages: pdf.pageCount,
       },
     ])
-    pdf.setStatus(`Repaired PDF: cross-reference table read "${result.recovery}".`)
+    pdf.setStatusKey('pdf.repairDone', { recovery: result.recovery })
     pdf.setBusy(null)
   }
 
@@ -351,12 +394,12 @@ export function RepairTool({ initialFiles, onInitialFilesConsumed }: PdfToolProp
     <PdfToolPage
       headingId="pdf-repair-heading"
       title="Repair PDF"
-      description="Rebuild the cross-reference table of a damaged PDF so it opens again."
+      description={t('pdf.repairDesc')}
       pdf={pdf}
-      primary={{ id: 'pdf-repair-button', label: 'Repair file', busyLabel: 'Repairing…', busyKey: 'Repaired PDF', onClick: () => void run() }}
+      primary={{ id: 'pdf-repair-button', label: t('pdf.repairButton'), busyLabel: t('pdf.repairing'), busyKey: 'Repaired PDF', onClick: () => void run() }}
     >
       <Typography variant="body2" color="text.secondary">
-        A healthy file comes back with the cross-reference table read "as written".
+        {t('pdf.repairNote')}
       </Typography>
     </PdfToolPage>
   )
