@@ -4,8 +4,12 @@
  * - `web`: navigates to the working workspace.
  * - `cli-only`: opens a dialog with the exact CLI command (and a
  *   copy button). Nothing pretends to work in the browser.
- * - `coming-soon`: a disabled-looking card with a "Coming soon"
- *   chip — never a working-looking button for a missing feature.
+ * - `coming-soon`: a disabled-looking card with a quiet "Coming soon"
+ *   line — never a working-looking button for a missing feature.
+ * The card foot carries one quiet mono line: the tool's format
+ * pair (e.g. "PNG → WebP") when it has one, the real status
+ * ("CLI & desktop only", "Coming soon") when it matters, and
+ * nothing at all for a plain web tool.
  */
 import { useState } from 'react'
 import {
@@ -14,71 +18,56 @@ import {
   Card,
   CardActionArea,
   CardContent,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
   Typography,
 } from '@mui/material'
-import ImageIcon from '@mui/icons-material/Image'
-import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
-import DescriptionIcon from '@mui/icons-material/Description'
-import DocumentScannerIcon from '@mui/icons-material/DocumentScanner'
-import AutorenewIcon from '@mui/icons-material/Autorenew'
-import CompressIcon from '@mui/icons-material/Compress'
-import MovieIcon from '@mui/icons-material/Movie'
 import TerminalIcon from '@mui/icons-material/Terminal'
-import type { ToolCategory, ToolEntry } from '../lib/routes'
+import type { ToolEntry } from '../lib/routes'
 import type { RouteId } from '../lib/routes'
 import { useNotify } from './layout/notify'
-
-const CATEGORY_ICONS: Record<ToolCategory, React.ReactNode> = {
-  image: <ImageIcon />,
-  pdf: <PictureAsPdfIcon />,
-  document: <DescriptionIcon />,
-  ocr: <DocumentScannerIcon />,
-  conversion: <AutorenewIcon />,
-  compression: <CompressIcon />,
-  media: <MovieIcon />,
-}
+import { CategoryIcon } from './CategoryIcon'
 
 interface ToolCardProps {
   tool: ToolEntry
   onNavigate: (route: RouteId) => void
 }
 
+/**
+ * Quiet mono meta line for the card foot. One size, one colour —
+ * it names the format pair (the signature chip) or the real
+ * availability status, and nothing else. Web tools with no natural
+ * format pair show nothing: "Available" on every card said nothing.
+ */
+const MONO_META = {
+  fontFamily: '"IBM Plex Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+  fontSize: '0.75rem',
+  lineHeight: 1.5,
+  color: 'text.secondary',
+} as const
+
 export function ToolCard({ tool, onNavigate }: ToolCardProps) {
   const notify = useNotify()
   const [cliOpen, setCliOpen] = useState(false)
 
-  const statusChip =
+  const foot =
     tool.status === 'web' ? (
-      <Chip size="small" color="success" label="Available" />
+      tool.formatChip ? <Typography sx={MONO_META}>{tool.formatChip}</Typography> : null
     ) : tool.status === 'cli-only' ? (
-      <Chip size="small" color="info" label="CLI & desktop only" />
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Typography sx={MONO_META}>CLI & desktop only</Typography>
+        <TerminalIcon fontSize="small" color="action" />
+      </Box>
     ) : (
-      <Chip size="small" label="Coming soon" />
+      <Typography sx={MONO_META}>Coming soon</Typography>
     )
 
   const body = (
     <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 1, height: '100%' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-        <Box
-          sx={{
-            width: 40,
-            height: 40,
-            borderRadius: 2,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: (t) => `${t.palette.primary.main}14`,
-            color: 'primary.main',
-            flex: 'none',
-          }}
-        >
-          {CATEGORY_ICONS[tool.categories[0]]}
-        </Box>
+        <CategoryIcon category={tool.categories[0]} />
         <Typography variant="subtitle1" component="h3" sx={{ lineHeight: 1.3 }}>
           {tool.name}
         </Typography>
@@ -86,10 +75,7 @@ export function ToolCard({ tool, onNavigate }: ToolCardProps) {
       <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
         {tool.description}
       </Typography>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-        {statusChip}
-        {tool.status === 'cli-only' && <TerminalIcon fontSize="small" color="action" />}
-      </Box>
+      {foot}
     </CardContent>
   )
 

@@ -134,6 +134,12 @@ export interface ToolEntry {
   cliCommand?: string
   keywords: string[]
   popular?: boolean
+  /**
+   * Signature format chip, shown on the tool card when the tool
+   * has a natural format pair (e.g. "PNG → WebP"). Quiet mono
+   * text, not a status pill — tools without a pair show nothing.
+   */
+  formatChip?: string
 }
 
 export const TOOLS: ToolEntry[] = [
@@ -148,6 +154,7 @@ export const TOOLS: ToolEntry[] = [
     route: 'convert',
     keywords: ['convert', 'png', 'jpg', 'jpeg', 'webp', 'heic', 'format', 'image'],
     popular: true,
+    formatChip: 'PNG → WebP',
   },
   {
     id: 'resize',
@@ -180,6 +187,7 @@ export const TOOLS: ToolEntry[] = [
     route: 'batch',
     keywords: ['batch', 'bulk', 'folder', 'many', 'zip', 'image'],
     popular: true,
+    formatChip: 'PNG → WebP',
   },
   {
     id: 'metadata',
@@ -386,6 +394,7 @@ export const TOOLS: ToolEntry[] = [
     route: 'pdf-to-image',
     keywords: ['pdf', 'image', 'png', 'jpeg', 'render', 'page'],
     popular: true,
+    formatChip: 'PDF → PNG',
   },
   {
     id: 'image-to-pdf',
@@ -396,6 +405,7 @@ export const TOOLS: ToolEntry[] = [
     route: 'pdf-images-to-pdf',
     keywords: ['image', 'pdf', 'create', 'photo'],
     popular: true,
+    formatChip: 'PNG → PDF',
   },
   {
     id: 'pdf-text',
@@ -534,6 +544,7 @@ export const TOOLS: ToolEntry[] = [
     route: 'ocr',
     keywords: ['ocr', 'text', 'read', 'scan', 'extract'],
     popular: true,
+    formatChip: 'PNG → TXT',
   },
   {
     id: 'ocr-bengali',

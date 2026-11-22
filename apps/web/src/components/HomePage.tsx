@@ -7,8 +7,12 @@
  * workspace that can handle it — with the file handed over, not
  * just a navigation. Office documents and unknown files get an
  * honest notice instead of a dead end.
+ *
+ * Hero (unslop): an asymmetric split — the headline on the left,
+ * a coded conversion preview on the right. The primary action is
+ * the real work (choosing a file), not a scroll to the dropzone.
  */
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { Box, Button, Card, CardContent, Grid, Stack, Typography } from '@mui/material'
 import UploadFileIcon from '@mui/icons-material/UploadFile'
 import MouseIcon from '@mui/icons-material/Mouse'
@@ -25,6 +29,8 @@ import { useI18n } from '../lib/use-i18n'
 import { detectFileFormat } from '../lib/detect'
 import { DropZone } from './DropZone'
 import { ToolCard } from './ToolCard'
+import { ConversionPreview } from './ConversionPreview'
+import { CategoryIcon } from './CategoryIcon'
 
 interface HomePageProps {
   onNavigate: (route: RouteId, opts?: { toolsCategory?: ToolCategory; files?: File[] }) => void
@@ -49,7 +55,6 @@ export function HomePage({ onNavigate }: HomePageProps) {
   const { t, lang } = useI18n()
   const [notice, setNotice] = useState<string | null>(null)
   const [routing, setRouting] = useState(false)
-  const uploadRef = useRef<HTMLDivElement>(null)
 
   const routeFiles = async (files: File[]) => {
     const first = files[0]
@@ -87,37 +92,51 @@ export function HomePage({ onNavigate }: HomePageProps) {
 
   return (
     <Stack spacing={4}>
-      {/* 1. Hero */}
-      <Box component="section" aria-labelledby="home-hero-heading" sx={{ textAlign: 'center', py: { xs: 2, md: 4 } }}>
-        <Typography variant="h1" component="h1" id="home-hero-heading" sx={{ maxWidth: 760, mx: 'auto' }}>
-          {t('home.heroTitle')}
-        </Typography>
-        <Typography
-          variant="body1"
-          color="text.secondary"
-          sx={{ maxWidth: 640, mx: 'auto', mt: 2, fontSize: '1.0625rem' }}
-        >
-          {t('home.heroSub')}
-        </Typography>
-        <Stack direction="row" spacing={2} justifyContent="center" sx={{ mt: 3, flexWrap: 'wrap' }}>
-          <Button variant="contained" size="large" onClick={() => onNavigate('tools')}>
-            {t('home.exploreTools')}
-          </Button>
-          <Button
-            variant="outlined"
-            size="large"
-            onClick={() => uploadRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-          >
-            {t('home.getStarted')}
-          </Button>
-        </Stack>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>
-          {t('home.localNote')}
-        </Typography>
+      {/* 1. Hero — split: headline left, conversion preview right. */}
+      <Box component="section" aria-labelledby="home-hero-heading" sx={{ py: { xs: 4, md: 6 } }}>
+        <Grid container spacing={6} alignItems="center">
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Typography
+              variant="h1"
+              component="h1"
+              id="home-hero-heading"
+              sx={{
+                fontSize: { xs: '2.25rem', md: '3.5rem' },
+                lineHeight: { xs: 1.1, md: 1.05 },
+                fontWeight: 500,
+                letterSpacing: '-0.02em',
+              }}
+            >
+              {t('home.heroTitle')}
+            </Typography>
+            <Typography
+              variant="body1"
+              color="text.secondary"
+              sx={{ mt: 2, fontSize: '1.125rem', lineHeight: 1.6, maxWidth: '36rem' }}
+            >
+              {t('home.heroSub')}
+            </Typography>
+            <Stack direction="row" spacing={2} sx={{ mt: 3, flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                size="large"
+                onClick={() => document.getElementById('home-file')?.click()}
+              >
+                {t('home.chooseFile')}
+              </Button>
+              <Button variant="outlined" size="large" onClick={() => onNavigate('tools')}>
+                {t('home.exploreTools')}
+              </Button>
+            </Stack>
+          </Grid>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <ConversionPreview />
+          </Grid>
+        </Grid>
       </Box>
 
       {/* 2. Main upload area */}
-      <Box component="section" aria-labelledby="home-upload-heading" ref={uploadRef}>
+      <Box component="section" aria-labelledby="home-upload-heading">
         <Typography variant="h5" component="h2" id="home-upload-heading" sx={{ mb: 2 }}>
           {t('home.startWithFile')}
         </Typography>
@@ -126,6 +145,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
           label={routing ? t('home.readingFile') : t('home.dropLabel')}
           hint={t('home.dropHint')}
           inputId="home-file"
+          radius={1.5}
         />
         {notice && (
           <Typography role="status" variant="body2" color="text.secondary" sx={{ mt: 2 }}>
@@ -144,14 +164,15 @@ export function HomePage({ onNavigate }: HomePageProps) {
         </Typography>
         <Grid container spacing={2}>
           {POPULAR_TOOLS.map((tool) => (
-            <Grid key={tool.id} size={{ xs: 12, sm: 6, lg: 3 }}>
+            <Grid key={tool.id} size={{ xs: 12, sm: 4, lg: 4 }}>
               <ToolCard tool={tool} onNavigate={(route) => onNavigate(route)} />
             </Grid>
           ))}
         </Grid>
       </Box>
 
-      {/* 4. Categories */}
+      {/* 4. Categories — the last card spans the full row, so no
+          single card is orphaned on its own row. */}
       <Box component="section" aria-labelledby="home-categories-heading">
         <Typography variant="h5" component="h2" id="home-categories-heading" sx={{ mb: 1 }}>
           {t('home.categoriesTitle')}
@@ -160,31 +181,43 @@ export function HomePage({ onNavigate }: HomePageProps) {
           {t('home.categoriesSub')}
         </Typography>
         <Grid container spacing={2}>
-          {CATEGORIES.map((cat) => (
-            <Grid key={cat.id} size={{ xs: 12, sm: 6, lg: 4 }}>
-              <Card sx={{ height: '100%' }}>
-                <Button
-                  onClick={() => onNavigate('tools', { toolsCategory: cat.id })}
-                  sx={{
-                    display: 'block',
-                    width: '100%',
-                    height: '100%',
-                    textAlign: 'left',
-                    textTransform: 'none',
-                    color: 'text.primary',
-                    p: 0,
-                  }}
-                >
-                  <CardContent>
-                    <Typography variant="subtitle1">{translate(lang, `cat.${cat.id}`)}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {translate(lang, `cat.${cat.id}.blurb`)}
-                    </Typography>
-                  </CardContent>
-                </Button>
-              </Card>
-            </Grid>
-          ))}
+          {CATEGORIES.map((cat, i) => {
+            const wide = i === CATEGORIES.length - 1
+            return (
+              <Grid key={cat.id} size={wide ? { xs: 12, sm: 12, lg: 12 } : { xs: 12, sm: 6, lg: 4 }}>
+                <Card sx={{ height: '100%' }}>
+                  <Button
+                    onClick={() => onNavigate('tools', { toolsCategory: cat.id })}
+                    sx={{
+                      display: 'block',
+                      width: '100%',
+                      height: '100%',
+                      textAlign: 'left',
+                      textTransform: 'none',
+                      color: 'text.primary',
+                      p: 0,
+                    }}
+                  >
+                    <CardContent
+                      sx={
+                        wide
+                          ? { display: 'flex', alignItems: 'center', gap: 2 }
+                          : { display: 'flex', flexDirection: 'column', gap: 1.5, alignItems: 'flex-start' }
+                      }
+                    >
+                      <CategoryIcon category={cat.id} />
+                      <Box>
+                        <Typography variant="subtitle1">{translate(lang, `cat.${cat.id}`)}</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {translate(lang, `cat.${cat.id}.blurb`)}
+                        </Typography>
+                      </Box>
+                    </CardContent>
+                  </Button>
+                </Card>
+              </Grid>
+            )
+          })}
         </Grid>
       </Box>
 
@@ -215,14 +248,15 @@ export function HomePage({ onNavigate }: HomePageProps) {
         </Grid>
       </Box>
 
-      {/* 6. Benefits */}
+      {/* 6. Benefits — two wider columns, a different rhythm from
+          the three-column grids above. */}
       <Box component="section" aria-labelledby="home-benefits-heading">
         <Typography variant="h5" component="h2" id="home-benefits-heading" sx={{ mb: 2 }}>
           {t('home.whyTitle')}
         </Typography>
         <Grid container spacing={2}>
           {BENEFITS.map((b) => (
-            <Grid key={b.key} size={{ xs: 12, sm: 6, lg: 4 }}>
+            <Grid key={b.key} size={{ xs: 12, sm: 6, lg: 6 }}>
               <Card sx={{ height: '100%' }}>
                 <CardContent>
                   <Box sx={{ mb: 1 }}>{b.icon}</Box>

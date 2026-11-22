@@ -264,13 +264,6 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
           </Box>
         ))}
       </List>
-      {!collapsed && (
-        <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
-          <Typography variant="caption" color="text.secondary">
-            {t('header.localNote')}
-          </Typography>
-        </Box>
-      )}
     </Box>
   )
 

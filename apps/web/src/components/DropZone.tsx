@@ -15,6 +15,12 @@ interface DropZoneProps {
   /** Smaller padding/icon so the zone fits a viewport-height
       workspace (the PDF page uses it) — same content, less air. */
   compact?: boolean
+  /**
+   * Corner radius in MUI units (× theme radius 12px). Default 4
+   * (48px) is kept for the tool workspaces; the homepage passes
+   * 1.5 (18px) so the bench reads as a panel, not a pill.
+   */
+  radius?: number
 }
 
 /**
@@ -24,7 +30,16 @@ interface DropZoneProps {
  * Keyboard: the zone is focusable (Tab) and Enter/Space opens the
  * file picker — the e2e suite asserts on this behaviour.
  */
-export function DropZone({ onFiles, accept, multiple = true, label, hint, inputId, compact = false }: DropZoneProps) {
+export function DropZone({
+  onFiles,
+  accept,
+  multiple = true,
+  label,
+  hint,
+  inputId,
+  compact = false,
+  radius = 4,
+}: DropZoneProps) {
   const { t } = useI18n()
   const [dragging, setDragging] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -61,7 +76,7 @@ export function DropZone({ onFiles, accept, multiple = true, label, hint, inputI
       sx={{
         position: 'relative',
         cursor: 'pointer',
-        borderRadius: 4,
+        borderRadius: radius,
         border: '1.5px dashed',
         borderColor: dragging ? 'primary.main' : 'divider',
         bgcolor: dragging ? (t) => alpha(t.palette.primary.main, 0.06) : 'background.paper',

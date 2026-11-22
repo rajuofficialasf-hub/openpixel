@@ -15,7 +15,9 @@
  *   page padding 24–32px (16px on mobile).
  * - Type scale: display/h1 32 / h2 28 / h3 24 / h4 22 / h5 20 /
  *   h6 18 / subtitle2 14 semibold / body2 14 / caption 12. One
- *   size per job, no ad-hoc sizes, no oversized headings.
+ *   size per job, no ad-hoc sizes, no oversized headings. Headings
+ *   are weight 500 — hierarchy comes from size and colour, not
+ *   weight. Overline labels are sentence case, never uppercase.
  * - Restrained palette: primary #3157D5 (light) / #829BFF (dark),
  *   secondary slate #64748B. No new hues. Status colours carry
  *   their semantic meaning only.
@@ -85,19 +87,21 @@ export function getTheme(mode: ThemeMode): Theme {
     shape: { borderRadius: 12 },
     typography: {
       fontFamily: FONT_STACK,
-      // Display / section titles — one size per job.
-      h1: { fontSize: '2rem', lineHeight: 1.2, fontWeight: 700, letterSpacing: '-0.02em' },
-      h2: { fontSize: '1.75rem', lineHeight: 1.25, fontWeight: 700, letterSpacing: '-0.02em' },
-      h3: { fontSize: '1.5rem', lineHeight: 1.3, fontWeight: 700, letterSpacing: '-0.01em' },
-      h4: { fontSize: '1.375rem', lineHeight: 1.3, fontWeight: 650, letterSpacing: '-0.01em' },
-      h5: { fontSize: '1.25rem', lineHeight: 1.35, fontWeight: 650, letterSpacing: '-0.01em' },
-      h6: { fontSize: '1.125rem', lineHeight: 1.35, fontWeight: 650, letterSpacing: '-0.01em' },
+      // Display / section titles — one size per job. Weight 500:
+      // hierarchy comes from size and colour, not weight.
+      h1: { fontSize: '2rem', lineHeight: 1.2, fontWeight: 500, letterSpacing: '-0.02em' },
+      h2: { fontSize: '1.75rem', lineHeight: 1.25, fontWeight: 500, letterSpacing: '-0.02em' },
+      h3: { fontSize: '1.5rem', lineHeight: 1.3, fontWeight: 500, letterSpacing: '-0.01em' },
+      h4: { fontSize: '1.375rem', lineHeight: 1.3, fontWeight: 500, letterSpacing: '-0.01em' },
+      h5: { fontSize: '1.25rem', lineHeight: 1.35, fontWeight: 500, letterSpacing: '-0.01em' },
+      h6: { fontSize: '1.125rem', lineHeight: 1.35, fontWeight: 500, letterSpacing: '-0.01em' },
       subtitle1: { fontSize: '1rem', lineHeight: 1.5, fontWeight: 600 },
       subtitle2: { fontSize: '0.875rem', lineHeight: 1.5, fontWeight: 600, letterSpacing: '0.01em' },
       body1: { fontSize: '1rem', lineHeight: 1.6 },
       body2: { fontSize: '0.875rem', lineHeight: 1.55 },
       caption: { fontSize: '0.75rem', lineHeight: 1.5 },
-      overline: { fontSize: '0.75rem', lineHeight: 1.5, fontWeight: 600, letterSpacing: '0.08em' },
+      // Sentence case, never uppercase tracked labels.
+      overline: { fontSize: '0.75rem', lineHeight: 1.5, fontWeight: 500, letterSpacing: '0.01em', textTransform: 'none' },
       button: { textTransform: 'none', fontWeight: 600 },
     },
     components: {

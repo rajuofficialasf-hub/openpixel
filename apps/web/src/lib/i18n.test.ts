@@ -4,7 +4,7 @@ import { plural, translate } from './i18n'
 describe('i18n', () => {
   it('returns the English string by default', () => {
     expect(translate('en', 'nav.tools')).toBe('All Tools')
-    expect(translate('en', 'home.heroTitle')).toBe('Everything You Need to Work With Files')
+    expect(translate('en', 'home.heroTitle')).toBe('File tools that never upload your files')
   })
 
   it('returns the Bengali string when present', () => {
