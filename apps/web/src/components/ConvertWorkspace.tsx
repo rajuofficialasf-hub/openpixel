@@ -41,6 +41,7 @@ import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
 import { DropZone } from './DropZone'
 import { EditorShell } from './EditorShell'
 import { ImageCompareSlider } from './ImageCompareSlider'
+import { ImageOutputActions } from './ImageOutputActions'
 import { ToolPageHeader } from './ToolPage'
 import { WorkflowSteps } from './WorkflowSteps'
 import { useNavigation } from './layout/navigation'
@@ -529,6 +530,11 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
                     >
                       {t('common.download')} {outputFileName(file.name, targetFormat)}
                     </Button>
+                    <ImageOutputActions
+                      blob={result.blob}
+                      filename={outputFileName(file.name, targetFormat)}
+                      canCopy={BROWSER_DECODABLE.includes(targetFormat)}
+                    />
                     <Button
                       type="button"
                       variant="outlined"

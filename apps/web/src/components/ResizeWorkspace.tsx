@@ -43,6 +43,7 @@ import {
 } from '../lib/resize'
 import { resizeImage } from '../lib/resize-convert'
 import type { ResizeSettings, Settings } from '../lib/settings'
+import { ImageOutputActions } from './ImageOutputActions'
 import { recordActivity } from '../lib/activity'
 import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
 import { DropZone } from './DropZone'
@@ -755,6 +756,11 @@ export function ResizeWorkspace({
                               >
                                 {t('common.download')} {outputFileName(single.file.name, targetFormat)}
                               </Button>
+                              <ImageOutputActions
+                                blob={single.result.blob}
+                                filename={outputFileName(single.file.name, targetFormat)}
+                                canCopy={BROWSER_DECODABLE.includes(targetFormat)}
+                              />
                               <Button
                                 type="button"
                                 variant="outlined"

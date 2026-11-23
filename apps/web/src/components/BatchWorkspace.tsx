@@ -5,8 +5,12 @@ import {
   Button,
   Card,
   CardContent,
+  FormControlLabel,
   Select,
+  Slider,
   Stack,
+  Switch,
+  TextField,
   Typography,
 } from '@mui/material'
 import DownloadIcon from '@mui/icons-material/Download'
@@ -16,9 +20,11 @@ import {
   formatById,
   formatBytes,
   formatLabel,
-  outputFileName,
 } from '../lib/capabilities'
+import { formatBatchOutputName } from '../lib/batch-rename'
 import { convertImage, probeImage, ProbeError } from '../lib/convert'
+import { buildResizeOps, expectedDimensions, isLossyFormat } from '../lib/resize'
+import { resizeImage } from '../lib/resize-convert'
 import type { Settings } from '../lib/settings'
 import { recordActivity } from '../lib/activity'
 import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
@@ -94,6 +100,12 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
   const { t, lang } = useI18n()
   const [items, setItems] = useState<BatchItem[]>([])
   const [targetFormat, setTargetFormat] = useState(settings.defaultFormat)
+  const [quality, setQuality] = useState(settings.defaultQuality)
+  const [enableResize, setEnableResize] = useState(false)
+  const [maxWidthText, setMaxWidthText] = useState('1920')
+  const [maxHeightText, setMaxHeightText] = useState('1080')
+  const [enableRename, setEnableRename] = useState(false)
+  const [renamePattern, setRenamePattern] = useState('{name}-{n}')
   const [running, setRunning] = useState(false)
   const [zipping, setZipping] = useState(false)
   const [zipError, setZipError] = useState<string | null>(null)
@@ -191,39 +203,92 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
     }
   }, [initialFiles, addFiles, onInitialFilesConsumed])
 
+  const outputNameFor = useCallback(
+    (originalName: string, index: number): string =>
+      formatBatchOutputName(
+        originalName,
+        targetFormat,
+        index,
+        enableRename ? { pattern: renamePattern } : {},
+      ),
+    [enableRename, renamePattern, targetFormat],
+  )
+
   const convertAll = useCallback(async () => {
     if (running) return
     setRunning(true)
     const queue = itemsRef.current.filter((i) => i.status === 'ready' || i.status === 'failed')
     const workers = Math.min(settings.batchWorkers, 4)
+    const maxW = Number.parseInt(maxWidthText, 10)
+    const maxH = Number.parseInt(maxHeightText, 10)
+    const shouldResize = enableResize && Number.isInteger(maxW) && maxW > 0 && Number.isInteger(maxH) && maxH > 0
     let cursor = 0
     const runOne = async () => {
       while (cursor < queue.length) {
         const item = queue[cursor++]
         setItems((prev) => prev.map((p) => (p.id === item.id ? { ...p, status: 'converting', error: null } : p)))
         try {
-          const converted = await convertImage(
-            item.file,
-            {
-              targetFormat,
-              quality: settings.defaultQuality,
-              background: settings.defaultBackground,
-              pngCompression: 1,
-            },
-            lang,
-          )
+          let resultBlob: Blob
+          let resultBytes: number
+          let resultWidth: number
+          let resultHeight: number
+          if (shouldResize && item.width > 0 && item.height > 0) {
+            const { ops } = buildResizeOps(
+              'fit',
+              maxW,
+              maxH,
+              settings.defaultBackground,
+              false,
+              item.width,
+              item.height,
+            )
+            const exp = expectedDimensions('fit', maxW, maxH, item.width, item.height, false)
+            const resized = await resizeImage(
+              item.file,
+              {
+                targetFormat,
+                ops,
+                width: exp.width,
+                height: exp.height,
+                quality,
+                background: settings.defaultBackground,
+                pngCompression: 1,
+                targetBytes: null,
+              },
+              lang,
+            )
+            resultBlob = resized.blob
+            resultBytes = resized.bytes
+            resultWidth = resized.width
+            resultHeight = resized.height
+          } else {
+            const converted = await convertImage(
+              item.file,
+              {
+                targetFormat,
+                quality,
+                background: settings.defaultBackground,
+                pngCompression: 1,
+              },
+              lang,
+            )
+            resultBlob = converted.blob
+            resultBytes = converted.bytes
+            resultWidth = converted.width
+            resultHeight = converted.height
+          }
           recordActivity({
             fileName: item.file.name,
             fileSize: item.file.size,
             fileType: item.file.type || 'image',
             tool: 'batch',
-            result: `Converted to ${formatLabel(targetFormat)} · ${converted.width}×${converted.height} · ${formatBytes(converted.bytes)}`,
+            result: `Converted to ${formatLabel(targetFormat)} · ${resultWidth}×${resultHeight} · ${formatBytes(resultBytes)}`,
             resultKey: 'act.convert',
             resultParams: {
               format: formatLabel(targetFormat),
-              w: converted.width,
-              h: converted.height,
-              bytes: formatBytes(converted.bytes),
+              w: resultWidth,
+              h: resultHeight,
+              bytes: formatBytes(resultBytes),
             },
           })
           setItems((prev) =>
@@ -232,10 +297,10 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
                 ? {
                     ...p,
                     status: 'done',
-                    resultBlob: converted.blob,
-                    resultBytes: converted.bytes,
-                    resultWidth: converted.width,
-                    resultHeight: converted.height,
+                    resultBlob,
+                    resultBytes,
+                    resultWidth,
+                    resultHeight,
                   }
                 : p,
             ),
@@ -253,7 +318,18 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
     }
     await Promise.all(Array.from({ length: Math.max(1, workers) }, () => runOne()))
     setRunning(false)
-  }, [running, settings.batchWorkers, settings.defaultBackground, settings.defaultQuality, targetFormat, lang, t])
+  }, [
+    running,
+    settings.batchWorkers,
+    settings.defaultBackground,
+    quality,
+    enableResize,
+    maxWidthText,
+    maxHeightText,
+    targetFormat,
+    lang,
+    t,
+  ])
 
   const downloadAllAsZip = useCallback(async () => {
     const done = itemsRef.current.filter((i) => i.status === 'done' && i.resultBlob)
@@ -262,9 +338,17 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
     setZipError(null)
     try {
       const zip = new JSZip()
-      for (const item of done) {
-        zip.file(outputFileName(item.file.name, targetFormat), item.resultBlob as Blob)
-      }
+      const usedNames = new Map<string, number>()
+      done.forEach((item, idx) => {
+        const candidate = outputNameFor(item.file.name, idx)
+        const count = usedNames.get(candidate) ?? 0
+        usedNames.set(candidate, count + 1)
+        const finalName =
+          count === 0
+            ? candidate
+            : candidate.replace(/(\.[^.]+)?$/, `-${count + 1}$1`)
+        zip.file(finalName, item.resultBlob as Blob)
+      })
       const blob = await zip.generateAsync({ type: 'blob' })
       downloadBlob(blob, `openpixel-${targetFormat}.zip`)
     } catch (err) {
@@ -272,7 +356,7 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
     } finally {
       setZipping(false)
     }
-  }, [targetFormat, t])
+  }, [outputNameFor, targetFormat, t])
 
   const removeItem = useCallback((id: string) => {
     setItems((prev) => {
@@ -343,8 +427,9 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
                     pr: { lg: 0.5 },
                   }}
                 >
-                  {items.map((item) => {
+                  {items.map((item, idx) => {
                     const status = statusTextProps(item.status, t)
+                    const outName = outputNameFor(item.file.name, idx)
                     return (
                       <Card key={item.id} component="li">
                         <CardContent
@@ -378,7 +463,9 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
                                 {formatLabel(item.sourceFormat)}
                                 {item.status === 'done' ? ` → ${formatLabel(targetFormat)}` : ''}
                               </Box>
-                              {item.status === 'done' ? ` · ${formatBytes(item.resultBytes)}` : ''}
+                              {item.status === 'done'
+                                ? ` · ${item.resultWidth}×${item.resultHeight} · ${formatBytes(item.resultBytes)}`
+                                : ''}
                             </Typography>
                             {item.error && (
                               <Typography role="alert" variant="caption" color="error" display="block">
@@ -402,9 +489,7 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
                               type="button"
                               variant="outlined"
                               size="small"
-                              onClick={() =>
-                                downloadBlob(item.resultBlob as Blob, outputFileName(item.file.name, targetFormat))
-                              }
+                              onClick={() => downloadBlob(item.resultBlob as Blob, outName)}
                             >
                               {t('common.download')}
                             </Button>
@@ -451,6 +536,91 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
                         ))}
                       </Select>
                     </Box>
+
+                    {(isLossyFormat(targetFormat) || targetFormat === 'webp') && (
+                      <Box>
+                        <Typography variant="caption" fontWeight={600} component="label">
+                          {t('bt.qualityLabel', { n: quality })}
+                        </Typography>
+                        <Slider
+                          size="small"
+                          aria-label={t('cv.qualityAria')}
+                          min={1}
+                          max={100}
+                          value={quality}
+                          onChange={(_, v) => setQuality(v as number)}
+                        />
+                      </Box>
+                    )}
+
+                    <Box sx={{ pt: 1, borderTop: 1, borderColor: 'divider' }}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            id="batch-resize-toggle"
+                            size="small"
+                            checked={enableResize}
+                            onChange={(e) => setEnableResize(e.target.checked)}
+                          />
+                        }
+                        label={<Typography variant="body2">{t('bt.resizeToggle')}</Typography>}
+                      />
+                      {enableResize && (
+                        <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1, mt: 1 }}>
+                          <TextField
+                            id="batch-max-width"
+                            size="small"
+                            type="number"
+                            label={t('bt.maxWidth')}
+                            value={maxWidthText}
+                            onChange={(e) => setMaxWidthText(e.target.value)}
+                          />
+                          <TextField
+                            id="batch-max-height"
+                            size="small"
+                            type="number"
+                            label={t('bt.maxHeight')}
+                            value={maxHeightText}
+                            onChange={(e) => setMaxHeightText(e.target.value)}
+                          />
+                        </Box>
+                      )}
+                    </Box>
+
+                    <Box sx={{ pt: 1, borderTop: 1, borderColor: 'divider' }}>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            id="batch-rename-toggle"
+                            size="small"
+                            checked={enableRename}
+                            onChange={(e) => setEnableRename(e.target.checked)}
+                          />
+                        }
+                        label={<Typography variant="body2">{t('bt.renameToggle')}</Typography>}
+                      />
+                      {enableRename && (
+                        <Stack spacing={0.75} sx={{ mt: 1 }}>
+                          <TextField
+                            id="batch-rename-pattern"
+                            size="small"
+                            fullWidth
+                            label={t('bt.renamePattern')}
+                            value={renamePattern}
+                            onChange={(e) => setRenamePattern(e.target.value)}
+                          />
+                          <Typography variant="caption" color="text.secondary">
+                            {t('bt.renameHint')}
+                          </Typography>
+                          <Typography variant="caption" color="primary.main" sx={{ fontFamily: 'monospace' }}>
+                            {t('bt.renamePreview', {
+                              out: outputNameFor(items[0]?.file.name ?? 'photo.png', 0),
+                            })}
+                          </Typography>
+                        </Stack>
+                      )}
+                    </Box>
+
                     <Typography role="status" aria-live="polite" variant="body2" color="text.secondary">
                       {t('bt.status', {
                         n: items.length,

@@ -6,19 +6,24 @@ import {
   Card,
   CardContent,
   Checkbox,
+  Chip,
   FormControlLabel,
   LinearProgress,
   Select,
   Stack,
+  TextField,
   Typography,
 } from '@mui/material'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import DownloadIcon from '@mui/icons-material/Download'
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import { formatBytes } from '../lib/capabilities'
 import { recordActivity } from '../lib/activity'
 import {
+  countWords,
   formatConfidence,
   formatDurationMs,
+  OCR_ENGINE_LABEL,
   ocrOutputName,
   recognizeImage,
   OCR_LANGUAGE_LABELS,
@@ -29,6 +34,7 @@ import {
   type OcrPsmId,
   type OcrResult,
 } from '../lib/ocr'
+import { getPdfPageCountViaPdfJs, parsePageList, renderPdfPageBlob } from '../lib/pdf'
 import { DropZone } from './DropZone'
 import { EditorShell } from './EditorShell'
 import { ToolPageHeader } from './ToolPage'
@@ -57,6 +63,10 @@ export function OcrWorkspace({ initialFiles, onInitialFilesConsumed }: OcrWorksp
   const { t, lang } = useI18n()
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null)
+  const [pdfPageCount, setPdfPageCount] = useState<number>(0)
+  const [pdfPagesInput, setPdfPagesInput] = useState('')
+  const [loadingPdf, setLoadingPdf] = useState(false)
   const [language, setLanguage] = useState<OcrLanguage>('eng')
   const [psm, setPsm] = useState<OcrPsmId>('auto')
   const [enhance, setEnhance] = useState(false)
@@ -73,31 +83,65 @@ export function OcrWorkspace({ initialFiles, onInitialFilesConsumed }: OcrWorksp
   }, [previewUrl])
 
   const handleFiles = useCallback(
-    (files: File[]) => {
+    async (files: File[]) => {
       const next = files[0]
       if (!next) return
-      if (!next.type.startsWith('image/')) {
-        setError(t('ocr.notImage'))
+      const isImage = next.type.startsWith('image/')
+      const looksLikePdf = next.type === 'application/pdf' || /\.pdf$/i.test(next.name)
+      let isPdf = looksLikePdf
+      if (!isImage && !isPdf) {
+        const head = new Uint8Array(await next.slice(0, 5).arrayBuffer())
+        isPdf = head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46
+      }
+      if (!isImage && !isPdf) {
+        setError(t('ocr.notImageOrPdf'))
         return
       }
-      setFile(next)
-      setPreviewUrl((old) => {
-        if (old) URL.revokeObjectURL(old)
-        return URL.createObjectURL(next)
-      })
       setResult(null)
       setError(null)
       setProgress(null)
       setCopied(false)
+
+      if (isPdf) {
+        setLoadingPdf(true)
+        try {
+          const bytes = new Uint8Array(await next.arrayBuffer())
+          const pages = await getPdfPageCountViaPdfJs(bytes)
+          const firstPage = await renderPdfPageBlob(bytes, 1, 1.5, 'png', lang)
+          const url = URL.createObjectURL(firstPage.blob)
+          setFile(next)
+          setPdfBytes(bytes)
+          setPdfPageCount(pages)
+          setPdfPagesInput('')
+          setPreviewUrl((old) => {
+            if (old) URL.revokeObjectURL(old)
+            return url
+          })
+        } catch {
+          setError(t('ocr.pdfReadError'))
+        } finally {
+          setLoadingPdf(false)
+        }
+        return
+      }
+
+      setFile(next)
+      setPdfBytes(null)
+      setPdfPageCount(0)
+      setPdfPagesInput('')
+      setPreviewUrl((old) => {
+        if (old) URL.revokeObjectURL(old)
+        return URL.createObjectURL(next)
+      })
     },
-    [t],
+    [lang, t],
   )
 
   const lastInitialRef = useRef<File[] | null>(null)
   useEffect(() => {
     if (initialFiles && initialFiles.length > 0 && lastInitialRef.current !== initialFiles) {
       lastInitialRef.current = initialFiles
-      handleFiles(initialFiles)
+      void handleFiles(initialFiles)
       onInitialFilesConsumed?.()
     }
   }, [initialFiles, handleFiles, onInitialFilesConsumed])
@@ -106,6 +150,9 @@ export function OcrWorkspace({ initialFiles, onInitialFilesConsumed }: OcrWorksp
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     setFile(null)
     setPreviewUrl(null)
+    setPdfBytes(null)
+    setPdfPageCount(0)
+    setPdfPagesInput('')
     setResult(null)
     setError(null)
     setProgress(null)
@@ -114,6 +161,97 @@ export function OcrWorkspace({ initialFiles, onInitialFilesConsumed }: OcrWorksp
 
   const handleRun = async () => {
     if (!file || running) return
+
+    if (pdfBytes && pdfPageCount > 0) {
+      let targetPages: number[]
+      if (pdfPagesInput.trim() === '') {
+        targetPages = Array.from({ length: pdfPageCount }, (_, i) => i + 1)
+      } else {
+        const parsed = parsePageList(pdfPagesInput, pdfPageCount)
+        if (!parsed || parsed.length === 0) {
+          setError(t('ocr.pdfPagesError', { n: pdfPageCount }))
+          return
+        }
+        targetPages = parsed
+      }
+
+      setRunning(true)
+      setError(null)
+      setResult(null)
+      setCopied(false)
+      const startedAt = Date.now()
+      try {
+        const sections: string[] = []
+        let confSum = 0
+        for (let idx = 0; idx < targetPages.length; idx++) {
+          const pageNum = targetPages[idx]
+          setProgress({
+            status: t('ocr.pdfRendering', { cur: idx + 1, total: targetPages.length }),
+            progress: idx / targetPages.length,
+          })
+          const rendered = await renderPdfPageBlob(pdfBytes, pageNum, 2, 'png', lang)
+          const pageResult = await recognizeImage(rendered.blob, {
+            language,
+            psm,
+            enhance,
+            lang,
+            onProgress: (p) => {
+              setProgress({
+                status: t('ocr.pdfProgress', { cur: idx + 1, total: targetPages.length, status: p.status }),
+                progress: (idx + p.progress) / targetPages.length,
+              })
+            },
+          })
+          confSum += pageResult.confidence
+          if (targetPages.length > 1) {
+            sections.push(`${t('ocr.pdfPageHeader', { n: pageNum })}\n${pageResult.text}`.trimEnd())
+          } else {
+            sections.push(pageResult.text)
+          }
+        }
+        const combinedText = sections.join('\n\n').replace(/\s+$/u, '')
+        const recognised: OcrResult = {
+          text: combinedText,
+          confidence: targetPages.length > 0 ? confSum / targetPages.length : 0,
+          wordCount: countWords(combinedText),
+          durationMs: Date.now() - startedAt,
+          language,
+          psm,
+          engine: OCR_ENGINE_LABEL,
+        }
+        setResult(recognised)
+        recordActivity({
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: 'application/pdf',
+          tool: 'ocr',
+          result: `OCR (${OCR_LANGUAGE_LABELS[recognised.language]}) · ${recognised.wordCount} words · ${formatConfidence(recognised.confidence)} mean confidence`,
+          resultKey: 'act.ocr',
+          resultParams: {
+            lang: t(
+              recognised.language === 'eng'
+                ? 'ocr.langEng'
+                : recognised.language === 'ben'
+                  ? 'ocr.langBen'
+                  : 'ocr.langBoth',
+            ),
+            words: recognised.wordCount,
+            conf: formatConfidence(recognised.confidence),
+          },
+        })
+        setProgress(null)
+      } catch (err) {
+        setProgress(null)
+        setError(
+          err instanceof Error
+            ? t('ocr.failed', { msg: err.message })
+            : t('ocr.failedPlain'),
+        )
+      }
+      setRunning(false)
+      return
+    }
+
     setRunning(true)
     setError(null)
     setResult(null)
@@ -190,12 +328,18 @@ export function OcrWorkspace({ initialFiles, onInitialFilesConsumed }: OcrWorksp
             <DropZone
               inputId="ocr-file"
               label={t('cv.dropLabel')}
-              hint={t('ocr.dropHint')}
+              hint={t('ocr.dropHintPdf')}
               multiple={false}
-              accept="image/*"
-              onFiles={handleFiles}
+              accept="image/*,application/pdf,.pdf"
+              onFiles={(files) => void handleFiles(files)}
             />
           </Box>
+        )}
+
+        {loadingPdf && (
+          <Typography role="status" variant="body2" color="text.secondary">
+            {t('common.readingPdf')}
+          </Typography>
         )}
 
         {file && previewUrl && (
@@ -203,10 +347,21 @@ export function OcrWorkspace({ initialFiles, onInitialFilesConsumed }: OcrWorksp
             main={
               <Card>
                 <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography variant="overline" color="text.secondary">
-                      {t('ocr.image')}
-                    </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      <Typography variant="overline" color="text.secondary">
+                        {t('ocr.image')}
+                      </Typography>
+                      {pdfPageCount > 0 && (
+                        <Chip
+                          size="small"
+                          color="primary"
+                          variant="outlined"
+                          icon={<PictureAsPdfIcon sx={{ fontSize: 15 }} />}
+                          label={t('ocr.pdfBadge', { n: pdfPageCount, s: plural(lang, pdfPageCount) })}
+                        />
+                      )}
+                    </Stack>
                     <Button type="button" variant="outlined" size="small" onClick={clearFile} disabled={running}>
                       {t('ocr.chooseDifferent')}
                     </Button>
@@ -232,6 +387,17 @@ export function OcrWorkspace({ initialFiles, onInitialFilesConsumed }: OcrWorksp
                     {file.name} — {formatBytes(file.size)}
                   </Typography>
                   <Stack spacing={1.5} sx={{ mt: 1.5 }}>
+                    {pdfPageCount > 1 && (
+                      <TextField
+                        id="ocr-pdf-pages"
+                        size="small"
+                        fullWidth
+                        label={t('ocr.pdfPagesLabel')}
+                        placeholder={t('ocr.pdfPagesPlaceholder')}
+                        value={pdfPagesInput}
+                        onChange={(e) => setPdfPagesInput(e.target.value)}
+                      />
+                    )}
                     <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { sm: '1fr 1fr' } }}>
                       <Box>
                         <Typography variant="subtitle2" component="label" htmlFor="ocr-language" sx={{ display: 'block' }}>

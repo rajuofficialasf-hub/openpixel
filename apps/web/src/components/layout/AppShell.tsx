@@ -240,7 +240,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
         const displayName = first.name || (isPdf ? 'pasted.pdf' : 'pasted-image.png')
 
         if (isPdf) {
-          const staysHere = route.startsWith('pdf-') && route !== 'pdf-images-to-pdf'
+          const staysHere = (route.startsWith('pdf-') && route !== 'pdf-images-to-pdf') || route === 'ocr'
           const target: RouteId = staysHere ? route : 'pdf'
           onNavigate(target, { files: [first] })
           setSnack(

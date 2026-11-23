@@ -17,9 +17,14 @@ import {
   Select,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material'
 import DownloadIcon from '@mui/icons-material/Download'
+import DrawIcon from '@mui/icons-material/Draw'
+import UploadFileIcon from '@mui/icons-material/UploadFile'
+import WaterDropOutlinedIcon from '@mui/icons-material/WaterDropOutlined'
 import { formatBytes } from '../../lib/capabilities'
 import {
   formatPageSize,
@@ -31,11 +36,40 @@ import {
   PDF_RENDER_SCALES,
   type PdfOverlayOp,
 } from '../../lib/pdf'
+import {
+  buildWatermarkOps,
+  strokesToDrawOps,
+  type NormalizedStroke,
+  type WatermarkPosition,
+} from '../../lib/signature'
 import { PdfThumbnails } from '../PdfThumbnails'
 import { DropZone } from '../DropZone'
+import { SignaturePad } from './SignaturePad'
 import { PdfJsCaption, PdfResultBoxes, WasmWarning } from './shared'
 import { useI18n } from '../../lib/use-i18n'
 import { downloadBlob, usePdfFile, type PdfToolProps } from './usePdfFile'
+
+interface EditHistoryEntry {
+  ops: PdfOverlayOp[]
+  images: Uint8Array[]
+}
+
+function flattenHistory(entries: EditHistoryEntry[]): { ops: PdfOverlayOp[]; images: Uint8Array[] } {
+  const ops: PdfOverlayOp[] = []
+  const images: Uint8Array[] = []
+  for (const entry of entries) {
+    const baseIdx = images.length
+    images.push(...entry.images)
+    for (const op of entry.ops) {
+      if (op.kind === 'image') {
+        ops.push({ ...op, image_index: baseIdx + op.image_index })
+      } else {
+        ops.push(op)
+      }
+    }
+  }
+  return { ops, images }
+}
 
 function metaRow(label: string, value: string | null | undefined): { label: string; value: string } | null {
   return value == null || value === '' ? null : { label, value }
@@ -70,26 +104,56 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
   const [highlightH, setHighlightH] = useState('20')
   const [highlightColor, setHighlightColor] = useState('#ffeb3b')
   const [pin, setPin] = useState<{ page: number; relX: number; relY: number; pdfX: number; pdfY: number } | null>(null)
+  const [editedBytes, setEditedBytes] = useState<Uint8Array | null>(null)
+
+  // Signature & Image Stamp state
+  const [sigMode, setSigMode] = useState<'draw' | 'upload'>('draw')
+  const [sigStrokes, setSigStrokes] = useState<NormalizedStroke[]>([])
+  const [sigColor, setSigColor] = useState('#1d4ed8')
+  const [sigPenWidth, setSigPenWidth] = useState(2.4)
+  const [sigPage, setSigPage] = useState('1')
+  const [sigX, setSigX] = useState('360')
+  const [sigY, setSigY] = useState('96')
+  const [sigW, setSigW] = useState('160')
+  const [sigH, setSigH] = useState('56')
+  const [stampImage, setStampImage] = useState<{
+    name: string
+    bytes: Uint8Array
+    width: number
+    height: number
+    previewUrl: string
+  } | null>(null)
+  const stampInputRef = useRef<HTMLInputElement>(null)
+
+  // Watermark state
+  const [wmText, setWmText] = useState('')
+  const [wmSize, setWmSize] = useState('36')
+  const [wmColor, setWmColor] = useState('#b0b8c5')
+  const [wmPosition, setWmPosition] = useState<WatermarkPosition>('center')
+
+  useEffect(() => {
+    return () => {
+      if (stampImage?.previewUrl) URL.revokeObjectURL(stampImage.previewUrl)
+    }
+  }, [stampImage])
 
   // Edit history (Phase 7): every action pushes one entry (its
-  // ops) onto the undo stack; the current output is always
-  // rebuilt by re-applying the remaining ops to the ORIGINAL
-  // bytes — never to a previous result, so undo is exact and
-  // actions accumulate instead of replacing each other (before
-  // this, each action produced a result holding only itself).
-  // Undo pops the last entry onto the redo stack; redo pushes
-  // it back. An empty stack clears the result (pdf_edit rejects
-  // an empty ops list, so it is never called with one).
-  const [undoStack, setUndoStack] = useState<PdfOverlayOp[][]>([])
-  const [redoStack, setRedoStack] = useState<PdfOverlayOp[][]>([])
+  // ops + any attached image bytes) onto the undo stack; the
+  // current output is always rebuilt by re-applying the remaining
+  // ops to the ORIGINAL bytes — never to a previous result, so
+  // undo is exact and actions accumulate instead of replacing
+  // each other.
+  const [undoStack, setUndoStack] = useState<EditHistoryEntry[]>([])
+  const [redoStack, setRedoStack] = useState<EditHistoryEntry[]>([])
 
-  // Preview: render the selected page with pdf.js into the
-  // canvas. A render that throws is a visible error, never a
-  // silently blank canvas.
+  // Preview: render the latest edited bytes (when edits exist) or
+  // the original document so signatures, text, watermarks and
+  // highlights appear live on the page preview.
+  const previewBytes = editedBytes ?? bytes
   useEffect(() => {
-    if (!bytes) return
+    if (!previewBytes) return
     let cancelled = false
-    renderPdfPage(bytes, previewPage, renderScale)
+    renderPdfPage(previewBytes, previewPage, renderScale)
       .then(({ canvas, width, height }) => {
         if (cancelled) return
         setPreviewError(null)
@@ -110,7 +174,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
     return () => {
       cancelled = true
     }
-  }, [bytes, previewPage, renderScale, t])
+  }, [previewBytes, previewPage, renderScale, t])
 
   const editPageNumber = (): number | null => {
     const n = Number(editPage)
@@ -122,9 +186,11 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
     return Number.isFinite(n) ? n : null
   }
 
-  const applyOps = async (ops: PdfOverlayOp[], label: string) => {
+  const applyHistory = async (entries: EditHistoryEntry[], label: string) => {
     if (!bytes || !file) return
+    const { ops, images } = flattenHistory(entries)
     if (ops.length === 0) {
+      setEditedBytes(null)
       pdf.setResults([])
       pdf.setStatus(t('pdf.editUndone'))
       pdf.setBusy(null)
@@ -133,12 +199,13 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
     pdf.setBusy(label)
     pdf.setError(null)
     pdf.setStatus(null)
-    const result = await pdfEdit(bytes, ops, [])
+    const result = await pdfEdit(bytes, ops, images)
     if (!result) {
       pdf.setError(pdf.wasmMissing(label))
       pdf.setBusy(null)
       return
     }
+    setEditedBytes(result.data)
     pdf.setResults([
       {
         label,
@@ -165,11 +232,11 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
   }
 
   /** Push one action onto the history and rebuild the output. */
-  const pushAction = (ops: PdfOverlayOp[]) => {
-    const next = [...undoStack, ops]
+  const pushAction = (ops: PdfOverlayOp[], images: Uint8Array[] = []) => {
+    const next = [...undoStack, { ops, images }]
     setUndoStack(next)
     setRedoStack([])
-    void applyOps(next.flat(), 'Edited PDF')
+    void applyHistory(next, 'Edited PDF')
   }
 
   const handleUndo = () => {
@@ -178,7 +245,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
     const next = undoStack.slice(0, -1)
     setUndoStack(next)
     setRedoStack([...redoStack, entry])
-    void applyOps(next.flat(), 'Edited PDF')
+    void applyHistory(next, 'Edited PDF')
   }
 
   const handleRedo = () => {
@@ -187,22 +254,24 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
     setRedoStack(redoStack.slice(0, -1))
     const next = [...undoStack, entry]
     setUndoStack(next)
-    void applyOps(next.flat(), 'Edited PDF')
+    void applyHistory(next, 'Edited PDF')
   }
 
-  // A new file starts with empty history — an old edit must
-  // never be re-applied to a different document.
   // A new file starts with empty history — an old edit must
   // never be re-applied to a different document. Reset in the
   // load/clear handlers (not an effect) so no cascading render.
   const loadFile = (files: File[]) => {
     setUndoStack([])
     setRedoStack([])
+    setEditedBytes(null)
+    setPin(null)
     void pdf.handleFiles(files)
   }
   const clearAll = () => {
     setUndoStack([])
     setRedoStack([])
+    setEditedBytes(null)
+    setPin(null)
     pdf.clearFile()
   }
 
@@ -283,15 +352,95 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
     setHighlightPage(String(previewPage))
     setHighlightX(String(pdfX))
     setHighlightY(String(pdfY))
+    setSigPage(String(previewPage))
+    setSigX(String(pdfX))
+    setSigY(String(pdfY))
     setPin({ page: previewPage, relX, relY, pdfX, pdfY })
   }
 
+  const handleStampFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const chosen = e.target.files?.[0]
+    e.target.value = ''
+    if (!chosen) return
+    try {
+      const buf = new Uint8Array(await chosen.arrayBuffer())
+      const bitmap = await createImageBitmap(chosen)
+      const w = bitmap.width
+      const h = bitmap.height
+      bitmap.close()
+      const previewUrl = URL.createObjectURL(chosen)
+      setStampImage({ name: chosen.name, bytes: buf, width: w, height: h, previewUrl })
+      // Auto-size height proportionally to current signature width
+      const targetW = Math.max(40, Number(sigW) || 140)
+      const ratio = w > 0 ? h / w : 0.35
+      setSigH(String(Math.max(20, Math.round(targetW * ratio))))
+      pdf.setError(null)
+    } catch {
+      pdf.setError(t('sig.emptyUploadError'))
+    }
+  }
+
+  const handlePlaceSignature = () => {
+    const page = Number(sigPage)
+    const x = editNumber(sigX)
+    const y = editNumber(sigY)
+    const w = editNumber(sigW)
+    const h = editNumber(sigH)
+    if (!Number.isInteger(page) || page < 1 || page > pageCount || x === null || y === null || w === null || h === null || w <= 0 || h <= 0) {
+      pdf.setError(t('sig.coordsError', { n: pageCount }))
+      return
+    }
+    if (sigMode === 'draw') {
+      const color = hexToRgb(sigColor)
+      if (!color || sigStrokes.length === 0) {
+        pdf.setError(t('sig.emptyDrawError'))
+        return
+      }
+      const ops = strokesToDrawOps(sigStrokes, { page, x, y, width: w, height: h }, color, sigPenWidth)
+      if (ops.length === 0) {
+        pdf.setError(t('sig.emptyDrawError'))
+        return
+      }
+      pushAction(ops)
+    } else {
+      if (!stampImage) {
+        pdf.setError(t('sig.emptyUploadError'))
+        return
+      }
+      pushAction(
+        [{ kind: 'image', page, x, y, width: w, height: h, image_index: 0 }],
+        [stampImage.bytes],
+      )
+    }
+  }
+
+  const handleWatermark = () => {
+    const size = editNumber(wmSize)
+    const color = hexToRgb(wmColor)
+    if (!wmText.trim() || size === null || size <= 0 || !color) {
+      pdf.setError(t('sig.wmError'))
+      return
+    }
+    const ops = buildWatermarkOps(pageCount, info?.page_sizes, {
+      text: wmText,
+      size,
+      color,
+      position: wmPosition,
+      pages: null,
+    })
+    if (ops.length === 0) {
+      pdf.setError(t('sig.wmError'))
+      return
+    }
+    pushAction(ops)
+  }
+
   const handleRenderDownload = async () => {
-    if (!bytes || !file) return
+    if (!previewBytes || !file) return
     pdf.setBusy('Rendered page')
     pdf.setError(null)
     try {
-      const { blob, width, height } = await renderPdfPageBlob(bytes, previewPage, renderScale, renderFormat, lang)
+      const { blob, width, height } = await renderPdfPageBlob(previewBytes, previewPage, renderScale, renderFormat, lang)
       downloadBlob(blob, `${file.name.replace(/\.pdf$/i, '')}-p${previewPage}.${renderFormat === 'png' ? 'png' : 'jpg'}`)
       pdf.setStatusKey('pdf.rendered', { n: previewPage, fmt: renderFormat.toUpperCase(), w: width, h: height })
     } catch (err) {
@@ -637,6 +786,168 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                           </Stack>
                         </Stack>
                       </Box>
+                      <Box sx={{ pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
+                        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1.25 }}>
+                          <DrawIcon fontSize="small" color="primary" />
+                          <Typography variant="subtitle2">{t('sig.title')}</Typography>
+                        </Stack>
+                        <Stack spacing={1.5}>
+                          <ToggleButtonGroup
+                            exclusive
+                            fullWidth
+                            size="small"
+                            value={sigMode}
+                            onChange={(_, val: 'draw' | 'upload' | null) => {
+                              if (val) setSigMode(val)
+                            }}
+                            aria-label={t('sig.title')}
+                          >
+                            <ToggleButton value="draw">{t('sig.tabDraw')}</ToggleButton>
+                            <ToggleButton value="upload">{t('sig.tabUpload')}</ToggleButton>
+                          </ToggleButtonGroup>
+
+                          {sigMode === 'draw' ? (
+                            <SignaturePad
+                              strokes={sigStrokes}
+                              onChange={setSigStrokes}
+                              inkColor={sigColor}
+                              onInkColorChange={setSigColor}
+                              strokeWidth={sigPenWidth}
+                              onStrokeWidthChange={setSigPenWidth}
+                            />
+                          ) : (
+                            <Stack spacing={1}>
+                              <input
+                                ref={stampInputRef}
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp"
+                                style={{ display: 'none' }}
+                                onChange={(e) => void handleStampFileChange(e)}
+                              />
+                              <Button
+                                type="button"
+                                variant="outlined"
+                                fullWidth
+                                startIcon={<UploadFileIcon />}
+                                onClick={() => stampInputRef.current?.click()}
+                              >
+                                {t('sig.uploadBtn')}
+                              </Button>
+                              {stampImage && (
+                                <Box
+                                  sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 1.25,
+                                    p: 1,
+                                    borderRadius: 1,
+                                    border: 1,
+                                    borderColor: 'divider',
+                                    bgcolor: 'background.default',
+                                  }}
+                                >
+                                  <Box
+                                    component="img"
+                                    src={stampImage.previewUrl}
+                                    alt={stampImage.name}
+                                    sx={{ maxHeight: 44, maxWidth: 88, objectFit: 'contain', borderRadius: 0.5 }}
+                                  />
+                                  <Typography variant="caption" color="text.secondary" noWrap sx={{ flex: 1 }}>
+                                    {t('sig.uploadedInfo', {
+                                      name: stampImage.name,
+                                      w: stampImage.width,
+                                      h: stampImage.height,
+                                    })}
+                                  </Typography>
+                                </Box>
+                              )}
+                            </Stack>
+                          )}
+
+                          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 1 }}>
+                            <TextField id="pdf-sig-page" size="small" label={t('pdf.redactPage')} type="number" value={sigPage} onChange={(e) => setSigPage(e.target.value)} />
+                            <TextField id="pdf-sig-x" size="small" label="X (pt)" type="number" value={sigX} onChange={(e) => setSigX(e.target.value)} />
+                            <TextField id="pdf-sig-y" size="small" label="Y (pt)" type="number" value={sigY} onChange={(e) => setSigY(e.target.value)} />
+                          </Box>
+                          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1 }}>
+                            <TextField id="pdf-sig-w" size="small" label={t('sig.widthPt')} type="number" value={sigW} onChange={(e) => setSigW(e.target.value)} />
+                            <TextField id="pdf-sig-h" size="small" label={t('sig.heightPt')} type="number" value={sigH} onChange={(e) => setSigH(e.target.value)} />
+                          </Box>
+                          <Button
+                            type="button"
+                            variant="contained"
+                            fullWidth
+                            id="pdf-signature-button"
+                            onClick={handlePlaceSignature}
+                            disabled={pdf.busy !== null || pdf.wasmReady === false}
+                          >
+                            {editing
+                              ? t('pdf.editAdding')
+                              : sigMode === 'draw'
+                                ? t('sig.placeBtn')
+                                : t('sig.placeStampBtn')}
+                          </Button>
+                        </Stack>
+                      </Box>
+
+                      <Box sx={{ pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
+                        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ mb: 1.25 }}>
+                          <WaterDropOutlinedIcon fontSize="small" color="primary" />
+                          <Typography variant="subtitle2">{t('sig.wmTitle')}</Typography>
+                        </Stack>
+                        <Stack spacing={1.5}>
+                          <TextField
+                            id="pdf-wm-text"
+                            size="small"
+                            fullWidth
+                            label={t('sig.wmText')}
+                            placeholder={t('sig.wmPlaceholder')}
+                            value={wmText}
+                            onChange={(e) => setWmText(e.target.value)}
+                          />
+                          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 80px', gap: 1, alignItems: 'center' }}>
+                            <TextField
+                              id="pdf-wm-size"
+                              size="small"
+                              label={t('pdf.editSizePt')}
+                              type="number"
+                              value={wmSize}
+                              onChange={(e) => setWmSize(e.target.value)}
+                            />
+                            <Select
+                              native
+                              size="small"
+                              id="pdf-wm-position"
+                              value={wmPosition}
+                              onChange={(e) => setWmPosition(e.target.value as WatermarkPosition)}
+                              aria-label={t('sig.wmPosition')}
+                            >
+                              <option value="center">{t('sig.wmPosCenter')}</option>
+                              <option value="top">{t('sig.wmPosTop')}</option>
+                              <option value="bottom">{t('sig.wmPosBottom')}</option>
+                            </Select>
+                            <TextField
+                              id="pdf-wm-color"
+                              size="small"
+                              label={t('pdf.editColour')}
+                              type="color"
+                              value={wmColor}
+                              onChange={(e) => setWmColor(e.target.value)}
+                            />
+                          </Box>
+                          <Button
+                            type="button"
+                            variant="outlined"
+                            fullWidth
+                            id="pdf-wm-button"
+                            onClick={handleWatermark}
+                            disabled={pdf.busy !== null || pdf.wasmReady === false}
+                          >
+                            {editing ? t('pdf.editAdding') : t('sig.wmAddBtn')}
+                          </Button>
+                        </Stack>
+                      </Box>
+
                       <Box sx={{ pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
                         <Typography variant="subtitle2" sx={{ mb: 1.25 }}>{t('pdf.editPageNumHeader')}</Typography>
                         <Stack spacing={1.5}>

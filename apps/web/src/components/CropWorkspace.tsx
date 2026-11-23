@@ -43,6 +43,7 @@ import {
 } from '../lib/crop'
 import { DropZone } from './DropZone'
 import { EditorShell } from './EditorShell'
+import { ImageOutputActions } from './ImageOutputActions'
 import { ToolPageHeader } from './ToolPage'
 import { WorkflowSteps } from './WorkflowSteps'
 import { useNavigation } from './layout/navigation'
@@ -502,6 +503,7 @@ export function CropWorkspace({ initialFiles, onInitialFilesConsumed }: CropWork
                       >
                         {t('common.download')} {result.filename}
                       </Button>
+                      <ImageOutputActions blob={result.blob} filename={result.filename} />
                       <Button type="button" variant="outlined" size="small" onClick={() => setResult(null)}>
                         {t('crop.editAgain')}
                       </Button>
