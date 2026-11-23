@@ -699,6 +699,12 @@ export interface NavItem {
   icon: string
   /** Kept for the e2e suite: tool nav items carry the old tab ids. */
   tabId?: string
+  /** Optional i18n key override for parent groups or custom sub-item labels. */
+  labelKey?: string
+  /** Optional collapsible sub-items (e.g. Photo Tools, PDF Tools). */
+  children?: NavItem[]
+  /** Unique collapsible group id when `children` is set. */
+  groupId?: 'photo' | 'pdf'
 }
 
 export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
@@ -707,15 +713,39 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     items: [
       { route: 'home', label: 'Home', icon: 'home' },
       { route: 'tools', label: 'All Tools', icon: 'grid', tabId: 'tab-tools' },
-      { route: 'convert', label: 'Convert Image', icon: 'image', tabId: 'tab-convert' },
-      { route: 'resize', label: 'Resize Image', icon: 'resize', tabId: 'tab-resize' },
-      { route: 'crop', label: 'Crop & Rotate', icon: 'crop', tabId: 'tab-crop' },
-      { route: 'bg-remove', label: 'Remove BG', icon: 'bgRemove', tabId: 'tab-bg-remove' },
-      { route: 'passport', label: 'Passport Photo', icon: 'passport', tabId: 'tab-passport' },
-      { route: 'watermark', label: 'Watermark & EXIF', icon: 'watermark', tabId: 'tab-watermark' },
-      { route: 'pdf', label: 'PDF Tools', icon: 'pdf', tabId: 'tab-pdf' },
+      {
+        route: 'convert',
+        label: 'Photo Tools',
+        labelKey: 'nav.photoTools',
+        icon: 'photoGroup',
+        groupId: 'photo',
+        children: [
+          { route: 'convert', label: 'Convert Image', icon: 'image', tabId: 'tab-convert' },
+          { route: 'resize', label: 'Resize Image', icon: 'resize', tabId: 'tab-resize' },
+          { route: 'crop', label: 'Crop & Rotate', icon: 'crop', tabId: 'tab-crop' },
+          { route: 'bg-remove', label: 'Remove BG', icon: 'bgRemove', tabId: 'tab-bg-remove' },
+          { route: 'passport', label: 'Passport Photo', icon: 'passport', tabId: 'tab-passport' },
+          { route: 'watermark', label: 'Watermark & EXIF', icon: 'watermark', tabId: 'tab-watermark' },
+          { route: 'batch', label: 'Batch Convert', icon: 'batch', tabId: 'tab-batch' },
+        ],
+      },
+      {
+        route: 'pdf',
+        label: 'PDF Tools',
+        labelKey: 'nav.pdfTools',
+        icon: 'pdf',
+        groupId: 'pdf',
+        children: [
+          { route: 'pdf', label: 'All PDF Tools', labelKey: 'nav.pdfAll', icon: 'grid', tabId: 'tab-pdf' },
+          { route: 'pdf-merge', label: 'Merge PDF', icon: 'pdfMerge' },
+          { route: 'pdf-split', label: 'Split PDF', icon: 'pdfSplit' },
+          { route: 'pdf-compress', label: 'Compress PDF', icon: 'pdfCompress' },
+          { route: 'pdf-edit', label: 'Edit & Sign PDF', icon: 'pdfEdit' },
+          { route: 'pdf-to-image', label: 'PDF to Image', icon: 'pdfToImage' },
+          { route: 'pdf-images-to-pdf', label: 'Image to PDF', icon: 'imagesToPdf' },
+        ],
+      },
       { route: 'ocr', label: 'OCR', icon: 'ocr', tabId: 'tab-ocr' },
-      { route: 'batch', label: 'Batch Convert', icon: 'batch', tabId: 'tab-batch' },
     ],
   },
   {

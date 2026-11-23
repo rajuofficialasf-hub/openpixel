@@ -1012,6 +1012,16 @@ export const en: Strings = {
   'ex.clean': 'No JPEG EXIF metadata found in this file.',
   'ex.stripBtn': 'Export clean copy (strip EXIF/GPS)',
   'act.studio': 'Edited & EXIF stripped · {w}×{h} · {bytes}',
+  // ---- Grouped Photo & PDF sidebar sub-navigation ----
+  'nav.photoTools': 'Photo Tools',
+  'nav.pdfTools': 'PDF Tools',
+  'nav.pdfAll': 'All PDF Tools',
+  'nav.pdf-merge': 'Merge PDF',
+  'nav.pdf-split': 'Split PDF',
+  'nav.pdf-compress': 'Compress PDF',
+  'nav.pdf-edit': 'Edit & Sign PDF',
+  'nav.pdf-to-image': 'PDF to Image',
+  'nav.pdf-images-to-pdf': 'Image to PDF',
 }
 
 /** Bengali strings. A key absent here falls back to its English value. */
@@ -1959,6 +1969,15 @@ export const bn: Partial<Strings> = {
   'ex.clean': 'এই ছবিতে কোনো JPEG EXIF তথ্য পাওয়া যায়নি।',
   'ex.stripBtn': 'ক্লিন কপি ডাউনলোড করুন (EXIF/GPS মুছে)',
   'act.studio': 'এডিট ও EXIF ক্লিন হয়েছে · {w}×{h} · {bytes}',
+  'nav.photoTools': 'ফটো টুলস',
+  'nav.pdfTools': 'PDF টুলস',
+  'nav.pdfAll': 'সব PDF টুলস',
+  'nav.pdf-merge': 'PDF একত্র করুন',
+  'nav.pdf-split': 'PDF ভাগ করুন',
+  'nav.pdf-compress': 'PDF কমপ্রেস',
+  'nav.pdf-edit': 'এডিট ও সিগনেচার',
+  'nav.pdf-to-image': 'PDF থেকে ছবি',
+  'nav.pdf-images-to-pdf': 'ছবি থেকে PDF',
 }
 
 export type I18nKey = keyof typeof en

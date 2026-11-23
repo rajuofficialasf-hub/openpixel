@@ -18,6 +18,7 @@ import {
   Breadcrumbs,
   Button,
   Chip,
+  Collapse,
   CssBaseline,
   Divider,
   Drawer,
@@ -41,6 +42,8 @@ import MenuIcon from '@mui/icons-material/Menu'
 import CloseIcon from '@mui/icons-material/Close'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
+import ExpandLessIcon from '@mui/icons-material/ExpandLess'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
@@ -58,7 +61,12 @@ import CropIcon from '@mui/icons-material/Crop'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
 import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined'
 import BrandingWatermarkOutlinedIcon from '@mui/icons-material/BrandingWatermarkOutlined'
+import PhotoLibraryOutlinedIcon from '@mui/icons-material/PhotoLibraryOutlined'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
+import CallMergeIcon from '@mui/icons-material/CallMerge'
+import CallSplitIcon from '@mui/icons-material/CallSplit'
+import CompressIcon from '@mui/icons-material/Compress'
+import EditNoteIcon from '@mui/icons-material/EditNote'
 import DocumentScannerIcon from '@mui/icons-material/DocumentScanner'
 import LayersIcon from '@mui/icons-material/Layers'
 import TableChartIcon from '@mui/icons-material/TableChart'
@@ -82,6 +90,7 @@ const ICONS: Record<string, ReactNode> = {
   folder: <FolderIcon />,
   history: <HistoryIcon />,
   grid: <GridViewIcon />,
+  photoGroup: <PhotoLibraryOutlinedIcon />,
   image: <ImageIcon />,
   resize: <PhotoSizeSelectLargeIcon />,
   crop: <CropIcon />,
@@ -89,6 +98,12 @@ const ICONS: Record<string, ReactNode> = {
   passport: <BadgeOutlinedIcon />,
   watermark: <BrandingWatermarkOutlinedIcon />,
   pdf: <PictureAsPdfIcon />,
+  pdfMerge: <CallMergeIcon fontSize="small" />,
+  pdfSplit: <CallSplitIcon fontSize="small" />,
+  pdfCompress: <CompressIcon fontSize="small" />,
+  pdfEdit: <EditNoteIcon fontSize="small" />,
+  pdfToImage: <ImageIcon fontSize="small" />,
+  imagesToPdf: <PictureAsPdfIcon fontSize="small" />,
   ocr: <DocumentScannerIcon />,
   batch: <LayersIcon />,
   formats: <TableChartIcon />,
@@ -163,6 +178,9 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
       return false
     }
   })
+  const [openMenu, setOpenMenu] = useState<'photo' | 'pdf' | null>(() =>
+    route.startsWith('pdf') ? 'pdf' : 'photo',
+  )
   const [snack, setSnack] = useState('')
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [searchValue, setSearchValue] = useState<ToolEntry | string | null>(null)
@@ -392,8 +410,118 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
               </ListSubheader>
             )}
             {group.items.map((item) => {
-              // A PDF tool page (e.g. /pdf/merge) still selects the
-              // "PDF Tools" sidebar item — it is a PDF page.
+              const label = item.labelKey ? t(item.labelKey) : navLabel(item.route)
+
+              // Collapsible parent section (Photo Tools / PDF Tools) with indented sub-items.
+              if (item.children && item.groupId) {
+                const groupId = item.groupId
+                const isGroupActive =
+                  groupId === 'pdf'
+                    ? route === 'pdf' || route.startsWith('pdf-')
+                    : item.children.some((child) => child.route === route)
+                const isOpen = !isCollapsed && openMenu === groupId
+
+                const parentBtn = (
+                  <ListItemButton
+                    key={`group-${groupId}`}
+                    id={`nav-group-${groupId}`}
+                    selected={isGroupActive && !isOpen}
+                    aria-expanded={isOpen}
+                    onClick={() => {
+                      if (isCollapsed) {
+                        setCollapsedAndSave(false)
+                        setOpenMenu(groupId)
+                      } else {
+                        setOpenMenu((cur) => (cur === groupId ? null : groupId))
+                      }
+                    }}
+                    sx={{
+                      ...(isCollapsed ? { justifyContent: 'center', px: 0 } : undefined),
+                      ...(isGroupActive && isOpen
+                        ? { color: 'primary.main', '& .MuiListItemIcon-root': { color: 'primary.main' } }
+                        : undefined),
+                    }}
+                  >
+                    <ListItemIcon sx={isCollapsed ? { minWidth: 0 } : undefined}>{ICONS[item.icon]}</ListItemIcon>
+                    {!isCollapsed && (
+                      <>
+                        <ListItemText
+                          primary={label}
+                          primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: 600, noWrap: true }}
+                        />
+                        {isOpen ? (
+                          <ExpandLessIcon fontSize="small" sx={{ color: 'text.secondary', ml: 0.5 }} />
+                        ) : (
+                          <ExpandMoreIcon fontSize="small" sx={{ color: 'text.secondary', ml: 0.5 }} />
+                        )}
+                      </>
+                    )}
+                  </ListItemButton>
+                )
+
+                return (
+                  <Box key={`group-${groupId}`}>
+                    {isCollapsed ? (
+                      <Tooltip title={label} placement="right">
+                        {parentBtn}
+                      </Tooltip>
+                    ) : (
+                      parentBtn
+                    )}
+                    {!isCollapsed && (
+                      <Collapse in={isOpen} timeout="auto">
+                        <List
+                          component="div"
+                          disablePadding
+                          sx={{
+                            ml: 2.75,
+                            mr: 0.5,
+                            my: 0.25,
+                            pl: 0.5,
+                            borderLeft: 2,
+                            borderColor: 'divider',
+                          }}
+                        >
+                          {item.children.map((child) => {
+                            const childSelected =
+                              route === child.route ||
+                              (child.route === 'pdf' &&
+                                route.startsWith('pdf-') &&
+                                !item.children!.some((c) => c.route === route))
+                            const childLabel = child.labelKey ? t(child.labelKey) : navLabel(child.route)
+                            return (
+                              <ListItemButton
+                                key={child.route}
+                                id={child.tabId}
+                                aria-controls={child.tabId ? `panel-${child.route}` : undefined}
+                                aria-current={childSelected ? 'page' : undefined}
+                                selected={childSelected}
+                                onClick={() => {
+                                  setOpenMenu(groupId)
+                                  go(child.route)
+                                }}
+                                sx={{
+                                  py: 0.45,
+                                  px: 1.25,
+                                  mx: 0.5,
+                                  '& .MuiListItemIcon-root': { minWidth: 30 },
+                                }}
+                              >
+                                <ListItemIcon>{ICONS[child.icon]}</ListItemIcon>
+                                <ListItemText
+                                  primary={childLabel}
+                                  primaryTypographyProps={{ fontSize: '0.82rem', noWrap: true }}
+                                />
+                              </ListItemButton>
+                            )
+                          })}
+                        </List>
+                      </Collapse>
+                    )}
+                  </Box>
+                )
+              }
+
               const selected = route === item.route || (item.route === 'pdf' && route.startsWith('pdf-'))
               const button = (
                 <ListItemButton
@@ -408,14 +536,14 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                   <ListItemIcon sx={isCollapsed ? { minWidth: 0 } : undefined}>{ICONS[item.icon]}</ListItemIcon>
                   {!isCollapsed && (
                     <ListItemText
-                      primary={navLabel(item.route)}
+                      primary={label}
                       primaryTypographyProps={{ fontSize: '0.875rem', noWrap: true }}
                     />
                   )}
                 </ListItemButton>
               )
               return isCollapsed ? (
-                <Tooltip key={item.route} title={navLabel(item.route)} placement="right">
+                <Tooltip key={item.route} title={label} placement="right">
                   {button}
                 </Tooltip>
               ) : (
@@ -674,7 +802,11 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
             <Box
               role="tabpanel"
               id={`panel-${route}`}
-              aria-labelledby={NAV_GROUPS.flatMap((g) => g.items).find((i) => i.route === route)?.tabId ?? `nav-${route}`}
+              aria-labelledby={
+                NAV_GROUPS.flatMap((g) => g.items.flatMap((i) => (i.children ? [i, ...i.children] : [i]))).find(
+                  (i) => i.route === route,
+                )?.tabId ?? `nav-${route}`
+              }
               sx={{
                 flex: fitViewport ? 1 : undefined,
                 minHeight: fitViewport ? 0 : undefined,
