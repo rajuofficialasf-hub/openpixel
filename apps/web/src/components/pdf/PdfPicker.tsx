@@ -102,12 +102,14 @@ export function PdfPicker({ initialFiles, onInitialFilesConsumed, onNavigate }: 
   return (
     <Box component="section" aria-labelledby="pdf-heading" sx={{ display: 'flex', flexDirection: 'column', flex: { lg: 1 }, minHeight: { lg: 0 } }}>
       <Stack spacing={2} sx={{ flex: { lg: 1 }, minHeight: { lg: 0 } }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5, flex: 'none' }}>
-          <ToolPageHeader
-            headingId="pdf-heading"
-            title="PDF tools"
-            description={t('pdf.pickerDesc')}
-          />
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5, flex: 'none', minWidth: 0 }}>
+          <Box sx={{ minWidth: 0, flex: '1 1 260px' }}>
+            <ToolPageHeader
+              headingId="pdf-heading"
+              title="PDF tools"
+              description={t('pdf.pickerDesc')}
+            />
+          </Box>
           <TextField
             size="small"
             placeholder={t('pdf.searchPlaceholder')}
@@ -119,7 +121,7 @@ export function PdfPicker({ initialFiles, onInitialFilesConsumed, onNavigate }: 
                 startAdornment: <SearchIcon color="action" sx={{ mr: 1 }} />,
               },
             }}
-            sx={{ minWidth: { xs: '100%', md: 320 } }}
+            sx={{ width: { xs: '100%', md: 320 } }}
           />
         </Box>
 

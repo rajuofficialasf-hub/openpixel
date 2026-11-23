@@ -30,27 +30,28 @@ export function WorkflowSteps({ activeStep, steps }: WorkflowStepsProps) {
         m: 0,
       }}
     >
-      {steps.map((label, idx) => {
+      {steps.map((rawLabel, idx) => {
+        const label = rawLabel.replace(/^[0-9০-৯]+\.\s*/, '')
         const completed = idx < activeStep
         const current = idx === activeStep
         return (
           <Box
             component="li"
-            key={label}
+            key={rawLabel}
             aria-current={current ? 'step' : undefined}
             sx={{
               display: 'inline-flex',
               alignItems: 'center',
-              gap: 1,
+              gap: { xs: 0.75, sm: 1 },
             }}
           >
             <Box
               sx={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: 0.75,
-                px: 1.25,
-                py: 0.5,
+                gap: 0.6,
+                px: { xs: 1, sm: 1.25 },
+                py: 0.4,
                 borderRadius: 2,
                 border: 1,
                 borderColor: current

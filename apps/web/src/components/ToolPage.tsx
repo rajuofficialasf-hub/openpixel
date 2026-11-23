@@ -19,7 +19,7 @@ interface ToolPageHeaderProps {
 
 export function ToolPageHeader({ headingId, title, description, actions }: ToolPageHeaderProps) {
   return (
-    <Box sx={{ flex: 'none' }}>
+    <Box sx={{ flex: '0 1 auto', minWidth: 0, maxWidth: '100%' }}>
       <Box
         sx={{
           display: 'flex',
