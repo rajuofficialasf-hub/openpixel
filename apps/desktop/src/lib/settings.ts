@@ -4,11 +4,13 @@
  * go up to 8 (the engine's MAX_WORKERS) instead of the browser's 4.
  */
 export type Theme = 'light' | 'dark' | 'system'
+export type Language = 'en' | 'bn'
 
 export type MetadataPolicy = 'strip' | 'preserve'
 
 export interface Settings {
   theme: Theme
+  language: Language
   defaultQuality: number // JPEG/WebP quality 1–100
   defaultFormat: string // engine format id, e.g. 'webp'
   defaultBackground: string // hex colour used to flatten alpha
@@ -18,6 +20,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
+  language: 'en',
   defaultQuality: 85,
   defaultFormat: 'webp',
   defaultBackground: '#ffffff',
@@ -34,6 +37,7 @@ export function loadSettings(): Settings {
     const parsed = JSON.parse(raw) as Partial<Settings>
     return {
       theme: parsed.theme === 'light' || parsed.theme === 'dark' ? parsed.theme : 'system',
+      language: parsed.language === 'bn' ? 'bn' : 'en',
       defaultQuality:
         typeof parsed.defaultQuality === 'number'
           ? Math.min(100, Math.max(1, Math.round(parsed.defaultQuality)))

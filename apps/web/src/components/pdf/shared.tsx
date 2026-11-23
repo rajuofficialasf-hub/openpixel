@@ -17,9 +17,12 @@ import type { ReactNode } from 'react'
 import { Alert, Box, Button, Card, CardContent, Stack, Typography } from '@mui/material'
 import { alpha } from '@mui/material/styles'
 import DownloadIcon from '@mui/icons-material/Download'
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import { formatBytes } from '../../lib/capabilities'
 import { DropZone } from '../DropZone'
 import { ToolPageHeader } from '../ToolPage'
+import { WorkflowSteps } from '../WorkflowSteps'
+import { useNavigation } from '../layout/navigation'
 import { downloadBlob, type UsePdfFile } from './usePdfFile'
 import { useI18n } from '../../lib/use-i18n'
 
@@ -71,9 +74,20 @@ export function PdfFileSummary({ pdf }: { pdf: UsePdfFile }) {
   )
 }
 
-/** Status line + download buttons + error — the shared result state. */
+/** Status line + download buttons + Smart Next-Step Chaining + error. */
 export function PdfResultBoxes({ pdf }: { pdf: UsePdfFile }) {
   const { t } = useI18n()
+  const { route, navigate } = useNavigation()
+  const firstPdf = pdf.results.find((r) => r.filename.toLowerCase().endsWith('.pdf'))
+  const nextPdfSteps = (
+    [
+      { route: 'pdf-compress', label: t('chain.toPdfCompress') },
+      { route: 'pdf-edit', label: t('chain.toPdfEdit') },
+      { route: 'pdf-to-image', label: t('chain.toPdfImage') },
+      { route: 'pdf', label: t('chain.toPdfMore') },
+    ] as const
+  ).filter((step) => step.route !== route)
+
   return (
     <>
       {pdf.status && pdf.results.length > 0 && (
@@ -104,6 +118,35 @@ export function PdfResultBoxes({ pdf }: { pdf: UsePdfFile }) {
               </Button>
             ))}
           </Stack>
+          {firstPdf && (
+            <Stack
+              direction="row"
+              flexWrap="wrap"
+              spacing={1}
+              useFlexGap
+              alignItems="center"
+              sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}
+            >
+              <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+                {t('chain.label')}
+              </Typography>
+              {nextPdfSteps.map((step) => (
+                <Button
+                  key={step.route}
+                  type="button"
+                  size="small"
+                  variant="text"
+                  endIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
+                  onClick={() => {
+                    const outFile = new File([firstPdf.blob], firstPdf.filename, { type: 'application/pdf' })
+                    navigate(step.route, { files: [outFile] })
+                  }}
+                >
+                  {step.label}
+                </Button>
+              ))}
+            </Stack>
+          )}
         </Box>
       )}
 
@@ -244,7 +287,17 @@ export function PdfToolPage({
       }}
     >
       <Stack spacing={2} sx={{ maxWidth: 860, width: '100%', mx: 'auto', flex: 1, minHeight: 0 }}>
-        <ToolPageHeader headingId={headingId} title={title} description={description} />
+        <ToolPageHeader
+          headingId={headingId}
+          title={title}
+          description={description}
+          actions={
+            <WorkflowSteps
+              activeStep={!loaded ? 0 : pdf.results.length > 0 || pdf.status ? 2 : 1}
+              steps={[t('step.upload'), t('step.options'), t('step.download')]}
+            />
+          }
+        />
 
         {pdf.wasmReady === false && <WasmWarning />}
 

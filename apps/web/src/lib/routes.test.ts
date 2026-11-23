@@ -5,7 +5,7 @@ const ALL_ROUTES = Object.keys(ROUTE_PATHS) as RouteId[]
 
 describe('ROUTE_PATHS — one shareable URL per page', () => {
   it('covers every route exactly once, home is /', () => {
-    expect(ALL_ROUTES).toHaveLength(33)
+    expect(ALL_ROUTES).toHaveLength(34)
     expect(ROUTE_PATHS.home).toBe('/')
     const paths = new Set(Object.values(ROUTE_PATHS))
     expect(paths.size).toBe(ALL_ROUTES.length)
@@ -23,6 +23,7 @@ describe('ROUTE_PATHS — one shareable URL per page', () => {
     expect(routeFromPath('/pdf/compress')).toBe('pdf-compress')
     expect(routeFromPath('/pdf/edit')).toBe('pdf-edit')
     expect(routeFromPath('/convert')).toBe('convert')
+    expect(routeFromPath('/crop')).toBe('crop')
     expect(routeFromPath('/ocr')).toBe('ocr')
     expect(routeFromPath('/settings')).toBe('settings')
     expect(routeFromPath('/')).toBe('home')

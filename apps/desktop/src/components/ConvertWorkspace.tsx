@@ -41,6 +41,8 @@ import {
   type PipelineRequest,
 } from '../lib/tauri'
 import { DropZone } from './DropZone'
+import { WorkflowSteps } from './WorkflowSteps'
+import { dt } from '../lib/i18n'
 
 interface ConvertWorkspaceProps {
   capabilities: FormatCapability[]
@@ -215,23 +217,44 @@ export function ConvertWorkspace({
   const targetHasNoAlpha = targetCap !== undefined && !targetCap.supports_alpha
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <DropZone
-        onPick={() => void pickFile()}
-        label="Convert an image"
-        hint="The native engine converts it — PNG, JPEG, WebP, TIFF, AVIF, JXL, SVG and more. Files never leave your device."
-      />
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5 }}>
+        <Typography variant="h5" component="h2">
+          {dt(settings.language, 'nav.convert')}
+        </Typography>
+        <WorkflowSteps
+          activeStep={!inputPath ? 0 : result ? 2 : 1}
+          steps={[
+            dt(settings.language, 'step.upload'),
+            dt(settings.language, 'step.options'),
+            dt(settings.language, 'step.save'),
+          ]}
+        />
+      </Box>
+
+      {!inputPath && (
+        <DropZone
+          onPick={() => void pickFile()}
+          label="Convert an image"
+          hint="The native engine converts it — PNG, JPEG, WebP, TIFF, AVIF, JXL, SVG and more. Files never leave your device."
+        />
+      )}
 
       {error && <Alert severity="error">{error}</Alert>}
 
       {inputPath && (
-        <Grid container spacing={3}>
+        <Grid container spacing={2}>
           <Grid size={{ xs: 12, md: 6 }}>
             <Card>
               <CardContent>
-                <Typography variant="overline" color="text.secondary">
-                  Source
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                  <Typography variant="overline" color="text.secondary">
+                    Source
+                  </Typography>
+                  <Button type="button" size="small" variant="outlined" onClick={() => void pickFile()}>
+                    Choose another file
+                  </Button>
+                </Box>
                 <Typography variant="body2" fontWeight={600} sx={{ mt: 1, wordBreak: 'break-all' }}>
                   {fileName(inputPath)}
                 </Typography>

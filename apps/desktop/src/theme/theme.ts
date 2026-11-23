@@ -162,8 +162,8 @@ export function getTheme(mode: ThemeMode): Theme {
       },
       MuiCardContent: {
         styleOverrides: {
-          // Generous, consistent card padding — 24px on all sides.
-          root: { padding: 24, '&:last-child': { paddingBottom: 24 } },
+          // Balanced compact padding so desktop workspaces fit cleanly in one viewport.
+          root: { padding: 18, '&:last-child': { paddingBottom: 18 } },
         },
       },
       MuiPaper: {
@@ -251,8 +251,8 @@ export function getTheme(mode: ThemeMode): Theme {
         styleOverrides: {
           root: ({ theme }) => ({
             borderRadius: 8,
-            margin: '2px 8px',
-            padding: '8px 12px',
+            margin: '1px 8px',
+            padding: '6px 12px',
             '&.Mui-selected': {
               backgroundColor: alpha(theme.palette.primary.main, 0.08),
               color: theme.palette.primary.main,

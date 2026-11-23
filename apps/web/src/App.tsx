@@ -1,45 +1,68 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { Box } from '@mui/material'
+import { Box, LinearProgress } from '@mui/material'
 import { ThemeProvider } from '@mui/material/styles'
-import { BatchWorkspace } from './components/BatchWorkspace'
-import { CapabilitiesTable } from './components/CapabilitiesTable'
-import { ConvertWorkspace } from './components/ConvertWorkspace'
-import { HelpPage } from './components/HelpPage'
 import { HomePage } from './components/HomePage'
-import { OcrWorkspace } from './components/OcrWorkspace'
-import { ResizeWorkspace } from './components/ResizeWorkspace'
-import { SettingsPanel } from './components/SettingsPanel'
-import { ToolsDirectory, type ToolsCategoryFilter } from './components/ToolsDirectory'
-import { MyFilesPage, RecentFilesPage, WorkspaceDashboard } from './components/Workspace'
-import { PdfPicker } from './components/pdf/PdfPicker'
-import { BookletTool, DuplicateTool, ExtractTool, NupTool, RemoveTool, ReorderTool, ReverseTool, RotateTool, SplitTool } from './components/pdf/PageOpsTools'
-import { CompressTool } from './components/pdf/CompressTool'
-import { MergeTool } from './components/pdf/MergeTool'
-import { ImagesToPdfTool } from './components/pdf/ImagesToPdfTool'
-import { PdfToImageTool } from './components/pdf/PdfToImageTool'
-import { ExtractTextTool } from './components/pdf/ExtractTextTool'
-import { EditTool } from './components/pdf/EditTool'
-import { FlattenTool, MetadataTool, RedactTool, RepairTool, SanitizeTool } from './components/pdf/CleanUpTools'
 import { AppShell } from './components/layout/AppShell'
+import { NavigationContext, type NavigateOpts } from './components/layout/navigation'
 import { loadSettings, resolveTheme, saveSettings, type Settings } from './lib/settings'
 import { I18nProvider } from './lib/i18n-context'
 import { translate } from './lib/i18n'
 import { getTheme } from './theme/theme'
-import { ROUTE_PATHS, routeFromPath, type RouteId, type ToolCategory } from './lib/routes'
+import { ROUTE_PATHS, routeFromPath, type RouteId } from './lib/routes'
+import type { ToolsCategoryFilter } from './components/ToolsDirectory'
 
-// Lazy: the 3D backdrop is decoration — it must never block first
-// paint. The chunk loads only when the setting is on.
+// Lazy-loaded workspaces & secondary pages: HomePage paints
+// immediately while heavy toolchains (pdf.js, tesseract.js, jszip,
+// Three.js) load strictly on demand when the user opens those routes.
 const Background3D = lazy(() => import('./components/Background3D'))
+const ConvertWorkspace = lazy(() => import('./components/ConvertWorkspace').then((m) => ({ default: m.ConvertWorkspace })))
+const ResizeWorkspace = lazy(() => import('./components/ResizeWorkspace').then((m) => ({ default: m.ResizeWorkspace })))
+const CropWorkspace = lazy(() => import('./components/CropWorkspace').then((m) => ({ default: m.CropWorkspace })))
+const BatchWorkspace = lazy(() => import('./components/BatchWorkspace').then((m) => ({ default: m.BatchWorkspace })))
+const OcrWorkspace = lazy(() => import('./components/OcrWorkspace').then((m) => ({ default: m.OcrWorkspace })))
+const ToolsDirectory = lazy(() => import('./components/ToolsDirectory').then((m) => ({ default: m.ToolsDirectory })))
+const CapabilitiesTable = lazy(() => import('./components/CapabilitiesTable').then((m) => ({ default: m.CapabilitiesTable })))
+const SettingsPanel = lazy(() => import('./components/SettingsPanel').then((m) => ({ default: m.SettingsPanel })))
+const HelpPage = lazy(() => import('./components/HelpPage').then((m) => ({ default: m.HelpPage })))
+const WorkspaceDashboard = lazy(() => import('./components/Workspace').then((m) => ({ default: m.WorkspaceDashboard })))
+const MyFilesPage = lazy(() => import('./components/Workspace').then((m) => ({ default: m.MyFilesPage })))
+const RecentFilesPage = lazy(() => import('./components/Workspace').then((m) => ({ default: m.RecentFilesPage })))
+
+const PdfPicker = lazy(() => import('./components/pdf/PdfPicker').then((m) => ({ default: m.PdfPicker })))
+const CompressTool = lazy(() => import('./components/pdf/CompressTool').then((m) => ({ default: m.CompressTool })))
+const MergeTool = lazy(() => import('./components/pdf/MergeTool').then((m) => ({ default: m.MergeTool })))
+const ImagesToPdfTool = lazy(() => import('./components/pdf/ImagesToPdfTool').then((m) => ({ default: m.ImagesToPdfTool })))
+const PdfToImageTool = lazy(() => import('./components/pdf/PdfToImageTool').then((m) => ({ default: m.PdfToImageTool })))
+const ExtractTextTool = lazy(() => import('./components/pdf/ExtractTextTool').then((m) => ({ default: m.ExtractTextTool })))
+const EditTool = lazy(() => import('./components/pdf/EditTool').then((m) => ({ default: m.EditTool })))
+
+const BookletTool = lazy(() => import('./components/pdf/PageOpsTools').then((m) => ({ default: m.BookletTool })))
+const DuplicateTool = lazy(() => import('./components/pdf/PageOpsTools').then((m) => ({ default: m.DuplicateTool })))
+const ExtractTool = lazy(() => import('./components/pdf/PageOpsTools').then((m) => ({ default: m.ExtractTool })))
+const NupTool = lazy(() => import('./components/pdf/PageOpsTools').then((m) => ({ default: m.NupTool })))
+const RemoveTool = lazy(() => import('./components/pdf/PageOpsTools').then((m) => ({ default: m.RemoveTool })))
+const ReorderTool = lazy(() => import('./components/pdf/PageOpsTools').then((m) => ({ default: m.ReorderTool })))
+const ReverseTool = lazy(() => import('./components/pdf/PageOpsTools').then((m) => ({ default: m.ReverseTool })))
+const RotateTool = lazy(() => import('./components/pdf/PageOpsTools').then((m) => ({ default: m.RotateTool })))
+const SplitTool = lazy(() => import('./components/pdf/PageOpsTools').then((m) => ({ default: m.SplitTool })))
+
+const FlattenTool = lazy(() => import('./components/pdf/CleanUpTools').then((m) => ({ default: m.FlattenTool })))
+const MetadataTool = lazy(() => import('./components/pdf/CleanUpTools').then((m) => ({ default: m.MetadataTool })))
+const RedactTool = lazy(() => import('./components/pdf/CleanUpTools').then((m) => ({ default: m.RedactTool })))
+const RepairTool = lazy(() => import('./components/pdf/CleanUpTools').then((m) => ({ default: m.RepairTool })))
+const SanitizeTool = lazy(() => import('./components/pdf/CleanUpTools').then((m) => ({ default: m.SanitizeTool })))
 
 interface PendingFiles {
   files: File[]
   route: RouteId
 }
 
-interface NavigateOpts {
-  toolsQuery?: string
-  toolsCategory?: ToolCategory
-  files?: File[]
+function RouteFallback() {
+  return (
+    <Box sx={{ width: '100%', pt: 1 }}>
+      <LinearProgress sx={{ borderRadius: 1 }} />
+    </Box>
+  )
 }
 
 function App() {
@@ -57,31 +80,23 @@ function App() {
   const theme = useMemo(() => getTheme(mode), [mode])
 
   useEffect(() => {
-    // The `dark` class is kept for the e2e suite (it asserts on
-    // `documentElement.classList.contains('dark')`); the MUI theme
-    // itself does not need it.
     document.documentElement.classList.toggle('dark', mode === 'dark')
     document.documentElement.lang = settings.language === 'bn' ? 'bn' : 'en'
-    // The tab title follows the language; the product name stays.
     document.title = `OpenPixel Studio — ${translate(settings.language, 'home.heroTitle')}`
     saveSettings(settings)
   }, [settings, mode])
 
   useEffect(() => {
-    // Unknown deep link: correct the address bar instead of
-    // leaving a bogus path in place. An unknown /pdf/* path was
-    // clearly meant for a PDF tool, so it lands on the picker.
     const fixPath = () => {
       const path = window.location.pathname
-      const route = routeFromPath(path)
-      if (route === 'home' && path !== '/') {
+      const resolved = routeFromPath(path)
+      if (resolved === 'home' && path !== '/') {
         window.history.replaceState(null, '', '/')
-      } else if (route === 'pdf' && path !== '/pdf') {
+      } else if (resolved === 'pdf' && path !== '/pdf') {
         window.history.replaceState(null, '', '/pdf')
       }
     }
     fixPath()
-    // Browser back/forward: the URL drives the route.
     const onPopState = () => {
       setRoute(routeFromPath(window.location.pathname))
       window.scrollTo({ top: 0 })
@@ -100,9 +115,6 @@ function App() {
     }
     if (opts?.files) setPending({ files: opts.files, route: next })
     setRoute(next)
-    // Shareable URL: push the route's path, unless we are already
-    // there (re-clicking the current sidebar item must not add a
-    // duplicate history entry — one back press must leave the page).
     const path = ROUTE_PATHS[next]
     if (window.location.pathname !== path) {
       window.history.pushState(null, '', path)
@@ -112,15 +124,14 @@ function App() {
 
   const clearPending = useCallback(() => setPending(null), [])
 
-  // A handed-over file only ever goes to the route it was sent
-  // for — a file meant for the picker must not leak into a tool
-  // page the user opened directly, and vice versa.
-  const pendingFor = (route: RouteId) => (pending?.route === route ? pending.files : undefined)
+  const pendingFor = (target: RouteId) => (pending?.route === target ? pending.files : undefined)
 
-  const pdfToolProps = (route: RouteId) => ({
-    initialFiles: pendingFor(route),
+  const pdfToolProps = (target: RouteId) => ({
+    initialFiles: pendingFor(target),
     onInitialFilesConsumed: clearPending,
   })
+
+  const navValue = useMemo(() => ({ route, navigate }), [route, navigate])
 
   return (
     <ThemeProvider theme={theme}>
@@ -129,71 +140,95 @@ function App() {
           <Background3D />
         </Suspense>
       )}
-      {/* The content sits above the (optional) 3D backdrop. */}
       <Box sx={{ position: 'relative', zIndex: 1 }}>
         <I18nProvider language={settings.language}>
-        <AppShell route={route} onNavigate={navigate} settings={settings} onSettingsChange={setSettings}>
-          {route === 'home' && <HomePage onNavigate={navigate} />}
-          {route === 'overview' && <WorkspaceDashboard onNavigate={navigate} />}
-          {route === 'tools' && (
-            <ToolsDirectory
-              query={toolsFilter.query}
-              onQueryChange={(query) => setToolsFilter((prev) => ({ ...prev, query }))}
-              category={toolsFilter.category}
-              onCategoryChange={(category) => setToolsFilter((prev) => ({ ...prev, category }))}
-              onNavigate={navigate}
-            />
-          )}
-          {route === 'convert' && (
-            <ConvertWorkspace
-              settings={settings}
-              onSettingsChange={setSettings}
-              initialFiles={pending?.route === 'convert' ? pending.files : undefined}
-              onInitialFilesConsumed={clearPending}
-            />
-          )}
-          {route === 'resize' && <ResizeWorkspace settings={settings} onSettingsChange={setSettings} />}
-          {route === 'pdf' && (
-            <PdfPicker
-              initialFiles={pendingFor('pdf')}
-              onInitialFilesConsumed={clearPending}
-              onNavigate={navigate}
-            />
-          )}
-          {route === 'pdf-merge' && <MergeTool {...pdfToolProps('pdf-merge')} />}
-          {route === 'pdf-split' && <SplitTool {...pdfToolProps('pdf-split')} />}
-          {route === 'pdf-rotate' && <RotateTool {...pdfToolProps('pdf-rotate')} />}
-          {route === 'pdf-extract' && <ExtractTool {...pdfToolProps('pdf-extract')} />}
-          {route === 'pdf-remove' && <RemoveTool {...pdfToolProps('pdf-remove')} />}
-          {route === 'pdf-reorder' && <ReorderTool {...pdfToolProps('pdf-reorder')} />}
-          {route === 'pdf-duplicate' && <DuplicateTool {...pdfToolProps('pdf-duplicate')} />}
-          {route === 'pdf-reverse' && <ReverseTool {...pdfToolProps('pdf-reverse')} />}
-          {route === 'pdf-booklet' && <BookletTool {...pdfToolProps('pdf-booklet')} />}
-          {route === 'pdf-nup' && <NupTool {...pdfToolProps('pdf-nup')} />}
-          {route === 'pdf-compress' && <CompressTool {...pdfToolProps('pdf-compress')} />}
-          {route === 'pdf-edit' && <EditTool {...pdfToolProps('pdf-edit')} />}
-          {route === 'pdf-redact' && <RedactTool {...pdfToolProps('pdf-redact')} />}
-          {route === 'pdf-metadata' && <MetadataTool {...pdfToolProps('pdf-metadata')} />}
-          {route === 'pdf-sanitize' && <SanitizeTool {...pdfToolProps('pdf-sanitize')} />}
-          {route === 'pdf-flatten' && <FlattenTool {...pdfToolProps('pdf-flatten')} />}
-          {route === 'pdf-repair' && <RepairTool {...pdfToolProps('pdf-repair')} />}
-          {route === 'pdf-to-image' && <PdfToImageTool {...pdfToolProps('pdf-to-image')} />}
-          {route === 'pdf-images-to-pdf' && <ImagesToPdfTool {...pdfToolProps('pdf-images-to-pdf')} />}
-          {route === 'pdf-extract-text' && <ExtractTextTool {...pdfToolProps('pdf-extract-text')} />}
-          {route === 'ocr' && <OcrWorkspace />}
-          {route === 'batch' && (
-            <BatchWorkspace
-              settings={settings}
-              initialFiles={pending?.route === 'batch' ? pending.files : undefined}
-              onInitialFilesConsumed={clearPending}
-            />
-          )}
-          {route === 'formats' && <CapabilitiesTable />}
-          {route === 'files' && <MyFilesPage onNavigate={navigate} />}
-          {route === 'recent' && <RecentFilesPage onNavigate={navigate} />}
-          {route === 'settings' && <SettingsPanel settings={settings} onSettingsChange={setSettings} />}
-          {route === 'help' && <HelpPage />}
-        </AppShell>
+          <NavigationContext.Provider value={navValue}>
+            <AppShell route={route} onNavigate={navigate} settings={settings} onSettingsChange={setSettings}>
+              {route === 'home' ? (
+                <HomePage onNavigate={navigate} />
+              ) : (
+                <Suspense fallback={<RouteFallback />}>
+                  {route === 'overview' && <WorkspaceDashboard onNavigate={navigate} />}
+                  {route === 'tools' && (
+                    <ToolsDirectory
+                      query={toolsFilter.query}
+                      onQueryChange={(query) => setToolsFilter((prev) => ({ ...prev, query }))}
+                      category={toolsFilter.category}
+                      onCategoryChange={(category) => setToolsFilter((prev) => ({ ...prev, category }))}
+                      onNavigate={navigate}
+                    />
+                  )}
+                  {route === 'convert' && (
+                    <ConvertWorkspace
+                      settings={settings}
+                      onSettingsChange={setSettings}
+                      initialFiles={pendingFor('convert')}
+                      onInitialFilesConsumed={clearPending}
+                    />
+                  )}
+                  {route === 'resize' && (
+                    <ResizeWorkspace
+                      settings={settings}
+                      onSettingsChange={setSettings}
+                      initialFiles={pendingFor('resize')}
+                      onInitialFilesConsumed={clearPending}
+                    />
+                  )}
+                  {route === 'crop' && (
+                    <CropWorkspace
+                      initialFiles={pendingFor('crop')}
+                      onInitialFilesConsumed={clearPending}
+                    />
+                  )}
+                  {route === 'pdf' && (
+                    <PdfPicker
+                      initialFiles={pendingFor('pdf')}
+                      onInitialFilesConsumed={clearPending}
+                      onNavigate={navigate}
+                    />
+                  )}
+                  {route === 'pdf-merge' && <MergeTool {...pdfToolProps('pdf-merge')} />}
+                  {route === 'pdf-split' && <SplitTool {...pdfToolProps('pdf-split')} />}
+                  {route === 'pdf-rotate' && <RotateTool {...pdfToolProps('pdf-rotate')} />}
+                  {route === 'pdf-extract' && <ExtractTool {...pdfToolProps('pdf-extract')} />}
+                  {route === 'pdf-remove' && <RemoveTool {...pdfToolProps('pdf-remove')} />}
+                  {route === 'pdf-reorder' && <ReorderTool {...pdfToolProps('pdf-reorder')} />}
+                  {route === 'pdf-duplicate' && <DuplicateTool {...pdfToolProps('pdf-duplicate')} />}
+                  {route === 'pdf-reverse' && <ReverseTool {...pdfToolProps('pdf-reverse')} />}
+                  {route === 'pdf-booklet' && <BookletTool {...pdfToolProps('pdf-booklet')} />}
+                  {route === 'pdf-nup' && <NupTool {...pdfToolProps('pdf-nup')} />}
+                  {route === 'pdf-compress' && <CompressTool {...pdfToolProps('pdf-compress')} />}
+                  {route === 'pdf-edit' && <EditTool {...pdfToolProps('pdf-edit')} />}
+                  {route === 'pdf-redact' && <RedactTool {...pdfToolProps('pdf-redact')} />}
+                  {route === 'pdf-metadata' && <MetadataTool {...pdfToolProps('pdf-metadata')} />}
+                  {route === 'pdf-sanitize' && <SanitizeTool {...pdfToolProps('pdf-sanitize')} />}
+                  {route === 'pdf-flatten' && <FlattenTool {...pdfToolProps('pdf-flatten')} />}
+                  {route === 'pdf-repair' && <RepairTool {...pdfToolProps('pdf-repair')} />}
+                  {route === 'pdf-to-image' && <PdfToImageTool {...pdfToolProps('pdf-to-image')} />}
+                  {route === 'pdf-images-to-pdf' && <ImagesToPdfTool {...pdfToolProps('pdf-images-to-pdf')} />}
+                  {route === 'pdf-extract-text' && <ExtractTextTool {...pdfToolProps('pdf-extract-text')} />}
+                  {route === 'ocr' && (
+                    <OcrWorkspace
+                      initialFiles={pendingFor('ocr')}
+                      onInitialFilesConsumed={clearPending}
+                    />
+                  )}
+                  {route === 'batch' && (
+                    <BatchWorkspace
+                      settings={settings}
+                      initialFiles={pendingFor('batch')}
+                      onInitialFilesConsumed={clearPending}
+                    />
+                  )}
+                  {route === 'formats' && <CapabilitiesTable />}
+                  {route === 'files' && <MyFilesPage onNavigate={navigate} />}
+                  {route === 'recent' && <RecentFilesPage onNavigate={navigate} />}
+                  {route === 'settings' && <SettingsPanel settings={settings} onSettingsChange={setSettings} />}
+                  {route === 'help' && <HelpPage />}
+                </Suspense>
+              )}
+            </AppShell>
+          </NavigationContext.Provider>
         </I18nProvider>
       </Box>
     </ThemeProvider>

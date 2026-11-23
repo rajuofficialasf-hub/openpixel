@@ -1,11 +1,8 @@
 /**
- * Reusable tool-processing page header (prompt §11).
- *
- * Every tool page follows the same pattern: breadcrumb (in the
- * app shell), then this header — title + one short description —
- * then the upload area, options, actions and result. Using one
- * component keeps the six tool pages visually identical instead
- * of drifting apart one heading at a time.
+ * Reusable tool-processing page header: compact single-row title +
+ * inline right-aligned workflow steps/actions, with a short subtitle
+ * beneath so workspaces fit comfortably on one PC screen without
+ * scrolling.
  */
 import type { ReactNode } from 'react'
 import { Box, Typography } from '@mui/material'
@@ -14,31 +11,30 @@ interface ToolPageHeaderProps {
   /** Stable id — the page's <section> uses it in aria-labelledby. */
   headingId: string
   title: string
-  /** Keep to ~2 sentences; the description may be a ReactNode so
-   *  pages can mention live state (e.g. whether WASM is loaded). */
+  /** Keep concise (1–2 sentences). */
   description: ReactNode
-  /** Optional right-aligned actions (e.g. a view toggle). */
+  /** Optional right-aligned content (e.g. WorkflowSteps or a view toggle). */
   actions?: ReactNode
 }
 
 export function ToolPageHeader({ headingId, title, description, actions }: ToolPageHeaderProps) {
   return (
-    <Box>
+    <Box sx={{ flex: 'none' }}>
       <Box
         sx={{
           display: 'flex',
-          alignItems: 'flex-start',
+          alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 2,
+          gap: 1.5,
           flexWrap: 'wrap',
         }}
       >
-        <Typography variant="h5" component="h2" id={headingId}>
+        <Typography variant="h5" component="h2" id={headingId} sx={{ lineHeight: 1.2 }}>
           {title}
         </Typography>
         {actions}
       </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ mt: 1, maxWidth: 720 }}>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 820 }}>
         {description}
       </Typography>
     </Box>

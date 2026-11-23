@@ -29,7 +29,7 @@ import { toolDescription, type ToolEntry } from '../lib/routes'
 import type { RouteId } from '../lib/routes'
 import { useI18n } from '../lib/use-i18n'
 import { useNotify } from './layout/notify'
-import { CategoryIcon } from './CategoryIcon'
+import { ToolIcon } from './CategoryIcon'
 
 interface ToolCardProps {
   tool: ToolEntry
@@ -80,9 +80,8 @@ export function ToolCard({ tool, onNavigate, wideSm = false, wideLg = false }: T
       sx={{
         display: 'flex',
         height: '100%',
-        // Horizontal only on the breakpoints where the card really
-        // spans the full row — a normal third at lg stays vertical
-        // even if it is full-width at sm.
+        p: 1.75,
+        '&:last-child': { pb: 1.75 },
         flexDirection: {
           xs: 'column',
           sm: wideSm || wideLg ? 'row' : 'column',
@@ -93,16 +92,27 @@ export function ToolCard({ tool, onNavigate, wideSm = false, wideLg = false }: T
           sm: wideSm || wideLg ? 'center' : 'stretch',
           lg: wideLg ? 'center' : 'stretch',
         },
-        gap: { xs: 1, sm: wideSm || wideLg ? 2 : 1, lg: wideLg ? 2 : 1 },
+        gap: { xs: 0.75, sm: wideSm || wideLg ? 1.5 : 0.75, lg: wideLg ? 1.5 : 0.75 },
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
-        <CategoryIcon category={tool.categories[0]} />
-        <Typography variant="subtitle1" component="h3" sx={{ lineHeight: 1.3 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flexShrink: 0 }}>
+        <ToolIcon toolId={tool.id} category={tool.categories[0]} />
+        <Typography variant="subtitle2" component="h3" fontWeight={600} sx={{ lineHeight: 1.3 }}>
           {tool.name}
         </Typography>
       </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ flex: 1 }}>
+      <Typography
+        variant="caption"
+        color="text.secondary"
+        sx={{
+          flex: 1,
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+          lineHeight: 1.45,
+        }}
+      >
         {toolDescription(lang, tool)}
       </Typography>
       {foot}
@@ -176,7 +186,13 @@ export function ToolCard({ tool, onNavigate, wideSm = false, wideLg = false }: T
   }
 
   return (
-    <Card sx={{ height: '100%' }}>
+    <Card
+      sx={{
+        height: '100%',
+        transition: (theme) => theme.transitions.create(['border-color', 'transform'], { duration: theme.transitions.duration.short }),
+        '&:hover': { borderColor: 'primary.main', transform: 'translateY(-1px)' },
+      }}
+    >
       <CardActionArea
         onClick={() => tool.route && onNavigate(tool.route)}
         aria-label={t('tool.ariaOpen', { name: tool.name })}

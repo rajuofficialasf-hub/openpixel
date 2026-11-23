@@ -8,13 +8,14 @@
  * their `tab-*` ids: the e2e suite clicks them exactly like the
  * old header tabs.
  */
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   AppBar,
   Autocomplete,
   Box,
   Breadcrumbs,
   Button,
+  Chip,
   CssBaseline,
   Divider,
   Drawer,
@@ -25,8 +26,6 @@ import {
   ListItemIcon,
   ListItemText,
   ListSubheader,
-  Menu,
-  MenuItem,
   Snackbar,
   TextField,
   Toolbar,
@@ -34,20 +33,24 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material'
-import { useTheme } from '@mui/material/styles'
+import { alpha, useTheme } from '@mui/material/styles'
 import MenuIcon from '@mui/icons-material/Menu'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
 import LightModeIcon from '@mui/icons-material/LightMode'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
-import AccountCircleIcon from '@mui/icons-material/AccountCircle'
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
+import InstallDesktopIcon from '@mui/icons-material/InstallDesktop'
+import CloudOffIcon from '@mui/icons-material/CloudOff'
 import HomeIcon from '@mui/icons-material/Home'
+import DashboardOutlinedIcon from '@mui/icons-material/DashboardOutlined'
 import FolderIcon from '@mui/icons-material/Folder'
 import HistoryIcon from '@mui/icons-material/History'
 import GridViewIcon from '@mui/icons-material/GridView'
 import ImageIcon from '@mui/icons-material/Image'
 import PhotoSizeSelectLargeIcon from '@mui/icons-material/PhotoSizeSelectLarge'
+import CropIcon from '@mui/icons-material/Crop'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import DocumentScannerIcon from '@mui/icons-material/DocumentScanner'
 import LayersIcon from '@mui/icons-material/Layers'
@@ -56,6 +59,9 @@ import SettingsIcon from '@mui/icons-material/Settings'
 import GridOnIcon from '@mui/icons-material/GridOn'
 import { NAV_GROUPS, ROUTE_TITLES, searchTools, type RouteId, type ToolEntry } from '../../lib/routes'
 import { NotifyContext } from './notify'
+import type { NavigateOpts } from './navigation'
+import { CommandPalette } from '../CommandPalette'
+import { detectFileFormat } from '../../lib/detect'
 import { translate } from '../../lib/i18n'
 import { useI18n } from '../../lib/use-i18n'
 import { resolveTheme, saveSettings, type Settings } from '../../lib/settings'
@@ -65,11 +71,13 @@ const SIDEBAR_COLLAPSED_WIDTH = 72
 
 const ICONS: Record<string, ReactNode> = {
   home: <HomeIcon />,
+  dashboard: <DashboardOutlinedIcon />,
   folder: <FolderIcon />,
   history: <HistoryIcon />,
   grid: <GridViewIcon />,
   image: <ImageIcon />,
   resize: <PhotoSizeSelectLargeIcon />,
+  crop: <CropIcon />,
   pdf: <PictureAsPdfIcon />,
   ocr: <DocumentScannerIcon />,
   batch: <LayersIcon />,
@@ -80,7 +88,7 @@ const ICONS: Record<string, ReactNode> = {
 
 interface AppShellProps {
   route: RouteId
-  onNavigate: (route: RouteId, opts?: { toolsQuery?: string }) => void
+  onNavigate: (route: RouteId, opts?: NavigateOpts) => void
   settings: Settings
   onSettingsChange: (next: Settings) => void
   children: ReactNode
@@ -145,10 +153,123 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
       return false
     }
   })
-  const [profileAnchor, setProfileAnchor] = useState<null | HTMLElement>(null)
   const [snack, setSnack] = useState('')
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [searchValue, setSearchValue] = useState<ToolEntry | string | null>(null)
   const [searchInput, setSearchInput] = useState('')
+  const [offline, setOffline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? !navigator.onLine : false,
+  )
+  const [installPrompt, setInstallPrompt] = useState<{
+    prompt: () => Promise<void>
+    userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+  } | null>(null)
+
+  // Listen for browser online/offline changes and PWA install prompt.
+  useEffect(() => {
+    const onOnline = () => setOffline(false)
+    const onOffline = () => setOffline(true)
+    const onBeforeInstall = (e: Event) => {
+      e.preventDefault()
+      setInstallPrompt(
+        e as unknown as {
+          prompt: () => Promise<void>
+          userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
+        },
+      )
+    }
+    const onInstalled = () => setInstallPrompt(null)
+    window.addEventListener('online', onOnline)
+    window.addEventListener('offline', onOffline)
+    window.addEventListener('beforeinstallprompt', onBeforeInstall)
+    window.addEventListener('appinstalled', onInstalled)
+    return () => {
+      window.removeEventListener('online', onOnline)
+      window.removeEventListener('offline', onOffline)
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall)
+      window.removeEventListener('appinstalled', onInstalled)
+    }
+  }, [])
+
+  const triggerInstall = async () => {
+    if (!installPrompt) return
+    await installPrompt.prompt()
+    const choice = await installPrompt.userChoice
+    if (choice.outcome === 'accepted') setInstallPrompt(null)
+  }
+
+  // Global Ctrl+K / ⌘K shortcut opens the Command Palette from anywhere.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((open) => !open)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
+  // Global Ctrl+V clipboard paste: pasting an image or PDF anywhere in
+  // the app loads it directly into the active compatible workspace, or
+  // routes straight to Convert / Batch / PDF Tools. Pure text pastes
+  // into inputs are untouched.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const data = e.clipboardData
+      if (!data) return
+      const files: File[] = []
+      if (data.files && data.files.length > 0) {
+        files.push(...Array.from(data.files))
+      } else if (data.items) {
+        for (const item of Array.from(data.items)) {
+          if (item.kind === 'file') {
+            const f = item.getAsFile()
+            if (f) files.push(f)
+          }
+        }
+      }
+      if (files.length === 0) return
+
+      e.preventDefault()
+      void (async () => {
+        const first = files[0]
+        const head = new Uint8Array(await first.slice(0, 5).arrayBuffer())
+        const isPdf = head[0] === 0x25 && head[1] === 0x50 && head[2] === 0x44 && head[3] === 0x46
+        const displayName = first.name || (isPdf ? 'pasted.pdf' : 'pasted-image.png')
+
+        if (isPdf) {
+          const staysHere = route.startsWith('pdf-') && route !== 'pdf-images-to-pdf'
+          const target: RouteId = staysHere ? route : 'pdf'
+          onNavigate(target, { files: [first] })
+          setSnack(
+            staysHere
+              ? t('paste.loaded', { name: displayName })
+              : t('paste.loadedIn', { name: displayName, tool: ROUTE_TITLES[target].title }),
+          )
+          return
+        }
+
+        const detected = first.type.startsWith('image/') ? first.type : await detectFileFormat(first)
+        if (detected !== 'unknown') {
+          const imageRoutes: RouteId[] = ['convert', 'resize', 'crop', 'batch', 'ocr', 'pdf-images-to-pdf']
+          const staysHere = imageRoutes.includes(route)
+          const target: RouteId = staysHere ? route : files.length > 1 ? 'batch' : 'convert'
+          onNavigate(target, { files })
+          setSnack(
+            staysHere
+              ? t('paste.loaded', { name: displayName })
+              : t('paste.loadedIn', { name: displayName, tool: ROUTE_TITLES[target].title }),
+          )
+          return
+        }
+
+        setSnack(t('paste.unsupported'))
+      })()
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [route, onNavigate, t])
 
   const mode = resolveTheme(settings.theme)
   const isDark = mode === 'dark'
@@ -172,7 +293,13 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
   /** Sidebar label for a nav item — translated, tool names stay English. */
   const navLabel = (itemRoute: RouteId) => translate(lang, `nav.${itemRoute}`)
   const groupLabel = (label: string) =>
-    label === 'Workspace' ? t('navGroup.workspace') : label === 'Tools' ? t('navGroup.tools') : t('navGroup.account')
+    label === 'Tools'
+      ? t('navGroup.tools')
+      : label === 'Activity'
+        ? t('navGroup.activity')
+        : label === 'More'
+          ? t('navGroup.more')
+          : t('navGroup.workspace')
   /** Breadcrumb / page title for a route — generic pages translate, PDF tool pages keep their English tool name. */
   const routeLabel = (r: RouteId) => (r.startsWith('pdf-') ? ROUTE_TITLES[r].crumb : translate(lang, `nav.${r}`))
 
@@ -194,15 +321,12 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
 
   const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH
 
-  // Every PDF tool page is a viewport-height workspace (like
-  // Acrobat / Figma): the page itself never scrolls on desktop —
-  // the Edit editor's three columns scroll internally, and the
-  // simple tool pages scroll inside their own container when
-  // they are taller than the viewport (e.g. Merge at 1366x768).
-  // Desktop only — below lg the pages keep their normal stacked
-  // scrolling layout. The /pdf picker is a directory, not a
-  // workspace, so it keeps normal page scrolling.
-  const fitViewport = route.startsWith('pdf-') && isDesktop
+  // Desktop (lg+): lock the entire Studio shell to 100dvh so the
+  // outer page NEVER scrolls on PC — header, sidebar, breadcrumbs and
+  // workspace stay in view like a native desktop app. Mobile/tablet
+  // keeps natural document scrolling.
+  const fitViewport = isDesktop
+  const isPdfWorkspace = route.startsWith('pdf-')
 
   const sidebar = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -212,7 +336,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
           alignItems: 'center',
           justifyContent: collapsed ? 'center' : 'flex-end',
           px: 1,
-          minHeight: 64,
+          minHeight: 56,
         }}
       >
         <IconButton
@@ -224,13 +348,13 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
         </IconButton>
       </Box>
       <Divider />
-      <List sx={{ flex: 1, overflowY: 'auto', py: 1 }} aria-label={t('shell.navAria')}>
+      <List sx={{ flex: 1, overflowY: 'auto', py: 0.5 }} aria-label={t('shell.navAria')}>
         {NAV_GROUPS.map((group) => (
           <Box key={group.label}>
             {!collapsed && (
               <ListSubheader
                 component="div"
-                sx={{ bgcolor: 'transparent', lineHeight: '32px', fontSize: '0.75rem' }}
+                sx={{ bgcolor: 'transparent', lineHeight: '26px', fontSize: '0.72rem', mt: 0.5 }}
               >
                 {groupLabel(group.label)}
               </ListSubheader>
@@ -268,17 +392,14 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
   )
 
   // One tool = one page: a PDF tool page crumbs as
-  // Overview / Tools / PDF Tools / <tool>. The first crumb is
-  // always the Overview home link — when the page itself IS the
-  // overview, that would read "Overview / Overview", so the
-  // trailing crumb is dropped in that case.
+  // Home / Tools / PDF Tools / <tool>.
   const isPdfTool = route !== 'pdf' && route.startsWith('pdf-')
   const crumbs =
     route === 'home'
       ? []
       : [
-          { label: t('crumb.overview'), route: 'home' as RouteId },
-          ...(route === 'convert' || route === 'resize' || route === 'pdf' || route === 'ocr' || route === 'batch' || isPdfTool
+          { label: t('nav.home'), route: 'home' as RouteId },
+          ...(route === 'convert' || route === 'resize' || route === 'crop' || route === 'pdf' || route === 'ocr' || route === 'batch' || isPdfTool
             ? [{ label: t('crumb.tools'), route: 'tools' as RouteId }]
             : []),
           ...(isPdfTool ? [{ label: t('crumb.pdfTools'), route: 'pdf' as RouteId }] : []),
@@ -323,7 +444,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
 
         <Box sx={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, minHeight: fitViewport ? 0 : undefined }}>
           <AppBar position="sticky" sx={{ zIndex: (t) => t.zIndex.drawer + 1 }}>
-            <Toolbar sx={{ minHeight: 64, gap: 1, px: { xs: 1.5, md: 3 } }}>
+            <Toolbar variant="dense" sx={{ minHeight: 56, gap: 1, px: { xs: 1.5, md: 3 } }}>
               {!isDesktop && (
                 <IconButton
                   edge="start"
@@ -395,6 +516,57 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
               >
                 <GridViewIcon />
               </IconButton>
+              <Tooltip title={t('cmd.openPalette')}>
+                <Button
+                  type="button"
+                  size="small"
+                  variant="outlined"
+                  onClick={() => setPaletteOpen(true)}
+                  aria-label={t('cmd.openPalette')}
+                  sx={{
+                    display: { xs: 'none', sm: 'inline-flex' },
+                    minWidth: 0,
+                    px: 1,
+                    py: 0.5,
+                    fontFamily: 'monospace',
+                    fontSize: '0.75rem',
+                    color: 'text.secondary',
+                    borderColor: 'divider',
+                  }}
+                >
+                  Ctrl K
+                </Button>
+              </Tooltip>
+              {installPrompt && (
+                <Tooltip title={t('pwa.installTip')}>
+                  <Button
+                    type="button"
+                    size="small"
+                    variant="outlined"
+                    color="primary"
+                    startIcon={<InstallDesktopIcon sx={{ fontSize: 16 }} />}
+                    onClick={() => void triggerInstall()}
+                    sx={{ display: { xs: 'none', sm: 'inline-flex' }, px: 1.25, py: 0.5 }}
+                  >
+                    {t('pwa.install')}
+                  </Button>
+                </Tooltip>
+              )}
+              <Tooltip title={offline ? t('pwa.offlineTip') : t('header.localBadgeTip')}>
+                <Chip
+                  icon={offline ? <CloudOffIcon sx={{ fontSize: 16 }} /> : <ShieldOutlinedIcon sx={{ fontSize: 16 }} />}
+                  label={offline ? t('pwa.offlineBadge') : t('header.localBadge')}
+                  size="small"
+                  sx={{
+                    display: { xs: 'none', md: 'inline-flex' },
+                    bgcolor: (th) => alpha(offline ? th.palette.info.main : th.palette.success.main, 0.1),
+                    color: offline ? 'info.main' : 'success.main',
+                    border: 1,
+                    borderColor: (th) => alpha(offline ? th.palette.info.main : th.palette.success.main, 0.25),
+                    '& .MuiChip-icon': { color: offline ? 'info.main' : 'success.main' },
+                  }}
+                />
+              </Tooltip>
               <Button
                 type="button"
                 id="language-toggle"
@@ -411,43 +583,6 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
               <IconButton aria-label={t('header.help')} title={t('header.help')} onClick={() => go('help')}>
                 <HelpOutlineIcon />
               </IconButton>
-              <IconButton
-                aria-label={t('header.profile')}
-                title={t('header.profile')}
-                onClick={(e) => setProfileAnchor(e.currentTarget)}
-              >
-                <AccountCircleIcon />
-              </IconButton>
-              <Menu
-                anchorEl={profileAnchor}
-                open={Boolean(profileAnchor)}
-                onClose={() => setProfileAnchor(null)}
-                anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-              >
-                <Box sx={{ px: 2, py: 1, maxWidth: 280 }}>
-                  <Typography variant="subtitle2">{t('header.profile')}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {t('header.profileText')}
-                  </Typography>
-                </Box>
-                <Divider />
-                <MenuItem
-                  onClick={() => {
-                    setProfileAnchor(null)
-                    go('settings')
-                  }}
-                >
-                  {t('nav.settings')}
-                </MenuItem>
-                <MenuItem
-                  onClick={() => {
-                    setProfileAnchor(null)
-                    go('help')
-                  }}
-                >
-                  {t('nav.help')}
-                </MenuItem>
-              </Menu>
             </Toolbar>
           </AppBar>
 
@@ -462,19 +597,19 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
               width: '100%',
               maxWidth: 1440,
               mx: 'auto',
-              px: { xs: 2, md: 4 },
-              py: fitViewport ? { xs: 2, md: 2 } : { xs: 2, md: 4 },
+              px: { xs: 2, md: 3 },
+              py: fitViewport ? 1.5 : 2,
             }}
           >
             {crumbs.length > 0 && (
-              <Breadcrumbs aria-label={t('shell.crumbAria')} sx={{ mb: fitViewport ? 2 : 3 }}>
+              <Breadcrumbs aria-label={t('shell.crumbAria')} sx={{ mb: fitViewport ? 1 : 2, flex: 'none' }}>
                 {crumbs.map((c, i) =>
                   i === crumbs.length - 1 ? (
                     <Typography
                       key={c.route}
                       color="text.primary"
                       variant="body2"
-                      sx={{ minHeight: 24, display: 'inline-flex', alignItems: 'center' }}
+                      sx={{ minHeight: 22, display: 'inline-flex', alignItems: 'center' }}
                     >
                       {c.label}
                     </Typography>
@@ -485,7 +620,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                       variant="body2"
                       underline="hover"
                       onClick={() => onNavigate(c.route)}
-                      sx={{ minHeight: 24, py: 0.25, display: 'inline-flex', alignItems: 'center' }}
+                      sx={{ minHeight: 22, py: 0, display: 'inline-flex', alignItems: 'center' }}
                     >
                       {c.label}
                     </Link>
@@ -502,108 +637,80 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                 minHeight: fitViewport ? 0 : undefined,
                 display: fitViewport ? 'flex' : undefined,
                 flexDirection: 'column',
+                overflowY: fitViewport ? (isPdfWorkspace ? 'hidden' : 'auto') : undefined,
               }}
             >
               {children}
             </Box>
           </Box>
 
-          {/* No footer in the viewport-fit workspace — it would eat
-              workspace height. Every other route keeps it. */}
-          {!fitViewport && (
-          <Box
-            component="footer"
-            sx={{ borderTop: 1, borderColor: 'divider', bgcolor: 'background.paper', px: { xs: 2, md: 4 }, py: 4 }}
-          >
+          {/* Slim status-bar footer on desktop (hidden on PDF workspaces). */}
+          {!(isPdfWorkspace && isDesktop) && (
             <Box
+              component="footer"
               sx={{
-                maxWidth: 1440,
-                mx: 'auto',
-                display: 'grid',
-                gap: 3,
-                gridTemplateColumns: { xs: '1fr 1fr', md: '2fr 1fr 1fr 1fr' },
+                flex: 'none',
+                borderTop: 1,
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+                px: { xs: 2, md: 3 },
+                py: 1,
               }}
             >
-              <Box>
-                <Typography variant="subtitle2" gutterBottom>
-                  OpenPixel Studio
+              <Box
+                sx={{
+                  maxWidth: 1440,
+                  mx: 'auto',
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 2,
+                }}
+              >
+                <Typography variant="caption" color="text.secondary">
+                  {t('footer.copyright')} · {t('footer.localNote')}
                 </Typography>
-              </Box>
-              <Box>
-                <Typography variant="overline" color="text.secondary" display="block" gutterBottom>
-                  {t('footer.tools')}
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start' }}>
-                  <Button size="small" onClick={() => onNavigate('tools')} sx={{ px: 0, minWidth: 0 }}>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+                  <Link component="button" variant="caption" underline="hover" color="text.secondary" onClick={() => onNavigate('tools')}>
                     {t('nav.tools')}
-                  </Button>
-                  <Button size="small" onClick={() => onNavigate('convert')} sx={{ px: 0, minWidth: 0 }}>
-                    {t('nav.convert')}
-                  </Button>
-                  <Button size="small" onClick={() => onNavigate('pdf')} sx={{ px: 0, minWidth: 0 }}>
-                    {t('nav.pdf')}
-                  </Button>
-                  <Button size="small" onClick={() => onNavigate('ocr')} sx={{ px: 0, minWidth: 0 }}>
-                    {t('nav.ocr')}
-                  </Button>
-                </Box>
-              </Box>
-              <Box>
-                <Typography variant="overline" color="text.secondary" display="block" gutterBottom>
-                  {t('footer.resources')}
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start' }}>
-                  <Button size="small" onClick={() => onNavigate('formats')} sx={{ px: 0, minWidth: 0 }}>
+                  </Link>
+                  <Link component="button" variant="caption" underline="hover" color="text.secondary" onClick={() => onNavigate('formats')}>
                     {t('nav.formats')}
-                  </Button>
-                  <Button size="small" onClick={() => onNavigate('settings')} sx={{ px: 0, minWidth: 0 }}>
+                  </Link>
+                  <Link component="button" variant="caption" underline="hover" color="text.secondary" onClick={() => onNavigate('settings')}>
                     {t('nav.settings')}
-                  </Button>
-                  <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0, minWidth: 0 }}>
+                  </Link>
+                  <Link component="button" variant="caption" underline="hover" color="text.secondary" onClick={() => onNavigate('help')}>
                     {t('nav.help')}
-                  </Button>
-                  <Button
-                    size="small"
-                    component="a"
+                  </Link>
+                  <Link
+                    variant="caption"
+                    underline="hover"
+                    color="text.secondary"
                     href="https://github.com/rajuofficialasf-hub/openpixel"
                     target="_blank"
                     rel="noreferrer"
-                    sx={{ px: 0, minWidth: 0 }}
                   >
                     GitHub
-                  </Button>
-                </Box>
-              </Box>
-              <Box>
-                <Typography variant="overline" color="text.secondary" display="block" gutterBottom>
-                  {t('footer.legal')}
-                </Typography>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-start' }}>
-                  <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0, minWidth: 0 }}>
-                    {t('footer.privacy')}
-                  </Button>
-                  <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0, minWidth: 0 }}>
-                    {t('footer.terms')}
-                  </Button>
-                  <Button size="small" onClick={() => onNavigate('help')} sx={{ px: 0, minWidth: 0 }}>
-                    {t('footer.about')}
-                  </Button>
+                  </Link>
                 </Box>
               </Box>
             </Box>
-            <Divider sx={{ my: 3 }} />
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              component="p"
-              sx={{ maxWidth: 1440, mx: 'auto', textAlign: 'center' }}
-            >
-              {t('footer.copyright')}
-            </Typography>
-          </Box>
           )}
         </Box>
       </Box>
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        onNavigate={(next, opts) => {
+          setMobileOpen(false)
+          onNavigate(next, opts)
+        }}
+        isDark={isDark}
+        onToggleTheme={toggleTheme}
+        onToggleLanguage={toggleLanguage}
+      />
       <Snackbar
         open={Boolean(snack)}
         autoHideDuration={3000}

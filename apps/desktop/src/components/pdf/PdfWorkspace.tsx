@@ -23,6 +23,8 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import CloseIcon from '@mui/icons-material/Close'
+import SearchIcon from '@mui/icons-material/Search'
+import { WorkflowSteps } from '../WorkflowSteps'
 import {
   Alert,
   Box,
@@ -145,19 +147,23 @@ function ToolShell(props: {
 }) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Button type="button" variant="text" startIcon={<ArrowBackIcon />} onClick={props.onBack}>
-          All PDF tools
-        </Button>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+          <Button type="button" variant="text" size="small" startIcon={<ArrowBackIcon />} onClick={props.onBack}>
+            All PDF tools
+          </Button>
+          <Typography variant="h5" component="h2">
+            {props.tool.title}
+          </Typography>
+        </Box>
+        <WorkflowSteps
+          activeStep={props.result ? 2 : 1}
+          steps={['1. Choose file', '2. Set options', '3. Save result']}
+        />
       </Box>
-      <Box>
-        <Typography variant="h5" component="h2">
-          {props.tool.title}
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          {props.tool.description}
-        </Typography>
-      </Box>
+      <Typography variant="body2" color="text.secondary" sx={{ mt: -1 }}>
+        {props.tool.description}
+      </Typography>
       {props.warning && <Alert severity="warning">{props.warning}</Alert>}
       <Card>
         <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1149,6 +1155,7 @@ interface PdfWorkspaceProps {
 
 export function PdfWorkspace({ droppedPaths, onDroppedConsumed }: PdfWorkspaceProps) {
   const [active, setActive] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
   const [caps, setCaps] = useState<DesktopCapabilities | null>(null)
   const [capsError, setCapsError] = useState<string | null>(null)
 
@@ -1204,53 +1211,117 @@ export function PdfWorkspace({ droppedPaths, onDroppedConsumed }: PdfWorkspacePr
   }
 
   const groups: ('PDF' | 'OCR' | 'Documents')[] = ['PDF', 'OCR', 'Documents']
+  const q = query.trim().toLowerCase()
+  const filteredTools = q
+    ? TOOLS.filter(
+        (t) =>
+          t.title.toLowerCase().includes(q) ||
+          t.description.toLowerCase().includes(q) ||
+          t.group.toLowerCase().includes(q),
+      )
+    : TOOLS
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <Box>
-        <Typography variant="h5" component="h2">
-          PDF tools
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Pick a tool — each one opens its own focused page (upload, settings, one action, result).
-          Everything runs on this machine with the native engine; no server, no upload, no account.
-        </Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5 }}>
+        <Box>
+          <Typography variant="h5" component="h2">
+            PDF, OCR & Document tools
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Pick a tool — each opens a focused native workspace (100% offline on this device).
+          </Typography>
+        </Box>
+        <TextField
+          size="small"
+          placeholder="Search PDF, OCR & Document tools…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          slotProps={{
+            input: {
+              startAdornment: <SearchIcon color="action" sx={{ mr: 1 }} />,
+            },
+          }}
+          sx={{ minWidth: { xs: '100%', md: 300 } }}
+        />
       </Box>
       {capsError && <Alert severity="error">Could not read this device's capabilities: {capsError}</Alert>}
       {caps && (
-        <Alert severity="info">
-          This device:{' '}
-          {caps.pdfium_present ? 'PDFium rendering available' : 'no PDFium — text extraction and PDF → image will fail honestly'}{' '}
-          · {caps.tesseract_present ? `${caps.tesseract_version ?? 'Tesseract'} available` : 'no Tesseract — OCR unavailable'}{' '}
-          · {caps.libreoffice_present ? `${caps.libreoffice_version ?? 'LibreOffice'} available` : 'no LibreOffice — document conversion unavailable'}
-        </Alert>
-      )}
-      {groups.map((group) => (
-        <Box key={group}>
-          <Typography variant="overline" color="text.secondary">
-            {group === 'PDF' ? 'PDF' : group === 'OCR' ? 'OCR (Tesseract)' : 'Documents (LibreOffice)'}
-          </Typography>
-          <Grid container spacing={2} sx={{ mt: 0.5 }}>
-            {TOOLS.filter((t) => t.group === group).map((t) => (
-              <Grid key={t.id} size={{ xs: 12, sm: 6, md: 4 }}>
-                <Card
-                  sx={{ height: '100%', cursor: 'pointer', '&:hover': { borderColor: 'primary.main' } }}
-                  onClick={() => setActive(t.id)}
-                >
-                  <CardContent>
-                    <Typography variant="subtitle1">{t.title}</Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      {t.description}
-                    </Typography>
-                    {t.needsPdfium && caps && !caps.pdfium_present && (
-                      <Chip label="Needs libpdfium — not on this device" size="small" color="warning" sx={{ mt: 1 }} />
-                    )}
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))}
-          </Grid>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Chip
+            size="small"
+            color={caps.pdfium_present ? 'success' : 'warning'}
+            variant="outlined"
+            label={caps.pdfium_present ? 'PDFium ready' : 'PDFium missing'}
+          />
+          <Chip
+            size="small"
+            color={caps.tesseract_present ? 'success' : 'warning'}
+            variant="outlined"
+            label={caps.tesseract_present ? `${caps.tesseract_version ?? 'Tesseract'} ready` : 'Tesseract missing'}
+          />
+          <Chip
+            size="small"
+            color={caps.libreoffice_present ? 'success' : 'warning'}
+            variant="outlined"
+            label={caps.libreoffice_present ? `${caps.libreoffice_version ?? 'LibreOffice'} ready` : 'LibreOffice missing'}
+          />
         </Box>
-      ))}
+      )}
+      {filteredTools.length === 0 ? (
+        <Typography variant="body2" color="text.secondary">
+          No tools match that search.
+        </Typography>
+      ) : (
+        groups.map((group) => {
+          const groupItems = filteredTools.filter((t) => t.group === group)
+          if (groupItems.length === 0) return null
+          return (
+            <Box key={group}>
+              <Typography variant="overline" color="text.secondary">
+                {group === 'PDF' ? 'PDF' : group === 'OCR' ? 'OCR (Tesseract)' : 'Documents (LibreOffice)'}
+              </Typography>
+              <Grid container spacing={1.5} sx={{ mt: 0.25 }}>
+                {groupItems.map((t) => (
+                  <Grid key={t.id} size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}>
+                    <Card
+                      sx={{
+                        height: '100%',
+                        cursor: 'pointer',
+                        transition: (th) => th.transitions.create(['border-color', 'transform']),
+                        '&:hover': { borderColor: 'primary.main', transform: 'translateY(-1px)' },
+                      }}
+                      onClick={() => setActive(t.id)}
+                    >
+                      <CardContent sx={{ p: 1.75, '&:last-child': { pb: 1.75 } }}>
+                        <Typography variant="subtitle2" fontWeight={600}>
+                          {t.title}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                            mt: 0.5,
+                          }}
+                        >
+                          {t.description}
+                        </Typography>
+                        {t.needsPdfium && caps && !caps.pdfium_present && (
+                          <Chip label="Needs libpdfium" size="small" color="warning" sx={{ mt: 1 }} />
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
+          )
+        })
+      )}
     </Box>
   )
 }

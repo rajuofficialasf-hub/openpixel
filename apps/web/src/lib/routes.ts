@@ -15,6 +15,7 @@ export type RouteId =
   | 'tools'
   | 'convert'
   | 'resize'
+  | 'crop'
   | 'pdf'
   | 'pdf-merge'
   | 'pdf-split'
@@ -57,6 +58,7 @@ export const ROUTE_PATHS: Record<RouteId, string> = {
   tools: '/tools',
   convert: '/convert',
   resize: '/resize',
+  crop: '/crop',
   pdf: '/pdf',
   'pdf-merge': '/pdf/merge',
   'pdf-split': '/pdf/split',
@@ -198,23 +200,24 @@ export const TOOLS: ToolEntry[] = [
     route: 'convert',
     keywords: ['metadata', 'exif', 'icc', 'xmp', 'info', 'details', 'image'],
   },
-  // ---- Image (CLI-only / coming soon) ----
+  // ---- Image (web — visual crop & rotate) ----
   {
     id: 'crop',
     name: 'Crop Image',
-    description: 'Crop an image to an exact rectangle. Runs in the CLI — the web crop tool is not built yet.',
+    description: 'Drag to crop an image freely or to exact aspect ratios (1:1, 16:9, 4:3, Passport) right in your browser.',
     categories: ['image'],
-    status: 'cli-only',
-    cliCommand: 'openpixel process input.png output.png --op crop:0,0,100,100',
-    keywords: ['crop', 'cut', 'trim', 'image'],
+    status: 'web',
+    route: 'crop',
+    keywords: ['crop', 'cut', 'trim', 'aspect', 'square', 'passport', 'image'],
+    popular: true,
   },
   {
     id: 'rotate',
     name: 'Rotate & Flip Image',
-    description: 'Rotate 90/180/270° or flip horizontally/vertically. Runs in the CLI.',
+    description: 'Rotate 90/180/270° or flip horizontally/vertically with live visual preview in your browser.',
     categories: ['image'],
-    status: 'cli-only',
-    cliCommand: 'openpixel process input.png output.png --rotate 90',
+    status: 'web',
+    route: 'crop',
     keywords: ['rotate', 'flip', 'mirror', 'orientation', 'image'],
   },
   {
@@ -606,8 +609,8 @@ export const TOOL_DESCRIPTIONS_BN: Record<string, string> = {
   'compress-image': 'লক্ষ্য সাইজ মোড দিয়ে ছবি ঠিক ফাইল সাইজে কমপ্রেস করুন, অথবা quality বেছে নিন। ব্যাচ + zip আছে।',
   batch: 'ছবির পুরো ফোল্ডার একসাথে কনভার্ট করুন — একসাথে সর্বোচ্চ ৪টি ফাইল, ফলাফলের zip-সহ।',
   metadata: 'যেকোনো ছবির ফরম্যাট, মাপ, রং, alpha, EXIF, ICC আর XMP তথ্য দেখুন।',
-  crop: 'ছবি ঠিক আয়তক্ষেত্রে কেটে নিন। CLI-তে চলে — ওয়েবে ক্রপ টুল এখনো তৈরি হয়নি।',
-  rotate: '৯০/১৮০/২৭০° ঘোরান বা অনুভূমিক/উল্লম্বভাবে উল্টান। CLI-তে চলে।',
+  crop: 'ড্র্যাগ করে ফ্রি অথবা নির্দিষ্ট অনুপাতে (1:1, 16:9, 4:3, Passport) ছবি ক্রপ করুন — সরাসরি ব্রাউজারেই।',
+  rotate: 'লাইভ প্রিভিউ দেখে ছবি ৯০/১৮০/২৭০° ঘোরান অথবা অনুভূমিক/উল্লম্বভাবে উল্টান — সরাসরি ব্রাউজারেই।',
   'bg-remove': 'ছবি থেকে ব্যাকগ্রাউন্ড সরান। এখনো তৈরি হয়নি — কোনো সংস্করণেই নয়।',
   'pdf-merge': 'একাধিক PDF একত্রে একটি করুন, আপনার বেছে নেওয়া ক্রমে।',
   'pdf-split': 'পেজের রেঞ্জ দিয়ে PDF ভাগ করুন — প্রতিটি রেঞ্জের জন্য একটি করে ডকুমেন্ট।',
@@ -668,28 +671,30 @@ export interface NavItem {
 
 export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
-    label: 'Workspace',
-    items: [
-      { route: 'overview', label: 'Overview', icon: 'home' },
-      { route: 'files', label: 'My Files', icon: 'folder' },
-      { route: 'recent', label: 'Recent Files', icon: 'history' },
-    ],
-  },
-  {
     label: 'Tools',
     items: [
+      { route: 'home', label: 'Home', icon: 'home' },
       { route: 'tools', label: 'All Tools', icon: 'grid', tabId: 'tab-tools' },
       { route: 'convert', label: 'Convert Image', icon: 'image', tabId: 'tab-convert' },
       { route: 'resize', label: 'Resize Image', icon: 'resize', tabId: 'tab-resize' },
+      { route: 'crop', label: 'Crop & Rotate', icon: 'crop', tabId: 'tab-crop' },
       { route: 'pdf', label: 'PDF Tools', icon: 'pdf', tabId: 'tab-pdf' },
       { route: 'ocr', label: 'OCR', icon: 'ocr', tabId: 'tab-ocr' },
       { route: 'batch', label: 'Batch Convert', icon: 'batch', tabId: 'tab-batch' },
-      { route: 'formats', label: 'Formats', icon: 'formats', tabId: 'tab-formats' },
     ],
   },
   {
-    label: 'Account',
+    label: 'Activity',
     items: [
+      { route: 'recent', label: 'Recent Files', icon: 'history' },
+      { route: 'files', label: 'My Files', icon: 'folder' },
+      { route: 'overview', label: 'Overview', icon: 'dashboard' },
+    ],
+  },
+  {
+    label: 'More',
+    items: [
+      { route: 'formats', label: 'Formats', icon: 'formats', tabId: 'tab-formats' },
       { route: 'settings', label: 'Settings', icon: 'settings', tabId: 'tab-settings' },
       { route: 'help', label: 'Help Center', icon: 'help' },
     ],
@@ -702,6 +707,7 @@ export const ROUTE_TITLES: Record<RouteId, { title: string; crumb: string }> = {
   tools: { title: 'All Tools', crumb: 'All Tools' },
   convert: { title: 'Convert Image', crumb: 'Convert Image' },
   resize: { title: 'Resize Image', crumb: 'Resize Image' },
+  crop: { title: 'Crop & Rotate', crumb: 'Crop & Rotate' },
   pdf: { title: 'PDF Tools', crumb: 'PDF Tools' },
   'pdf-merge': { title: 'Merge PDF', crumb: 'Merge PDF' },
   'pdf-split': { title: 'Split PDF', crumb: 'Split PDF' },

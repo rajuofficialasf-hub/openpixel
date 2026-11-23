@@ -7,9 +7,22 @@
 import { useState } from 'react'
 import { Box, Select, Stack, TextField, Typography } from '@mui/material'
 import { parsePageList, parsePageRanges, parseReorder } from '../../lib/pdf'
+import { PdfVisualReorderGrid, PdfVisualSelectGrid } from './PdfVisualPageGrid'
 import { PdfToolPage, type PdfToolAction } from './shared'
 import { useI18n } from '../../lib/use-i18n'
 import { usePdfFile, type PdfToolProps } from './usePdfFile'
+
+function selectedFromInput(text: string, pageCount: number): number[] {
+  if (!text.trim() || pageCount <= 0) return []
+  return parsePageList(text, pageCount) ?? []
+}
+
+function orderFromInput(text: string, pageCount: number): number[] {
+  if (pageCount <= 0) return []
+  const parsed = parseReorder(text, pageCount)
+  if (parsed) return parsed
+  return Array.from({ length: pageCount }, (_, i) => i + 1)
+}
 
 function opError(t: (key: string, vars?: Record<string, string | number>) => string, whatKey: string, pageCount: number): string {
   return t('pdf.opError', { what: t(whatKey), n: pageCount })
@@ -71,6 +84,14 @@ export function RotateTool({ initialFiles, onInitialFilesConsumed }: PdfToolProp
       pdf={pdf}
       primary={primary}
     >
+      <PdfVisualSelectGrid
+        bytes={pdf.bytes}
+        pageCount={pdf.pageCount}
+        selectedPages={selectedFromInput(pages, pdf.pageCount)}
+        onChangeSelected={(next) => setPages(next.join(', '))}
+        emptyMeansAll
+        rotatePreviewDeg={degrees}
+      />
       <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap">
         {pageListField({
           id: 'pdf-rotate-pages',
@@ -121,6 +142,12 @@ export function ExtractTool({ initialFiles, onInitialFilesConsumed }: PdfToolPro
       pdf={pdf}
       primary={{ id: 'pdf-extract-button', label: t('pdf.extractButton'), busyLabel: t('pdf.extracting'), busyKey: 'Extracted PDF', onClick: run }}
     >
+      <PdfVisualSelectGrid
+        bytes={pdf.bytes}
+        pageCount={pdf.pageCount}
+        selectedPages={selectedFromInput(pages, pdf.pageCount)}
+        onChangeSelected={(next) => setPages(next.join(', '))}
+      />
       {pageListField({ id: 'pdf-extract-pages', label: t('pdf.extractPages'), placeholder: t('pdf.extractPlaceholder'), value: pages, onChange: setPages })}
     </PdfToolPage>
   )
@@ -146,6 +173,13 @@ export function RemoveTool({ initialFiles, onInitialFilesConsumed }: PdfToolProp
       pdf={pdf}
       primary={{ id: 'pdf-remove-button', label: t('pdf.removeButton'), busyLabel: t('pdf.removing'), busyKey: 'Removed pages', onClick: run }}
     >
+      <PdfVisualSelectGrid
+        bytes={pdf.bytes}
+        pageCount={pdf.pageCount}
+        selectedPages={selectedFromInput(pages, pdf.pageCount)}
+        onChangeSelected={(next) => setPages(next.join(', '))}
+        accent="error"
+      />
       {pageListField({ id: 'pdf-remove-pages', label: t('pdf.removePages'), placeholder: t('pdf.removePlaceholder'), value: pages, onChange: setPages })}
     </PdfToolPage>
   )
@@ -171,6 +205,12 @@ export function ReorderTool({ initialFiles, onInitialFilesConsumed }: PdfToolPro
       pdf={pdf}
       primary={{ id: 'pdf-reorder-button', label: t('pdf.reorderButton'), busyLabel: t('pdf.reordering'), busyKey: 'Reordered PDF', onClick: run }}
     >
+      <PdfVisualReorderGrid
+        bytes={pdf.bytes}
+        pageCount={pdf.pageCount}
+        order={orderFromInput(order, pdf.pageCount)}
+        onChangeOrder={(next) => setOrder(next.join(', '))}
+      />
       {pageListField({
         id: 'pdf-reorder-order',
         label: t('pdf.reorderOrder'),
@@ -202,6 +242,12 @@ export function DuplicateTool({ initialFiles, onInitialFilesConsumed }: PdfToolP
       pdf={pdf}
       primary={{ id: 'pdf-duplicate-button', label: t('pdf.duplicateButton'), busyLabel: t('pdf.duplicating'), busyKey: 'Duplicated pages', onClick: run }}
     >
+      <PdfVisualSelectGrid
+        bytes={pdf.bytes}
+        pageCount={pdf.pageCount}
+        selectedPages={selectedFromInput(pages, pdf.pageCount)}
+        onChangeSelected={(next) => setPages(next.join(', '))}
+      />
       {pageListField({ id: 'pdf-duplicate-pages', label: t('pdf.duplicatePages'), placeholder: t('pdf.duplicatePlaceholder'), value: pages, onChange: setPages })}
     </PdfToolPage>
   )

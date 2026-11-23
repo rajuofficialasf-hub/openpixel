@@ -6,16 +6,20 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   FormControlLabel,
   Select,
   Slider,
   Stack,
   Switch,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material'
 import { alpha } from '@mui/material/styles'
 import DownloadIcon from '@mui/icons-material/Download'
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import {
   BROWSER_DECODABLE,
   BROWSER_ENCODABLE,
@@ -42,7 +46,11 @@ import type { ResizeSettings, Settings } from '../lib/settings'
 import { recordActivity } from '../lib/activity'
 import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
 import { DropZone } from './DropZone'
+import { EditorShell } from './EditorShell'
+import { ImageCompareSlider } from './ImageCompareSlider'
 import { ToolPageHeader } from './ToolPage'
+import { WorkflowSteps } from './WorkflowSteps'
+import { useNavigation } from './layout/navigation'
 import { useI18n } from '../lib/use-i18n'
 
 type ItemStatus = 'queued' | 'probing' | 'ready' | 'resizing' | 'done' | 'failed' | 'skipped'
@@ -74,6 +82,8 @@ interface ResizeItem {
 interface ResizeWorkspaceProps {
   settings: Settings
   onSettingsChange: (settings: Settings) => void
+  initialFiles?: File[]
+  onInitialFilesConsumed?: () => void
 }
 
 function downloadBlob(blob: Blob, filename: string): void {
@@ -124,8 +134,14 @@ function modeLabels(t: TFn): { id: ResizeMode; label: string; hint: string }[] {
   ]
 }
 
-export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceProps) {
+export function ResizeWorkspace({
+  settings,
+  onSettingsChange,
+  initialFiles,
+  onInitialFilesConsumed,
+}: ResizeWorkspaceProps) {
   const { t, lang } = useI18n()
+  const { navigate } = useNavigation()
   const [items, setItems] = useState<ResizeItem[]>([])
   const [mode, setMode] = useState<ResizeMode>(settings.resize.mode)
   const [presetId, setPresetId] = useState(settings.resize.preset)
@@ -139,6 +155,8 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
   const [background, setBackground] = useState(settings.defaultBackground)
   const [pngCompression, setPngCompression] = useState(1)
   const [allowUpscale, setAllowUpscale] = useState(false)
+  const [compareMode, setCompareMode] = useState<'split' | 'side'>('split')
+  const [activeQuickPreset, setActiveQuickPreset] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
   const [zipping, setZipping] = useState(false)
   const [zipError, setZipError] = useState<string | null>(null)
@@ -262,6 +280,17 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
     },
     [decodableFormats, lang, t],
   )
+
+  // Paste / chaining hand-off: consume each distinct `initialFiles`
+  // reference once (StrictMode-safe and supports repeated paste).
+  const lastInitialRef = useRef<File[] | null>(null)
+  useEffect(() => {
+    if (initialFiles && initialFiles.length > 0 && lastInitialRef.current !== initialFiles) {
+      lastInitialRef.current = initialFiles
+      void handleFiles(initialFiles)
+      onInitialFilesConsumed?.()
+    }
+  }, [initialFiles, handleFiles, onInitialFilesConsumed])
 
   const clearFiles = useCallback(() => {
     setItems([])
@@ -430,486 +459,734 @@ export function ResizeWorkspace({ settings, onSettingsChange }: ResizeWorkspaceP
 
   const single = items.length === 1 ? items[0] : null
   const doneCount = items.filter((i) => i.status === 'done').length
+  const canSplitCompare =
+    single !== null &&
+    single.result !== null &&
+    BROWSER_DECODABLE.includes(single.sourceFormat) &&
+    BROWSER_DECODABLE.includes(targetFormat)
+
+  const quickPresets = [
+    {
+      id: 'passport',
+      label: t('preset.passport'),
+      width: 300,
+      height: 300,
+      mode: 'fill' as ResizeMode,
+      format: 'jpeg',
+      quality: 85,
+      targetSize: '100KB',
+    },
+    {
+      id: 'webFast',
+      label: t('preset.webFast'),
+      width: 1200,
+      height: 1200,
+      mode: 'fit' as ResizeMode,
+      format: 'webp',
+      quality: 80,
+      targetSize: '',
+    },
+    {
+      id: 'instagram',
+      label: t('preset.instagram'),
+      width: 1080,
+      height: 1080,
+      mode: 'fill' as ResizeMode,
+      format: 'jpeg',
+      quality: 85,
+      targetSize: '',
+    },
+    {
+      id: 'youtube',
+      label: t('preset.youtube'),
+      width: 1280,
+      height: 720,
+      mode: 'fill' as ResizeMode,
+      format: 'jpeg',
+      quality: 88,
+      targetSize: '',
+    },
+    {
+      id: 'email',
+      label: t('preset.email'),
+      width: 1600,
+      height: 1600,
+      mode: 'fit' as ResizeMode,
+      format: 'jpeg',
+      quality: 82,
+      targetSize: '200KB',
+    },
+  ]
+
+  const applyQuickPreset = (p: (typeof quickPresets)[number]) => {
+    setActiveQuickPreset(p.id)
+    setPresetId('custom')
+    setMode(p.mode)
+    setWidthText(String(p.width))
+    setHeightText(String(p.height))
+    setTargetFormat(p.format)
+    setQuality(p.quality)
+    setTargetSizeText(p.targetSize)
+    persistResize({ mode: p.mode, preset: 'custom', format: p.format, quality: p.quality })
+  }
 
   return (
-    <Box component="section" aria-labelledby="resize-heading">
-      <Stack spacing={3}>
+    <Box component="section" aria-labelledby="resize-heading" sx={{ display: 'flex', flexDirection: 'column', flex: { lg: 1 }, minHeight: { lg: 0 } }}>
+      <Stack spacing={2} sx={{ flex: { lg: 1 }, minHeight: { lg: 0 } }}>
         <ToolPageHeader
           headingId="resize-heading"
           title={t('rs.title')}
           description={t('rs.desc')}
+          actions={
+            <WorkflowSteps
+              activeStep={items.length === 0 ? 0 : doneCount > 0 ? 2 : 1}
+              steps={[t('step.uploadFiles'), t('step.options'), t('step.download')]}
+            />
+          }
         />
 
         {items.length === 0 && (
-          <DropZone
-            inputId="resize-file"
-            label={t('bt.dropLabel')}
-            hint={t('rs.dropHint')}
-            multiple
-            accept="image/*"
-            onFiles={handleFiles}
-          />
-        )}
-
-        {items.length > 0 && (
-          <Card>
-            <CardContent>
-              <Typography variant="overline" color="text.secondary">
-                Settings
-              </Typography>
-              <Stack spacing={2.5} sx={{ mt: 1 }}>
-                <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' } }}>
-                  <Box>
-                    <Typography variant="subtitle2" component="label" htmlFor="resize-mode">
-                      {t('rs.modeLabel')}
-                    </Typography>
-                    <Select
-                      native
-                      fullWidth
-                      id="resize-mode"
-                      value={mode}
-                      onChange={(e) => {
-                        const next = e.target.value as ResizeMode
-                        setMode(next)
-                        persistResize({ mode: next })
-                      }}
-                      sx={{ mt: 0.5 }}
-                    >
-                      {modeLabels(t).map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </Select>
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                      {modeLabels(t).find((m) => m.id === mode)?.hint}
-                    </Typography>
-                  </Box>
-
-                  <Box>
-                    <Typography variant="subtitle2" component="label" htmlFor="resize-preset">
-                      {t('rs.presetLabel')}
-                    </Typography>
-                    <Select
-                      native
-                      fullWidth
-                      id="resize-preset"
-                      value={presetId}
-                      onChange={(e) => handlePresetChange(e.target.value)}
-                      sx={{ mt: 0.5 }}
-                    >
-                      {RESIZE_PRESETS.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.id === 'custom' ? t('rs.presetCustom') : p.label}
-                        </option>
-                      ))}
-                    </Select>
-                  </Box>
-                </Box>
-
-                <Box>
-                  <Stack direction="row" spacing={2} alignItems="flex-end" flexWrap="wrap">
-                    <TextField
-                      label={t('rs.width')}
-                      type="number"
-                      id="resize-width"
-                      value={widthText}
-                      onChange={(e) => handleWidthChange(e.target.value)}
-                      inputProps={{ min: 1, max: 16384, 'aria-label': t('rs.widthAria') }}
-                      error={!widthValid}
-                      helperText={!widthValid ? t('rs.widthError') : undefined}
-                      sx={{ width: 160 }}
-                    />
-                    <TextField
-                      label={t('rs.height')}
-                      type="number"
-                      id="resize-height"
-                      value={heightText}
-                      onChange={(e) => handleHeightChange(e.target.value)}
-                      inputProps={{ min: 1, max: 16384, 'aria-label': t('rs.heightAria') }}
-                      error={!heightValid}
-                      helperText={!heightValid ? t('rs.heightError') : undefined}
-                      sx={{ width: 160 }}
-                    />
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          id="resize-lock-aspect"
-                          checked={lockAspect}
-                          onChange={(e) => setLockAspect(e.target.checked)}
-                        />
-                      }
-                      label={t('rs.lockAspect')}
-                    />
-                    <FormControlLabel
-                      control={
-                        <Switch
-                          id="resize-allow-upscale"
-                          checked={allowUpscale}
-                          onChange={(e) => setAllowUpscale(e.target.checked)}
-                        />
-                      }
-                      label={t('rs.allowUpscale')}
-                    />
-                  </Stack>
-                  {expected && firstReady && (
-                    <Typography variant="body2" sx={{ mt: 1 }} id="resize-expected">
-                      {t('rs.expected', { w: expected.width, h: expected.height })}
-                      {t('rs.expectedFrom', { w: firstReady.width, h: firstReady.height })}
-                    </Typography>
-                  )}
-                </Box>
-
-                <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' } }}>
-                  <Box>
-                    <Typography variant="subtitle2" component="label" htmlFor="resize-target-format">
-                      {t('rs.outputFormat')}
-                    </Typography>
-                    <Select
-                      native
-                      fullWidth
-                      id="resize-target-format"
-                      value={targetFormat}
-                      onChange={(e) => {
-                        setTargetFormat(e.target.value)
-                        persistResize({ format: e.target.value })
-                      }}
-                      sx={{ mt: 0.5 }}
-                    >
-                      {targets.map((t) => (
-                        <option key={t.format_id} value={t.format_id}>
-                          {formatLabel(t.format_id)}
-                        </option>
-                      ))}
-                    </Select>
-                    <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                      {t('rs.targetsNote')}
-                    </Typography>
-                  </Box>
-
-                  <Box>
-                    <Typography variant="subtitle2" component="label" htmlFor="resize-target-size">
-                      {t('rs.targetSize')}
-                    </Typography>
-                    <TextField
-                      fullWidth
-                      id="resize-target-size"
-                      placeholder={t('rs.targetSizePlaceholder')}
-                      value={targetSizeText}
-                      onChange={(e) => setTargetSizeText(e.target.value)}
-                      error={targetSizeInvalid}
-                      helperText={
-                        targetSizeInvalid ? t('rs.targetSizeInvalid') : t('rs.targetSizeHelp')
-                      }
-                      sx={{ mt: 0.5 }}
-                    />
-                  </Box>
-                </Box>
-
-                {isLossyFormat(targetFormat) && (
-                  <Box>
-                    <Typography variant="subtitle2" component="label">
-                      {t('rs.quality', { n: quality })}
-                    </Typography>
-                    <Slider
-                      aria-label={t('rs.qualityAria')}
-                      min={1}
-                      max={100}
-                      value={quality}
-                      disabled={targetBytes !== null}
-                      onChange={(_, value) => {
-                        setQuality(value as number)
-                        persistResize({ quality: value as number })
-                      }}
-                    />
-                    {targetBytes !== null && (
-                      <Typography variant="caption" color="text.secondary">
-                        {t('rs.qualityDisabled')}
-                      </Typography>
-                    )}
-                  </Box>
-                )}
-
-                {targetFormat === 'png' && (
-                  <Box>
-                    <Typography variant="subtitle2" component="label">
-                      {t('cv.pngCompression', { n: pngCompression })}
-                    </Typography>
-                    <Slider
-                      aria-label={t('cv.pngCompressionAria')}
-                      min={0}
-                      max={2}
-                      step={1}
-                      value={pngCompression}
-                      onChange={(_, value) => setPngCompression(value as number)}
-                    />
-                  </Box>
-                )}
-
-                <Box>
-                  <Typography variant="subtitle2" component="label">
-                    {t('rs.background')}
-                  </Typography>
-                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
-                    <TextField
-                      type="color"
-                      size="small"
-                      value={background}
-                      onChange={(e) => setBackground(e.target.value)}
-                      inputProps={{ 'aria-label': t('cv.bgPicker') }}
-                      sx={{ width: 56, '& input': { p: 0.5, height: 40, cursor: 'pointer' } }}
-                    />
-                    <TextField
-                      size="small"
-                      value={background}
-                      onChange={(e) => setBackground(e.target.value)}
-                      inputProps={{ 'aria-label': t('cv.bgHex') }}
-                      sx={{ width: 120, '& input': { fontFamily: 'monospace' } }}
-                    />
-                  </Stack>
-                </Box>
-
-                <Stack direction="row" spacing={1.5} flexWrap="wrap">
-                  <Button
-                    type="button"
-                    variant="contained"
-                    size="large"
-                    id="resize-button"
-                    onClick={resizeAll}
-                    disabled={!canResize}
-                  >
-                    {running
-                      ? t('rs.resizing')
-                      : items.length > 1
-                        ? t('rs.resizeAll', { n: items.length })
-                        : t('rs.resize')}
-                  </Button>
-                  <Button type="button" variant="outlined" onClick={clearFiles}>
-                    {t('rs.chooseDifferent')}
-                  </Button>
-                  {doneCount > 1 && (
-                    <Button
-                      type="button"
-                      variant="outlined"
-                      id="resize-download-all"
-                      startIcon={<DownloadIcon />}
-                      onClick={downloadAllAsZip}
-                      disabled={zipping}
-                    >
-                      {zipping ? t('rs.zipping') : t('rs.downloadAll')}
-                    </Button>
-                  )}
-                </Stack>
-                {zipError && <Alert severity="error">{zipError}</Alert>}
-              </Stack>
-            </CardContent>
-          </Card>
-        )}
-
-        {warnings.length > 0 && (
-          <Box
-            role="status"
-            sx={{
-              borderRadius: 1,
-              border: 1,
-              borderColor: (t) => alpha(t.palette.warning.main, 0.4),
-              bgcolor: (t) => alpha(t.palette.warning.main, 0.08),
-              p: 3,
-            }}
-          >
-            <Box component="ul" sx={{ m: 0, pl: 2.5, typography: 'body2' }}>
-              {warnings.map((w, i) => (
-                <li key={i}>{w}</li>
-              ))}
-            </Box>
+          <Box sx={{ flex: { lg: 1 }, display: 'flex', flexDirection: 'column', '& > *': { flex: { lg: 1 } } }}>
+            <DropZone
+              inputId="resize-file"
+              label={t('bt.dropLabel')}
+              hint={t('rs.dropHint')}
+              multiple
+              accept="image/*"
+              onFiles={handleFiles}
+            />
           </Box>
         )}
 
-        {error && <Alert severity="error">{error}</Alert>}
-
-        {single && (
-          <Card>
-            <CardContent>
-              <Typography variant="overline" color="text.secondary">
-                {t('rs.beforeAfter')}
-              </Typography>
-              <Stack spacing={2} sx={{ mt: 1 }}>
-                <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' } }}>
-                  <Box>
-                    <Typography variant="subtitle2">{t('rs.original')}</Typography>
-                    {single.sourceFormat !== 'unknown' && BROWSER_DECODABLE.includes(single.sourceFormat) ? (
-                      <Box
-                        component="img"
-                        src={single.thumbUrl}
-                        alt={`Original ${single.file.name}`}
-                        sx={{ display: 'block', maxHeight: 320, maxWidth: '100%', borderRadius: 1, objectFit: 'contain', mt: 1 }}
-                      />
-                    ) : (
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                        {t('rs.noPreview', { format: formatLabel(single.sourceFormat) })}
-                      </Typography>
-                    )}
-                    <Typography variant="body2" sx={{ mt: 1 }}>
-                      {single.file.name} — {formatBytes(single.file.size)}
-                      {single.width > 0 && ` — ${single.width} × ${single.height} px`}
-                    </Typography>
-                  </Box>
-                  <Box>
-                    <Typography variant="subtitle2">{t('rs.result')}</Typography>
-                    {single.result ? (
-                      <>
-                        <Box
-                          component="img"
-                          src={single.result.url}
-                          alt={`Resized ${single.file.name}`}
-                          sx={{ display: 'block', maxHeight: 320, maxWidth: '100%', borderRadius: 1, objectFit: 'contain', mt: 1 }}
-                        />
-                        <Typography variant="body2" sx={{ mt: 1 }} role="status">
-                          <Box component="span" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
-                            {formatLabel(single.sourceFormat)} → {formatLabel(targetFormat)}
-                          </Box>{' '}
-                          · {formatBytes(single.file.size)} → {formatBytes(single.result.bytes)} (
-                          {single.result.width} × {single.result.height} px) —{' '}
-                          {(() => {
-                            // The honest change: a re-encode can make
-                            // the file BIGGER (a JPEG original at a
-                            // lower quality, resized at quality 85) —
-                            // saying "0% smaller" then would be a lie.
-                            const pct =
-                              single.file.size > 0
-                                ? Math.round((1 - single.result!.bytes / single.file.size) * 100)
-                                : 0
-                            return pct > 0
-                              ? t('rs.smaller', { n: pct })
-                              : pct < 0
-                                ? t('rs.larger', { n: -pct })
-                                : t('rs.sameSize')
-                          })()}
+        {items.length > 0 && (
+          <EditorShell
+            main={
+              <>
+                {single && (
+                  <Card>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', mb: 1 }}>
+                        <Typography variant="overline" color="text.secondary">
+                          {t('rs.beforeAfter')}
                         </Typography>
-                        {single.result.qualityUsed !== null && (
-                          <Typography variant="body2" color="text.secondary">
-                            {t('rs.qualityUsed', { n: single.result.qualityUsed })}
-                            {single.result.targetMet === true && t('rs.targetMet')}
-                            {single.result.targetMet === false && t('rs.targetNotMet')}
-                          </Typography>
-                        )}
-                        <Typography variant="body2" color="text.secondary">
-                          {t(single.result.engine === 'wasm' ? 'rs.engineWasm' : 'rs.engineCanvas')}
-                        </Typography>
-                        {single.result.warnings.length > 0 && (
-                          <Box component="ul" sx={{ m: 0, mt: 1, pl: 2.5, typography: 'body2' }}>
-                            {single.result.warnings.map((w, i) => (
-                              <li key={i}>{w}</li>
-                            ))}
-                          </Box>
-                        )}
-                      </>
-                    ) : (
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                        {single.status === 'resizing' ? t('rs.resizing') : t('rs.pressResize')}
-                      </Typography>
-                    )}
-                  </Box>
-                </Box>
-                {single.result && (
-                  <Stack direction="row" flexWrap="wrap" spacing={1.5}>
-                    <Button
-                      type="button"
-                      variant="contained"
-                      id="resize-download"
-                      startIcon={<DownloadIcon />}
-                      onClick={() => downloadBlob(single.result!.blob, outputFileName(single.file.name, targetFormat))}
-                    >
-                      {t('common.download')} {outputFileName(single.file.name, targetFormat)}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outlined"
-                      onClick={() =>
-                        setItems((prev) => prev.map((p) => (p.id === single.id ? { ...p, status: 'ready', result: null } : p)))
-                      }
-                    >
-                      {t('rs.resizeAgain')}
-                    </Button>
-                  </Stack>
-                )}
-                {single.status === 'failed' && single.error && <Alert severity="error">{single.error}</Alert>}
-                {single.status === 'skipped' && single.error && (
-                  <Alert severity="warning">{single.error}</Alert>
-                )}
-              </Stack>
-            </CardContent>
-          </Card>
-        )}
-
-        {items.length > 1 && (
-          <Card>
-            <CardContent>
-              <Stack spacing={1.5}>
-                {items.map((item) => {
-                  const status = statusTextProps(item.status, t)
-                  return (
-                    <Box
-                      key={item.id}
-                      sx={{
-                        display: 'flex',
-                        gap: 2,
-                        alignItems: 'center',
-                        border: 1,
-                        borderColor: 'divider',
-                        borderRadius: 1,
-                        p: 2,
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <Box
-                        component="img"
-                        src={item.thumbUrl}
-                        alt=""
-                        sx={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 1 }}
-                      />
-                      <Box sx={{ flex: 1, minWidth: 180 }}>
-                        <Typography variant="body2" fontWeight={500} noWrap>
-                          {item.file.name}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {item.width > 0
-                            ? `${item.width} × ${item.height} px — ${formatBytes(item.file.size)}`
-                            : formatBytes(item.file.size)}
-                          {item.result &&
-                            ` → ${item.result.width} × ${item.result.height} px — ${formatBytes(item.result.bytes)}`}
-                        </Typography>
-                        {item.error && (
-                          <Typography variant="body2" color="error.main">
-                            {item.error}
-                          </Typography>
-                        )}
-                        {item.result?.targetMet === false && (
-                          <Typography variant="body2" color="warning.main">
-                            {t('rs.targetNotMetRow')}
-                          </Typography>
-                        )}
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          {canSplitCompare && (
+                            <ToggleButtonGroup
+                              exclusive
+                              size="small"
+                              value={compareMode}
+                              onChange={(_, val: 'split' | 'side' | null) => {
+                                if (val) setCompareMode(val)
+                              }}
+                              aria-label={t('rs.beforeAfter')}
+                            >
+                              <ToggleButton value="split" sx={{ py: 0.25, px: 1, fontSize: '0.75rem' }}>
+                                {t('cmp.split')}
+                              </ToggleButton>
+                              <ToggleButton value="side" sx={{ py: 0.25, px: 1, fontSize: '0.75rem' }}>
+                                {t('cmp.sideBySide')}
+                              </ToggleButton>
+                            </ToggleButtonGroup>
+                          )}
+                          <Button type="button" variant="outlined" size="small" onClick={clearFiles}>
+                            {t('rs.chooseDifferent')}
+                          </Button>
+                        </Stack>
                       </Box>
-                      <Typography variant="caption" sx={{ fontFamily: 'monospace', color: status.color }}>
-                        {status.label}
+                      <Stack spacing={1.5}>
+                        {canSplitCompare && single.result && compareMode === 'split' ? (
+                          <Box>
+                            {(() => {
+                              const pct =
+                                single.file.size > 0
+                                  ? Math.round((1 - single.result!.bytes / single.file.size) * 100)
+                                  : 0
+                              return (
+                                <ImageCompareSlider
+                                  beforeUrl={single.thumbUrl}
+                                  afterUrl={single.result.url}
+                                  beforeLabel={`${t('rs.original')} · ${formatBytes(single.file.size)}`}
+                                  afterLabel={`${t('rs.result')} · ${formatBytes(single.result.bytes)}`}
+                                  beforeAlt={`Original ${single.file.name}`}
+                                  afterAlt={`Resized ${single.file.name}`}
+                                  deltaLabel={pct > 0 ? `−${pct}%` : pct < 0 ? `+${-pct}%` : '0%'}
+                                  deltaPositive={pct > 0}
+                                />
+                              )
+                            })()}
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, textAlign: 'center' }}>
+                              {t('cmp.dragHint')}
+                            </Typography>
+                            <Typography variant="caption" sx={{ mt: 0.75, display: 'block' }} role="status">
+                              <Box component="span" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+                                {formatLabel(single.sourceFormat)} → {formatLabel(targetFormat)}
+                              </Box>{' '}
+                              · {formatBytes(single.file.size)} → {formatBytes(single.result.bytes)} (
+                              {single.result.width} × {single.result.height} px) —{' '}
+                              {(() => {
+                                const pct =
+                                  single.file.size > 0
+                                    ? Math.round((1 - single.result!.bytes / single.file.size) * 100)
+                                    : 0
+                                return pct > 0
+                                  ? t('rs.smaller', { n: pct })
+                                  : pct < 0
+                                    ? t('rs.larger', { n: -pct })
+                                    : t('rs.sameSize')
+                              })()}
+                            </Typography>
+                            {single.result.qualityUsed !== null && (
+                              <Typography variant="caption" color="text.secondary" display="block">
+                                {t('rs.qualityUsed', { n: single.result.qualityUsed })}
+                                {single.result.targetMet === true && t('rs.targetMet')}
+                                {single.result.targetMet === false && t('rs.targetNotMet')}
+                              </Typography>
+                            )}
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              {t(single.result.engine === 'wasm' ? 'rs.engineWasm' : 'rs.engineCanvas')}
+                            </Typography>
+                            {single.result.warnings.length > 0 && (
+                              <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2, typography: 'caption' }}>
+                                {single.result.warnings.map((w, i) => (
+                                  <li key={i}>{w}</li>
+                                ))}
+                              </Box>
+                            )}
+                          </Box>
+                        ) : (
+                        <Box sx={{ display: 'grid', gap: 2, gridTemplateColumns: { sm: '1fr 1fr' } }}>
+                          <Box>
+                            <Typography variant="subtitle2">{t('rs.original')}</Typography>
+                            {single.sourceFormat !== 'unknown' && BROWSER_DECODABLE.includes(single.sourceFormat) ? (
+                              <Box
+                                component="img"
+                                src={single.thumbUrl}
+                                alt={`Original ${single.file.name}`}
+                                sx={{
+                                  display: 'block',
+                                  maxHeight: { xs: 220, lg: 'clamp(130px, calc(100dvh - 450px), 250px)' },
+                                  maxWidth: '100%',
+                                  borderRadius: 1,
+                                  objectFit: 'contain',
+                                  mt: 0.75,
+                                }}
+                              />
+                            ) : (
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                {t('rs.noPreview', { format: formatLabel(single.sourceFormat) })}
+                              </Typography>
+                            )}
+                            <Typography variant="caption" color="text.secondary" sx={{ mt: 0.75, display: 'block' }}>
+                              {single.file.name} — {formatBytes(single.file.size)}
+                              {single.width > 0 && ` — ${single.width} × ${single.height} px`}
+                            </Typography>
+                          </Box>
+                          <Box>
+                            <Typography variant="subtitle2">{t('rs.result')}</Typography>
+                            {single.result ? (
+                              <>
+                                <Box
+                                  component="img"
+                                  src={single.result.url}
+                                  alt={`Resized ${single.file.name}`}
+                                  sx={{
+                                    display: 'block',
+                                    maxHeight: { xs: 220, lg: 'clamp(130px, calc(100dvh - 450px), 250px)' },
+                                    maxWidth: '100%',
+                                    borderRadius: 1,
+                                    objectFit: 'contain',
+                                    mt: 0.75,
+                                  }}
+                                />
+                                <Typography variant="caption" sx={{ mt: 0.75, display: 'block' }} role="status">
+                                  <Box component="span" sx={{ fontFamily: 'monospace', color: 'text.secondary' }}>
+                                    {formatLabel(single.sourceFormat)} → {formatLabel(targetFormat)}
+                                  </Box>{' '}
+                                  · {formatBytes(single.file.size)} → {formatBytes(single.result.bytes)} (
+                                  {single.result.width} × {single.result.height} px) —{' '}
+                                  {(() => {
+                                    const pct =
+                                      single.file.size > 0
+                                        ? Math.round((1 - single.result!.bytes / single.file.size) * 100)
+                                        : 0
+                                    return pct > 0
+                                      ? t('rs.smaller', { n: pct })
+                                      : pct < 0
+                                        ? t('rs.larger', { n: -pct })
+                                        : t('rs.sameSize')
+                                  })()}
+                                </Typography>
+                                {single.result.qualityUsed !== null && (
+                                  <Typography variant="caption" color="text.secondary" display="block">
+                                    {t('rs.qualityUsed', { n: single.result.qualityUsed })}
+                                    {single.result.targetMet === true && t('rs.targetMet')}
+                                    {single.result.targetMet === false && t('rs.targetNotMet')}
+                                  </Typography>
+                                )}
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {t(single.result.engine === 'wasm' ? 'rs.engineWasm' : 'rs.engineCanvas')}
+                                </Typography>
+                                {single.result.warnings.length > 0 && (
+                                  <Box component="ul" sx={{ m: 0, mt: 0.5, pl: 2, typography: 'caption' }}>
+                                    {single.result.warnings.map((w, i) => (
+                                      <li key={i}>{w}</li>
+                                    ))}
+                                  </Box>
+                                )}
+                              </>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                {single.status === 'resizing' ? t('rs.resizing') : t('rs.pressResize')}
+                              </Typography>
+                            )}
+                          </Box>
+                        </Box>
+                        )}
+                        {single.result && (
+                          <>
+                            <Stack direction="row" flexWrap="wrap" spacing={1} useFlexGap>
+                              <Button
+                                type="button"
+                                variant="contained"
+                                size="small"
+                                id="resize-download"
+                                startIcon={<DownloadIcon />}
+                                onClick={() => downloadBlob(single.result!.blob, outputFileName(single.file.name, targetFormat))}
+                              >
+                                {t('common.download')} {outputFileName(single.file.name, targetFormat)}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outlined"
+                                size="small"
+                                onClick={() =>
+                                  setItems((prev) => prev.map((p) => (p.id === single.id ? { ...p, status: 'ready', result: null } : p)))
+                                }
+                              >
+                                {t('rs.resizeAgain')}
+                              </Button>
+                            </Stack>
+                            <Stack
+                              direction="row"
+                              flexWrap="wrap"
+                              spacing={0.5}
+                              useFlexGap
+                              alignItems="center"
+                              sx={{ pt: 1.25, borderTop: 1, borderColor: 'divider' }}
+                            >
+                              <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5 }}>
+                                {t('chain.label')}
+                              </Typography>
+                              {(
+                                [
+                                  { route: 'crop', label: t('chain.toCrop') },
+                                  { route: 'convert', label: t('chain.toConvert') },
+                                  { route: 'ocr', label: t('chain.toOcr') },
+                                  { route: 'pdf-images-to-pdf', label: t('chain.toPdf') },
+                                ] as const
+                              ).map((next) => (
+                                <Button
+                                  key={next.route}
+                                  type="button"
+                                  size="small"
+                                  variant="text"
+                                  endIcon={<ArrowForwardIcon sx={{ fontSize: 14 }} />}
+                                  onClick={() => {
+                                    const outName = outputFileName(single.file.name, targetFormat)
+                                    const outFile = new File([single.result!.blob], outName, {
+                                      type: single.result!.blob.type || `image/${targetFormat}`,
+                                    })
+                                    navigate(next.route, { files: [outFile] })
+                                  }}
+                                  sx={{ py: 0.25 }}
+                                >
+                                  {next.label}
+                                </Button>
+                              ))}
+                            </Stack>
+                          </>
+                        )}
+                        {single.status === 'failed' && single.error && <Alert severity="error">{single.error}</Alert>}
+                        {single.status === 'skipped' && single.error && (
+                          <Alert severity="warning">{single.error}</Alert>
+                        )}
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {items.length > 1 && (
+                  <Card>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                        <Typography variant="overline" color="text.secondary">
+                          {items.length} files
+                        </Typography>
+                        <Button type="button" variant="outlined" size="small" onClick={clearFiles}>
+                          {t('rs.chooseDifferent')}
+                        </Button>
+                      </Box>
+                      <Stack spacing={1} sx={{ maxHeight: { lg: 'calc(100dvh - 320px)' }, overflowY: { lg: 'auto' }, pr: { lg: 0.5 } }}>
+                        {items.map((item) => {
+                          const status = statusTextProps(item.status, t)
+                          return (
+                            <Box
+                              key={item.id}
+                              sx={{
+                                display: 'flex',
+                                gap: 1.5,
+                                alignItems: 'center',
+                                border: 1,
+                                borderColor: 'divider',
+                                borderRadius: 1,
+                                p: 1.25,
+                                flexWrap: 'wrap',
+                              }}
+                            >
+                              <Box
+                                component="img"
+                                src={item.thumbUrl}
+                                alt=""
+                                sx={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 1 }}
+                              />
+                              <Box sx={{ flex: 1, minWidth: 160 }}>
+                                <Typography variant="body2" fontWeight={500} noWrap>
+                                  {item.file.name}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {item.width > 0
+                                    ? `${item.width} × ${item.height} px — ${formatBytes(item.file.size)}`
+                                    : formatBytes(item.file.size)}
+                                  {item.result &&
+                                    ` → ${item.result.width} × ${item.result.height} px — ${formatBytes(item.result.bytes)}`}
+                                </Typography>
+                                {item.error && (
+                                  <Typography variant="caption" color="error.main" display="block">
+                                    {item.error}
+                                  </Typography>
+                                )}
+                                {item.result?.targetMet === false && (
+                                  <Typography variant="caption" color="warning.main" display="block">
+                                    {t('rs.targetNotMetRow')}
+                                  </Typography>
+                                )}
+                              </Box>
+                              <Typography variant="caption" sx={{ fontFamily: 'monospace', color: status.color }}>
+                                {status.label}
+                              </Typography>
+                              {item.result && (
+                                <Button
+                                  type="button"
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={<DownloadIcon />}
+                                  onClick={() => downloadBlob(item.result!.blob, outputFileName(item.file.name, targetFormat))}
+                                >
+                                  {t('common.download')}
+                                </Button>
+                              )}
+                            </Box>
+                          )
+                        })}
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {warnings.length > 0 && (
+                  <Box
+                    role="status"
+                    sx={{
+                      borderRadius: 1,
+                      border: 1,
+                      borderColor: (t) => alpha(t.palette.warning.main, 0.4),
+                      bgcolor: (t) => alpha(t.palette.warning.main, 0.08),
+                      p: 1.5,
+                    }}
+                  >
+                    <Box component="ul" sx={{ m: 0, pl: 2.5, typography: 'caption' }}>
+                      {warnings.map((w, i) => (
+                        <li key={i}>{w}</li>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+
+                {error && <Alert severity="error">{error}</Alert>}
+              </>
+            }
+            tools={
+              <Card>
+                <CardContent>
+                  <Typography variant="overline" color="text.secondary">
+                    Settings
+                  </Typography>
+                  <Stack spacing={1.5} sx={{ mt: 1 }}>
+                    <Box>
+                      <Typography variant="caption" fontWeight={600} color="text.secondary" display="block" sx={{ mb: 0.75 }}>
+                        {t('preset.quickTitle')}
                       </Typography>
-                      {item.result && (
+                      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                        {quickPresets.map((p) => (
+                          <Chip
+                            key={p.id}
+                            size="small"
+                            clickable
+                            label={p.label}
+                            color={activeQuickPreset === p.id ? 'primary' : 'default'}
+                            variant={activeQuickPreset === p.id ? 'filled' : 'outlined'}
+                            onClick={() => applyQuickPreset(p)}
+                          />
+                        ))}
+                      </Stack>
+                    </Box>
+                    <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { sm: '1fr 1fr' } }}>
+                      <Box>
+                        <Typography variant="caption" fontWeight={600} component="label" htmlFor="resize-mode">
+                          {t('rs.modeLabel')}
+                        </Typography>
+                        <Select
+                          native
+                          fullWidth
+                          size="small"
+                          id="resize-mode"
+                          value={mode}
+                          onChange={(e) => {
+                            const next = e.target.value as ResizeMode
+                            setMode(next)
+                            persistResize({ mode: next })
+                          }}
+                          sx={{ mt: 0.5 }}
+                        >
+                          {modeLabels(t).map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </Box>
+
+                      <Box>
+                        <Typography variant="caption" fontWeight={600} component="label" htmlFor="resize-preset">
+                          {t('rs.presetLabel')}
+                        </Typography>
+                        <Select
+                          native
+                          fullWidth
+                          size="small"
+                          id="resize-preset"
+                          value={presetId}
+                          onChange={(e) => handlePresetChange(e.target.value)}
+                          sx={{ mt: 0.5 }}
+                        >
+                          {RESIZE_PRESETS.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.id === 'custom' ? t('rs.presetCustom') : p.label}
+                            </option>
+                          ))}
+                        </Select>
+                      </Box>
+                    </Box>
+
+                    <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: '1fr 1fr' }}>
+                      <TextField
+                        size="small"
+                        label={t('rs.width')}
+                        type="number"
+                        id="resize-width"
+                        value={widthText}
+                        onChange={(e) => handleWidthChange(e.target.value)}
+                        inputProps={{ min: 1, max: 16384, 'aria-label': t('rs.widthAria') }}
+                        error={!widthValid}
+                        helperText={!widthValid ? t('rs.widthError') : undefined}
+                      />
+                      <TextField
+                        size="small"
+                        label={t('rs.height')}
+                        type="number"
+                        id="resize-height"
+                        value={heightText}
+                        onChange={(e) => handleHeightChange(e.target.value)}
+                        inputProps={{ min: 1, max: 16384, 'aria-label': t('rs.heightAria') }}
+                        error={!heightValid}
+                        helperText={!heightValid ? t('rs.heightError') : undefined}
+                      />
+                    </Box>
+
+                    <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap>
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            size="small"
+                            id="resize-lock-aspect"
+                            checked={lockAspect}
+                            onChange={(e) => setLockAspect(e.target.checked)}
+                          />
+                        }
+                        label={<Typography variant="caption">{t('rs.lockAspect')}</Typography>}
+                      />
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            size="small"
+                            id="resize-allow-upscale"
+                            checked={allowUpscale}
+                            onChange={(e) => setAllowUpscale(e.target.checked)}
+                          />
+                        }
+                        label={<Typography variant="caption">{t('rs.allowUpscale')}</Typography>}
+                      />
+                    </Stack>
+
+                    {expected && firstReady && (
+                      <Typography variant="caption" color="text.secondary" id="resize-expected">
+                        {t('rs.expected', { w: expected.width, h: expected.height })}
+                        {t('rs.expectedFrom', { w: firstReady.width, h: firstReady.height })}
+                      </Typography>
+                    )}
+
+                    <Box sx={{ display: 'grid', gap: 1.5, gridTemplateColumns: { sm: '1fr 1fr' } }}>
+                      <Box>
+                        <Typography variant="caption" fontWeight={600} component="label" htmlFor="resize-target-format">
+                          {t('rs.outputFormat')}
+                        </Typography>
+                        <Select
+                          native
+                          fullWidth
+                          size="small"
+                          id="resize-target-format"
+                          value={targetFormat}
+                          onChange={(e) => {
+                            setTargetFormat(e.target.value)
+                            persistResize({ format: e.target.value })
+                          }}
+                          sx={{ mt: 0.5 }}
+                        >
+                          {targets.map((f) => (
+                            <option key={f.format_id} value={f.format_id}>
+                              {formatLabel(f.format_id)}
+                            </option>
+                          ))}
+                        </Select>
+                      </Box>
+
+                      <Box>
+                        <Typography variant="caption" fontWeight={600} component="label" htmlFor="resize-target-size">
+                          {t('rs.targetSize')}
+                        </Typography>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          id="resize-target-size"
+                          placeholder={t('rs.targetSizePlaceholder')}
+                          value={targetSizeText}
+                          onChange={(e) => setTargetSizeText(e.target.value)}
+                          error={targetSizeInvalid}
+                          helperText={targetSizeInvalid ? t('rs.targetSizeInvalid') : undefined}
+                          sx={{ mt: 0.5 }}
+                        />
+                      </Box>
+                    </Box>
+
+                    {isLossyFormat(targetFormat) && (
+                      <Box>
+                        <Typography variant="caption" fontWeight={600} component="label">
+                          {t('rs.quality', { n: quality })}
+                        </Typography>
+                        <Slider
+                          size="small"
+                          aria-label={t('rs.qualityAria')}
+                          min={1}
+                          max={100}
+                          value={quality}
+                          disabled={targetBytes !== null}
+                          onChange={(_, value) => {
+                            setQuality(value as number)
+                            persistResize({ quality: value as number })
+                          }}
+                        />
+                      </Box>
+                    )}
+
+                    {targetFormat === 'png' && (
+                      <Box>
+                        <Typography variant="caption" fontWeight={600} component="label">
+                          {t('cv.pngCompression', { n: pngCompression })}
+                        </Typography>
+                        <Slider
+                          size="small"
+                          aria-label={t('cv.pngCompressionAria')}
+                          min={0}
+                          max={2}
+                          step={1}
+                          value={pngCompression}
+                          onChange={(_, value) => setPngCompression(value as number)}
+                        />
+                      </Box>
+                    )}
+
+                    {(mode === 'pad' || targetFormat === 'jpeg' || targetFormat === 'bmp') && (
+                      <Box>
+                        <Typography variant="caption" fontWeight={600} component="label">
+                          {t('rs.background')}
+                        </Typography>
+                        <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 0.5 }}>
+                          <TextField
+                            type="color"
+                            size="small"
+                            value={background}
+                            onChange={(e) => setBackground(e.target.value)}
+                            inputProps={{ 'aria-label': t('cv.bgPicker') }}
+                            sx={{ width: 52, '& input': { p: 0.25, height: 34, cursor: 'pointer' } }}
+                          />
+                          <TextField
+                            size="small"
+                            value={background}
+                            onChange={(e) => setBackground(e.target.value)}
+                            inputProps={{ 'aria-label': t('cv.bgHex') }}
+                            sx={{ width: 110, '& input': { fontFamily: 'monospace' } }}
+                          />
+                        </Stack>
+                      </Box>
+                    )}
+
+                    <Stack spacing={1} sx={{ pt: 0.5 }}>
+                      <Button
+                        type="button"
+                        variant="contained"
+                        size="large"
+                        fullWidth
+                        id="resize-button"
+                        onClick={resizeAll}
+                        disabled={!canResize}
+                      >
+                        {running
+                          ? t('rs.resizing')
+                          : items.length > 1
+                            ? t('rs.resizeAll', { n: items.length })
+                            : t('rs.resize')}
+                      </Button>
+                      {doneCount > 1 && (
                         <Button
                           type="button"
-                          size="small"
-                          variant="outlined"
+                          variant="contained"
+                          color="success"
+                          fullWidth
+                          id="resize-download-all"
                           startIcon={<DownloadIcon />}
-                          onClick={() => downloadBlob(item.result!.blob, outputFileName(item.file.name, targetFormat))}
+                          onClick={downloadAllAsZip}
+                          disabled={zipping}
                         >
-                          {t('common.download')}
+                          {zipping ? t('rs.zipping') : t('rs.downloadAll')}
                         </Button>
                       )}
-                    </Box>
-                  )
-                })}
-              </Stack>
-            </CardContent>
-          </Card>
+                    </Stack>
+                    {zipError && <Alert severity="error">{zipError}</Alert>}
+                  </Stack>
+                </CardContent>
+              </Card>
+            }
+          />
         )}
       </Stack>
     </Box>

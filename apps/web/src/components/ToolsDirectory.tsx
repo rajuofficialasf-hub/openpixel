@@ -1,8 +1,10 @@
 /**
- * All Tools directory (prompt §10): search, category filter,
- * popular tools, recently used (from real local activity only),
- * sort. Tools are grouped by category; the Media category shows
- * the honest empty state — no media tools exist yet.
+ * All Tools directory: search, category filter, browser-ready toggle,
+ * recently used, and clean category grouping.
+ *
+ * By default shows tools that actually work right here in the browser,
+ * so regular users aren't greeted by dead-end Coming Soon / CLI cards.
+ * A clear toggle (and search) reveals CLI & upcoming tools honestly.
  */
 import { useMemo, useState } from 'react'
 import {
@@ -16,6 +18,8 @@ import {
   Select,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
@@ -38,16 +42,22 @@ interface ToolsDirectoryProps {
 export function ToolsDirectory({ query, onQueryChange, category, onCategoryChange, onNavigate }: ToolsDirectoryProps) {
   const { t, lang } = useI18n()
   const [sort, setSort] = useState<'recommended' | 'name'>('recommended')
+  const [availability, setAvailability] = useState<'web' | 'all'>('web')
   const activity = useMemo(() => loadActivity(), [])
 
   const searched = useMemo(() => searchTools(query, lang), [query, lang])
-  const filtered = useMemo(
-    () => (category === 'all' ? searched : searched.filter((t) => t.categories.includes(category))),
-    [searched, category],
-  )
+  const filtered = useMemo(() => {
+    let list = category === 'all' ? searched : searched.filter((tool) => tool.categories.includes(category))
+    // When searching, show all matching tools regardless of status so
+    // users searching "docx" or "protect" still get the honest CLI answer.
+    if (!query.trim() && availability === 'web' && category !== 'document' && category !== 'media') {
+      list = list.filter((tool) => tool.status === 'web')
+    }
+    return list
+  }, [searched, category, query, availability])
+
   const sorted = useMemo(
-    () =>
-      sort === 'name' ? [...filtered].sort((a, b) => a.name.localeCompare(b.name)) : filtered,
+    () => (sort === 'name' ? [...filtered].sort((a, b) => a.name.localeCompare(b.name)) : filtered),
     [filtered, sort],
   )
 
@@ -65,34 +75,52 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
     return out
   }, [activity])
 
+  const visibleCategories = useMemo(
+    () =>
+      availability === 'web'
+        ? CATEGORIES.filter((cat) => TOOLS.some((tool) => tool.categories[0] === cat.id && tool.status === 'web'))
+        : CATEGORIES,
+    [availability],
+  )
+
   return (
-    <Stack spacing={4}>
-      <Box>
+    <Stack spacing={2} sx={{ flex: { lg: 1 }, minHeight: { lg: 0 } }}>
+      <Box sx={{ flex: 'none' }}>
         <Typography variant="h5" component="h2" id="tools-heading">
           {t('tools.title')}
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5, maxWidth: 720 }}>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25, maxWidth: 720 }}>
           {t('tools.intro')}
         </Typography>
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap', alignItems: 'center', flex: 'none' }}>
         <TextField
           size="small"
           placeholder={t('tools.searchPlaceholder')}
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
-          // inputProps (not slotProps.input) is what reaches the
-          // real <input> — slotProps.input lands on the Input root.
           inputProps={{ 'aria-label': t('header.searchTools') }}
           slotProps={{
             input: {
               startAdornment: <SearchIcon color="action" sx={{ mr: 1 }} />,
             },
           }}
-          sx={{ flex: 1, minWidth: 240 }}
+          sx={{ flex: 1, minWidth: 220 }}
         />
-        <FormControl size="small" sx={{ minWidth: 180 }}>
+        <ToggleButtonGroup
+          exclusive
+          size="small"
+          value={availability}
+          onChange={(_, val: 'web' | 'all' | null) => {
+            if (val) setAvailability(val)
+          }}
+          aria-label="Filter tool availability"
+        >
+          <ToggleButton value="web">{t('tools.readyOnly')}</ToggleButton>
+          <ToggleButton value="all">{t('tools.showAll')}</ToggleButton>
+        </ToggleButtonGroup>
+        <FormControl size="small" sx={{ minWidth: 150 }}>
           <InputLabel id="tools-sort-label">{t('tools.sort')}</InputLabel>
           <Select
             labelId="tools-sort-label"
@@ -106,8 +134,9 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
         </FormControl>
       </Box>
 
-      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }} role="group" aria-label={t('tools.filterByCategory')}>
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', flex: 'none' }} role="group" aria-label={t('tools.filterByCategory')}>
         <Chip
+          size="small"
           label={t('tools.all')}
           clickable
           color={category === 'all' ? 'primary' : 'default'}
@@ -116,6 +145,7 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
         {CATEGORIES.map((c) => (
           <Chip
             key={c.id}
+            size="small"
             label={translate(lang, `cat.${c.id}`)}
             clickable
             color={category === c.id ? 'primary' : 'default'}
@@ -124,12 +154,13 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
         ))}
       </Box>
 
+      <Stack spacing={2.5} sx={{ flex: { lg: 1 }, minHeight: { lg: 0 }, overflowY: { lg: 'auto' }, pr: { lg: 0.5 } }}>
       {recentUsed.length > 0 && !query.trim() && category === 'all' && (
         <Box component="section" aria-labelledby="tools-recent-heading">
           <Typography variant="overline" color="text.secondary" id="tools-recent-heading">
             {t('tools.recentlyUsed')}
           </Typography>
-          <Stack spacing={1} sx={{ mt: 1 }}>
+          <Stack spacing={1} sx={{ mt: 0.75 }}>
             {recentUsed.map((r) => (
               <Box
                 key={r.route}
@@ -142,7 +173,7 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
                   borderColor: 'divider',
                   borderRadius: 1,
                   px: 2,
-                  py: 1.5,
+                  py: 1,
                   bgcolor: 'background.paper',
                 }}
               >
@@ -164,55 +195,34 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
       )}
 
       {showSections ? (
-        CATEGORIES.map((cat) => {
-          // Each tool appears once, under its first (primary)
-          // category — a tool in two categories used to render
-          // twice, once per section.
-          const tools = TOOLS.filter((t) => t.categories[0] === cat.id)
+        visibleCategories.map((cat) => {
+          const tools = TOOLS.filter(
+            (tool) => tool.categories[0] === cat.id && (availability === 'all' || tool.status === 'web'),
+          )
+          if (tools.length === 0) return null
           return (
             <Box key={cat.id} component="section" aria-labelledby={`tools-cat-${cat.id}`}>
-              <Typography variant="h6" component="h3" id={`tools-cat-${cat.id}`}>
-                {translate(lang, `cat.${cat.id}`)}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                {translate(lang, `cat.${cat.id}.blurb`)}
-              </Typography>
-              {tools.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  {t('tools.noToolsYet', { category: translate(lang, `cat.${cat.id}`).toLowerCase() })}
+              <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5, mb: 1, flexWrap: 'wrap' }}>
+                <Typography variant="subtitle1" component="h3" fontWeight={600} id={`tools-cat-${cat.id}`}>
+                  {translate(lang, `cat.${cat.id}`)}
                 </Typography>
-              ) : (
-                <Grid container spacing={2}>
-                  {tools.map((tool, i) => {
-                    // Orphan rule (same as the homepage Categories
-                    // section): a last card alone on its row spans
-                    // the full row, horizontally — 3 columns on lg,
-                    // 2 on sm. A section with exactly 1 tool is the
-                    // same case (1 % 3 === 1).
-                    const isLast = i === tools.length - 1
-                    const orphanLg = isLast && tools.length % 3 === 1
-                    const orphanSm = isLast && tools.length % 2 === 1
-                    return (
-                      <Grid
-                        key={tool.id}
-                        size={{
-                          xs: 12,
-                          sm: orphanLg || orphanSm ? 12 : 6,
-                          lg: orphanLg ? 12 : 4,
-                        }}
-                      >
-                        <ToolCard tool={tool} onNavigate={onNavigate} wideSm={orphanSm} wideLg={orphanLg} />
-                      </Grid>
-                    )
-                  })}
-                </Grid>
-              )}
+                <Typography variant="caption" color="text.secondary">
+                  {translate(lang, `cat.${cat.id}.blurb`)}
+                </Typography>
+              </Box>
+              <Grid container spacing={1.5}>
+                {tools.map((tool) => (
+                  <Grid key={tool.id} size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}>
+                    <ToolCard tool={tool} onNavigate={onNavigate} />
+                  </Grid>
+                ))}
+              </Grid>
             </Box>
           )
         })
       ) : (
         <Box>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography variant="caption" color="text.secondary" sx={{ mb: 1.5, display: 'block' }}>
             {t('tools.count', { n: sorted.length, s: plural(lang, sorted.length) })}
             {query.trim() ? t('tools.matching', { q: query.trim() }) : ''}
             {category !== 'all' ? t('tools.inCategory', { category: translate(lang, `cat.${category}`) }) : ''}.
@@ -222,9 +232,9 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
               {t('tools.noMatch')}
             </Typography>
           ) : (
-            <Grid container spacing={2}>
+            <Grid container spacing={1.5}>
               {sorted.map((tool) => (
-                <Grid key={tool.id} size={{ xs: 12, sm: 6, lg: 4 }}>
+                <Grid key={tool.id} size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}>
                   <ToolCard tool={tool} onNavigate={onNavigate} />
                 </Grid>
               ))}
@@ -232,6 +242,7 @@ export function ToolsDirectory({ query, onQueryChange, category, onCategoryChang
           )}
         </Box>
       )}
+      </Stack>
     </Stack>
   )
 }

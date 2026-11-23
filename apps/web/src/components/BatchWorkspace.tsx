@@ -23,7 +23,9 @@ import type { Settings } from '../lib/settings'
 import { recordActivity } from '../lib/activity'
 import { mergeFormatLists, useWasmSupport } from '../lib/wasm-engine'
 import { DropZone } from './DropZone'
+import { EditorShell } from './EditorShell'
 import { ToolPageHeader } from './ToolPage'
+import { WorkflowSteps } from './WorkflowSteps'
 import { useI18n } from '../lib/use-i18n'
 
 type ItemStatus = 'queued' | 'probing' | 'ready' | 'converting' | 'done' | 'failed' | 'skipped'
@@ -178,13 +180,12 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
     }
   }, [decodableFormats, lang, t])
 
-  // Homepage hand-off: files dropped on the home page arrive here
-  // already loaded. Consume them once; the ref guard also covers
-  // StrictMode's double effect run in development.
-  const initialConsumedRef = useRef(false)
+  // Homepage / paste hand-off: consume each distinct `initialFiles`
+  // reference once (StrictMode-safe and supports repeated paste).
+  const lastInitialRef = useRef<File[] | null>(null)
   useEffect(() => {
-    if (initialFiles && initialFiles.length > 0 && !initialConsumedRef.current) {
-      initialConsumedRef.current = true
+    if (initialFiles && initialFiles.length > 0 && lastInitialRef.current !== initialFiles) {
+      lastInitialRef.current = initialFiles
       void addFiles(initialFiles)
       onInitialFilesConsumed?.()
     }
@@ -292,158 +293,200 @@ export function BatchWorkspace({ settings, initialFiles, onInitialFilesConsumed 
   const readyCount = items.filter((i) => i.status === 'ready' || i.status === 'failed').length
 
   return (
-    <Box component="section" aria-labelledby="batch-heading">
-      <Stack spacing={3}>
+    <Box component="section" aria-labelledby="batch-heading" sx={{ display: 'flex', flexDirection: 'column', flex: { lg: 1 }, minHeight: { lg: 0 } }}>
+      <Stack spacing={2} sx={{ flex: { lg: 1 }, minHeight: { lg: 0 } }}>
         <ToolPageHeader
           headingId="batch-heading"
           title={t('bt.title')}
           description={t('bt.desc', { n: settings.batchWorkers })}
+          actions={
+            <WorkflowSteps
+              activeStep={items.length === 0 ? 0 : doneCount > 0 ? 2 : 1}
+              steps={[t('step.uploadFiles'), t('step.options'), t('step.download')]}
+            />
+          }
         />
 
-        <DropZone
-          inputId="batch-files"
-          label={t('bt.dropLabel')}
-          hint={t('bt.dropHint')}
-          multiple
-          accept="image/*"
-          onFiles={addFiles}
-        />
-
-        {items.length > 0 && (
-          <>
-            <Stack direction="row" flexWrap="wrap" alignItems="flex-end" spacing={1.5}>
-              <Box>
-                <Typography variant="subtitle2" component="label" htmlFor="batch-target-format">
-                  {t('bt.outputForAll')}
-                </Typography>
-                <Select
-                  native
-                  id="batch-target-format"
-                  value={targetFormat}
-                  onChange={(e) => setTargetFormat(e.target.value)}
-                  sx={{ mt: 0.5, minWidth: 160 }}
+        {items.length === 0 ? (
+          <Box sx={{ flex: { lg: 1 }, display: 'flex', flexDirection: 'column', '& > *': { flex: { lg: 1 } } }}>
+            <DropZone
+              inputId="batch-files"
+              label={t('bt.dropLabel')}
+              hint={t('bt.dropHint')}
+              multiple
+              accept="image/*"
+              onFiles={addFiles}
+            />
+          </Box>
+        ) : (
+          <EditorShell
+            main={
+              <>
+                <DropZone
+                  inputId="batch-files"
+                  label={t('bt.dropLabel')}
+                  hint={t('bt.dropHint')}
+                  multiple
+                  compact
+                  accept="image/*"
+                  onFiles={addFiles}
+                />
+                <Stack
+                  component="ul"
+                  spacing={1}
+                  sx={{
+                    listStyle: 'none',
+                    m: 0,
+                    p: 0,
+                    maxHeight: { lg: 'calc(100dvh - 340px)' },
+                    overflowY: { lg: 'auto' },
+                    pr: { lg: 0.5 },
+                  }}
                 >
-                  {encodableFormats.map((t) => (
-                    <option key={t.format_id} value={t.format_id}>
-                      {formatLabel(t.format_id)}
-                    </option>
-                  ))}
-                </Select>
-              </Box>
-              <Button type="button" variant="contained" onClick={convertAll} disabled={running || readyCount === 0}>
-                {running ? t('bt.converting') : t('bt.convertN', { n: readyCount, s: readyCount === 1 ? '' : 's' })}
-              </Button>
-              <Button
-                type="button"
-                variant="contained"
-                startIcon={<DownloadIcon />}
-                onClick={downloadAllAsZip}
-                disabled={zipping || doneCount === 0}
-              >
-                {zipping ? t('bt.zipping') : t('bt.downloadAll', { n: doneCount })}
-              </Button>
-              <Button type="button" variant="outlined" onClick={clearAll} disabled={running}>
-                {t('bt.clear')}
-              </Button>
-            </Stack>
-
-            <Typography role="status" aria-live="polite" variant="body2" color="text.secondary">
-              {t('bt.status', {
-                n: items.length,
-                pl: items.length === 1 ? '' : 's',
-                d: doneCount,
-                f: failedCount,
-                sk: skippedCount,
-              })}
-            </Typography>
-            {zipError && (
-              <Typography role="alert" variant="body2" color="error">
-                {t('bt.zipFailed', { msg: zipError })}
-              </Typography>
-            )}
-
-            <Stack component="ul" spacing={1.5} sx={{ listStyle: 'none', m: 0, p: 0 }}>
-              {items.map((item) => {
-                const status = statusTextProps(item.status, t)
-                return (
-                  <Card key={item.id} component="li">
-                    <CardContent
-                      sx={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        alignItems: 'center',
-                        gap: 1.5,
-                        p: 2,
-                        '&:last-child': { pb: 2 },
-                      }}
-                    >
-                      <Box
-                        component="img"
-                        src={item.thumbUrl}
-                        alt={`Thumbnail of ${item.file.name}`}
-                        sx={{ width: 56, height: 56, borderRadius: 1, objectFit: 'cover' }}
-                      />
-                      <Box sx={{ minWidth: 0, flex: 1 }}>
-                        <Typography
-                          variant="body2"
-                          fontWeight={500}
-                          sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                  {items.map((item) => {
+                    const status = statusTextProps(item.status, t)
+                    return (
+                      <Card key={item.id} component="li">
+                        <CardContent
+                          sx={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
+                            gap: 1.5,
+                            p: 1.5,
+                            '&:last-child': { pb: 1.5 },
+                          }}
                         >
-                          {item.file.name}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {formatBytes(item.file.size)}
-                          {item.width > 0 ? ` · ${item.width} × ${item.height} px` : ''} ·{' '}
-                          <Box component="span" sx={{ fontFamily: 'monospace' }}>
-                            {formatLabel(item.sourceFormat)}
-                            {item.status === 'done' ? ` → ${formatLabel(targetFormat)}` : ''}
-                          </Box>
-                          {item.status === 'done' ? ` · ${formatBytes(item.resultBytes)}` : ''}
-                        </Typography>
-                        {item.error && (
-                          <Typography role="alert" variant="caption" color="error" display="block">
-                            {item.error}
-                          </Typography>
-                        )}
-                        {item.status === 'done' &&
-                          targetFormat === 'ico' &&
-                          item.width > 0 &&
-                          (item.resultWidth < item.width || item.resultHeight < item.height) && (
-                            <Typography variant="caption" display="block">
-                              {t('cv.icoResized', { w: item.resultWidth, h: item.resultHeight })}
+                          <Box
+                            component="img"
+                            src={item.thumbUrl}
+                            alt={`Thumbnail of ${item.file.name}`}
+                            sx={{ width: 44, height: 44, borderRadius: 1, objectFit: 'cover' }}
+                          />
+                          <Box sx={{ minWidth: 0, flex: 1 }}>
+                            <Typography
+                              variant="body2"
+                              fontWeight={500}
+                              sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            >
+                              {item.file.name}
                             </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {formatBytes(item.file.size)}
+                              {item.width > 0 ? ` · ${item.width} × ${item.height} px` : ''} ·{' '}
+                              <Box component="span" sx={{ fontFamily: 'monospace' }}>
+                                {formatLabel(item.sourceFormat)}
+                                {item.status === 'done' ? ` → ${formatLabel(targetFormat)}` : ''}
+                              </Box>
+                              {item.status === 'done' ? ` · ${formatBytes(item.resultBytes)}` : ''}
+                            </Typography>
+                            {item.error && (
+                              <Typography role="alert" variant="caption" color="error" display="block">
+                                {item.error}
+                              </Typography>
+                            )}
+                            {item.status === 'done' &&
+                              targetFormat === 'ico' &&
+                              item.width > 0 &&
+                              (item.resultWidth < item.width || item.resultHeight < item.height) && (
+                                <Typography variant="caption" display="block">
+                                  {t('cv.icoResized', { w: item.resultWidth, h: item.resultHeight })}
+                                </Typography>
+                              )}
+                          </Box>
+                          <Typography variant="caption" sx={{ fontFamily: 'monospace', color: status.color }}>
+                            {status.label}
+                          </Typography>
+                          {item.status === 'done' && item.resultBlob && (
+                            <Button
+                              type="button"
+                              variant="outlined"
+                              size="small"
+                              onClick={() =>
+                                downloadBlob(item.resultBlob as Blob, outputFileName(item.file.name, targetFormat))
+                              }
+                            >
+                              {t('common.download')}
+                            </Button>
                           )}
-                      </Box>
-                      <Typography variant="caption" sx={{ fontFamily: 'monospace', color: status.color }}>
-                        {status.label}
+                          <Button
+                            type="button"
+                            variant="outlined"
+                            size="small"
+                            onClick={() => removeItem(item.id)}
+                            aria-label={t('bt.removeAria', { name: item.file.name })}
+                          >
+                            {t('common.remove')}
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </Stack>
+              </>
+            }
+            tools={
+              <Card>
+                <CardContent>
+                  <Typography variant="overline" color="text.secondary">
+                    {t('common.settings')}
+                  </Typography>
+                  <Stack spacing={2} sx={{ mt: 1 }}>
+                    <Box>
+                      <Typography variant="subtitle2" component="label" htmlFor="batch-target-format">
+                        {t('bt.outputForAll')}
                       </Typography>
-                      {item.status === 'done' && item.resultBlob && (
-                        <Button
-                          type="button"
-                          variant="outlined"
-                          size="small"
-                          onClick={() =>
-                            downloadBlob(item.resultBlob as Blob, outputFileName(item.file.name, targetFormat))
-                          }
-                        >
-                          {t('common.download')}
-                        </Button>
-                      )}
-                      <Button
-                        type="button"
-                        variant="outlined"
-                        size="small"
-                        onClick={() => removeItem(item.id)}
-                        aria-label={t('bt.removeAria', { name: item.file.name })}
+                      <Select
+                        native
+                        fullWidth
+                        id="batch-target-format"
+                        value={targetFormat}
+                        onChange={(e) => setTargetFormat(e.target.value)}
+                        sx={{ mt: 0.5 }}
                       >
-                        {t('common.remove')}
-                      </Button>
-                    </CardContent>
-                  </Card>
-                )
-              })}
-            </Stack>
-          </>
+                        {encodableFormats.map((f) => (
+                          <option key={f.format_id} value={f.format_id}>
+                            {formatLabel(f.format_id)}
+                          </option>
+                        ))}
+                      </Select>
+                    </Box>
+                    <Typography role="status" aria-live="polite" variant="body2" color="text.secondary">
+                      {t('bt.status', {
+                        n: items.length,
+                        pl: items.length === 1 ? '' : 's',
+                        d: doneCount,
+                        f: failedCount,
+                        sk: skippedCount,
+                      })}
+                    </Typography>
+                    {zipError && (
+                      <Typography role="alert" variant="body2" color="error">
+                        {t('bt.zipFailed', { msg: zipError })}
+                      </Typography>
+                    )}
+                    <Button type="button" variant="contained" size="large" fullWidth onClick={convertAll} disabled={running || readyCount === 0}>
+                      {running ? t('bt.converting') : t('bt.convertN', { n: readyCount, s: readyCount === 1 ? '' : 's' })}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="contained"
+                      color="success"
+                      fullWidth
+                      startIcon={<DownloadIcon />}
+                      onClick={downloadAllAsZip}
+                      disabled={zipping || doneCount === 0}
+                    >
+                      {zipping ? t('bt.zipping') : t('bt.downloadAll', { n: doneCount })}
+                    </Button>
+                    <Button type="button" variant="outlined" fullWidth onClick={clearAll} disabled={running}>
+                      {t('bt.clear')}
+                    </Button>
+                  </Stack>
+                </CardContent>
+              </Card>
+            }
+          />
         )}
       </Stack>
     </Box>

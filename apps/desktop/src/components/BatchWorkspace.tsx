@@ -43,6 +43,8 @@ import {
   type JobResult,
 } from '../lib/tauri'
 import { DropZone } from './DropZone'
+import { WorkflowSteps } from './WorkflowSteps'
+import { dt } from '../lib/i18n'
 
 interface BatchFile {
   input: string
@@ -187,7 +189,20 @@ export function BatchWorkspace({
   const done = progress !== null && progress.done + progress.failed + progress.cancelled >= progress.total
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5 }}>
+        <Typography variant="h5" component="h2">
+          {dt(settings.language, 'nav.batch')}
+        </Typography>
+        <WorkflowSteps
+          activeStep={files.length === 0 ? 0 : done ? 2 : 1}
+          steps={[
+            dt(settings.language, 'step.upload'),
+            dt(settings.language, 'step.options'),
+            dt(settings.language, 'step.save'),
+          ]}
+        />
+      </Box>
       <DropZone
         onPick={() => void pickFiles()}
         label="Batch convert"

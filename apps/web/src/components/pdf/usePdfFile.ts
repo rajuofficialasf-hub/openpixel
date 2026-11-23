@@ -172,13 +172,13 @@ export function usePdfFile(
     setLoading(false)
   }, [t, setStatus])
 
-  // Homepage / picker hand-off: a PDF dropped elsewhere arrives
-  // here already loaded. Consume it once; the ref guard also
-  // covers StrictMode's double effect run in development.
-  const initialConsumedRef = useRef(false)
+  // Homepage / picker / paste / chaining hand-off: consume each
+  // distinct `initialFiles` reference once (StrictMode-safe, and also
+  // supports pasting a new PDF into an already-open PDF tool).
+  const lastInitialRef = useRef<File[] | null>(null)
   useEffect(() => {
-    if (initialFiles && initialFiles.length > 0 && !initialConsumedRef.current) {
-      initialConsumedRef.current = true
+    if (initialFiles && initialFiles.length > 0 && lastInitialRef.current !== initialFiles) {
+      lastInitialRef.current = initialFiles
       void handleFiles(initialFiles)
       onInitialFilesConsumed?.()
     }

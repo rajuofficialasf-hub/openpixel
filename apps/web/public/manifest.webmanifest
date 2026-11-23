@@ -1,0 +1,18 @@
+{
+  "name": "OpenPixel Studio",
+  "short_name": "OpenPixel",
+  "description": "Local image, PDF, and OCR studio — files never leave your device.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F7F8FC",
+  "theme_color": "#3157D5",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,17 +1,15 @@
 /**
- * PDF tools picker — the /pdf hub. One tool = one page: the
- * user picks a tool FIRST (this page), and only that tool's
- * focused page shows next. A PDF dropped here (or handed over
- * from the homepage) travels with the user to the picked tool —
- * except Image to PDF, which takes images, not a PDF.
+ * PDF tools picker — the /pdf hub.
  *
- * Web tools open their page; CLI-only tools show the exact
- * command (ToolCard dialog); coming-soon tools are labelled
- * and never look clickable.
+ * Organized into 4 clear task groups (Organize, Convert, Compress &
+ * Edit, Clean & Repair) plus a live search box so users can find any
+ * of the 20+ PDF tools in seconds instead of scanning one flat wall.
+ * A PDF dropped here travels with the user to the picked tool.
  */
-import { useMemo } from 'react'
-import { Alert, Box, Grid, Stack, Typography } from '@mui/material'
-import { TOOLS, type RouteId } from '../../lib/routes'
+import { useMemo, useState } from 'react'
+import { Alert, Box, Grid, Stack, TextField, Typography } from '@mui/material'
+import SearchIcon from '@mui/icons-material/Search'
+import { searchTools, TOOLS, type RouteId, type ToolEntry } from '../../lib/routes'
 import { DropZone } from '../DropZone'
 import { ToolCard } from '../ToolCard'
 import { ToolPageHeader } from '../ToolPage'
@@ -19,23 +17,77 @@ import { useI18n } from '../../lib/use-i18n'
 import { PdfFileSummary } from './shared'
 import { usePdfFile, type PdfToolProps } from './usePdfFile'
 
-const STATUS_RANK = { web: 0, 'cli-only': 1, 'coming-soon': 2 } as const
-
 interface PdfPickerProps extends PdfToolProps {
   onNavigate: (route: RouteId, opts?: { files?: File[] }) => void
 }
 
-export function PdfPicker({ initialFiles, onInitialFilesConsumed, onNavigate }: PdfPickerProps) {
-  const { t } = useI18n()
-  const pdf = usePdfFile('pdf', initialFiles, onInitialFilesConsumed)
+interface PdfGroup {
+  id: string
+  titleKey: string
+  subKey: string
+  toolIds: string[]
+}
 
-  const pdfTools = useMemo(
-    () =>
-      TOOLS.filter((t) => t.categories.includes('pdf')).sort(
-        (a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status],
-      ),
+const PDF_GROUPS: PdfGroup[] = [
+  {
+    id: 'organize',
+    titleKey: 'pdf.groupOrganize',
+    subKey: 'pdf.groupOrganizeSub',
+    toolIds: [
+      'pdf-merge',
+      'pdf-split',
+      'pdf-rotate',
+      'pdf-extract',
+      'pdf-remove',
+      'pdf-reorder',
+      'pdf-duplicate',
+      'pdf-reverse',
+      'pdf-booklet',
+      'pdf-nup',
+    ],
+  },
+  {
+    id: 'convert',
+    titleKey: 'pdf.groupConvert',
+    subKey: 'pdf.groupConvertSub',
+    toolIds: ['pdf-to-image', 'image-to-pdf', 'pdf-text'],
+  },
+  {
+    id: 'edit',
+    titleKey: 'pdf.groupEdit',
+    subKey: 'pdf.groupEditSub',
+    toolIds: ['pdf-compress', 'pdf-edit', 'pdf-redact', 'pdf-metadata'],
+  },
+  {
+    id: 'clean',
+    titleKey: 'pdf.groupClean',
+    subKey: 'pdf.groupCleanSub',
+    toolIds: ['pdf-sanitize', 'pdf-flatten', 'pdf-repair'],
+  },
+]
+
+export function PdfPicker({ initialFiles, onInitialFilesConsumed, onNavigate }: PdfPickerProps) {
+  const { t, lang } = useI18n()
+  const pdf = usePdfFile('pdf', initialFiles, onInitialFilesConsumed)
+  const [query, setQuery] = useState('')
+
+  const pdfToolMap = useMemo(() => {
+    const map = new Map<string, ToolEntry>()
+    for (const tool of TOOLS) {
+      if (tool.categories.includes('pdf')) map.set(tool.id, tool)
+    }
+    return map
+  }, [])
+
+  const cliPdfTools = useMemo(
+    () => TOOLS.filter((tool) => tool.categories.includes('pdf') && tool.status !== 'web'),
     [],
   )
+
+  const searchResults = useMemo(() => {
+    if (!query.trim()) return null
+    return searchTools(query, lang).filter((tool) => tool.categories.includes('pdf'))
+  }, [query, lang])
 
   const openTool = (route: RouteId) => {
     // Image to PDF takes images, not a PDF — never hand it one.
@@ -48,13 +100,28 @@ export function PdfPicker({ initialFiles, onInitialFilesConsumed, onNavigate }: 
   }
 
   return (
-    <Box component="section" aria-labelledby="pdf-heading">
-      <Stack spacing={3}>
-        <ToolPageHeader
-          headingId="pdf-heading"
-          title="PDF tools"
-          description={t('pdf.pickerDesc')}
-        />
+    <Box component="section" aria-labelledby="pdf-heading" sx={{ display: 'flex', flexDirection: 'column', flex: { lg: 1 }, minHeight: { lg: 0 } }}>
+      <Stack spacing={2} sx={{ flex: { lg: 1 }, minHeight: { lg: 0 } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 1.5, flex: 'none' }}>
+          <ToolPageHeader
+            headingId="pdf-heading"
+            title="PDF tools"
+            description={t('pdf.pickerDesc')}
+          />
+          <TextField
+            size="small"
+            placeholder={t('pdf.searchPlaceholder')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            inputProps={{ 'aria-label': t('pdf.searchPlaceholder') }}
+            slotProps={{
+              input: {
+                startAdornment: <SearchIcon color="action" sx={{ mr: 1 }} />,
+              },
+            }}
+            sx={{ minWidth: { xs: '100%', md: 320 } }}
+          />
+        </Box>
 
         {!pdf.file ? (
           <DropZone
@@ -70,7 +137,7 @@ export function PdfPicker({ initialFiles, onInitialFilesConsumed, onNavigate }: 
         ) : (
           <>
             <PdfFileSummary pdf={pdf} />
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="caption" color="text.secondary">
               {t('pdf.pickerTravels')}
             </Typography>
           </>
@@ -83,31 +150,69 @@ export function PdfPicker({ initialFiles, onInitialFilesConsumed, onNavigate }: 
         )}
         {pdf.error && <Alert severity="error">{pdf.error}</Alert>}
 
-        <Grid container spacing={2}>
-          {pdfTools.map((tool) => (
-            <Grid key={tool.id} size={{ xs: 12, sm: 6, lg: 4 }}>
-              <ToolCard tool={tool} onNavigate={openTool} />
+        <Box sx={{ flex: { lg: 1 }, minHeight: { lg: 0 }, overflowY: { lg: 'auto' }, pr: { lg: 0.5 } }}>
+        {searchResults ? (
+          searchResults.length === 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              {t('tools.noMatch')}
+            </Typography>
+          ) : (
+            <Grid container spacing={1.5}>
+              {searchResults.map((tool) => (
+                <Grid key={tool.id} size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}>
+                  <ToolCard tool={tool} onNavigate={openTool} />
+                </Grid>
+              ))}
             </Grid>
-          ))}
-        </Grid>
+          )
+        ) : (
+          <Stack spacing={2.5}>
+            {PDF_GROUPS.map((group) => {
+              const items = group.toolIds
+                .map((id) => pdfToolMap.get(id))
+                .filter((item): item is ToolEntry => item !== undefined)
+              return (
+                <Box key={group.id} component="section" aria-labelledby={`pdf-group-${group.id}`}>
+                  <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5, mb: 1, flexWrap: 'wrap' }}>
+                    <Typography variant="subtitle1" component="h3" fontWeight={600} id={`pdf-group-${group.id}`}>
+                      {t(group.titleKey)}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {t(group.subKey)}
+                    </Typography>
+                  </Box>
+                  <Grid container spacing={1.5}>
+                    {items.map((tool) => (
+                      <Grid key={tool.id} size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}>
+                        <ToolCard tool={tool} onNavigate={openTool} />
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Box>
+              )
+            })}
 
-        <Box
-          role="status"
-          sx={{
-            borderRadius: 1,
-            border: 1,
-            borderColor: 'divider',
-            bgcolor: 'background.paper',
-            p: 3,
-          }}
-        >
-          <Typography variant="body2">
-            {t('pdf.pickerInfoA')}
-            <Typography component="code" variant="body2">openpixel pdf render</Typography>
-            {t('pdf.pickerInfoB')}
-            <Typography component="code" variant="body2">openpixel doc convert</Typography>
-            {t('pdf.pickerInfoC')}
-          </Typography>
+            {cliPdfTools.length > 0 && (
+              <Box component="section" aria-labelledby="pdf-group-cli">
+                <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5, mb: 1, flexWrap: 'wrap' }}>
+                  <Typography variant="subtitle1" component="h3" fontWeight={600} id="pdf-group-cli">
+                    {t('pdf.groupCli')}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {t('pdf.groupCliSub')}
+                  </Typography>
+                </Box>
+                <Grid container spacing={1.5}>
+                  {cliPdfTools.map((tool) => (
+                    <Grid key={tool.id} size={{ xs: 12, sm: 6, lg: 4, xl: 3 }}>
+                      <ToolCard tool={tool} onNavigate={openTool} />
+                    </Grid>
+                  ))}
+                </Grid>
+              </Box>
+            )}
+          </Stack>
+        )}
         </Box>
       </Stack>
     </Box>

@@ -69,6 +69,7 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
   const [highlightW, setHighlightW] = useState('200')
   const [highlightH, setHighlightH] = useState('20')
   const [highlightColor, setHighlightColor] = useState('#ffeb3b')
+  const [pin, setPin] = useState<{ page: number; relX: number; relY: number; pdfX: number; pdfY: number } | null>(null)
 
   // Edit history (Phase 7): every action pushes one entry (its
   // ops) onto the undo stack; the current output is always
@@ -266,6 +267,23 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
       return
     }
     pushAction([{ kind: 'highlight', page, x, y, width: w, height: h, color, opacity: 0.4 }])
+  }
+
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+    const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    const relY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height))
+    const [pageW, pageH] = info?.page_sizes?.[previewPage - 1] ?? [612, 792]
+    const pdfX = Math.round(relX * pageW)
+    const pdfY = Math.round((1 - relY) * pageH)
+    setEditPage(String(previewPage))
+    setEditX(String(pdfX))
+    setEditY(String(pdfY))
+    setHighlightPage(String(previewPage))
+    setHighlightX(String(pdfX))
+    setHighlightY(String(pdfY))
+    setPin({ page: previewPage, relX, relY, pdfX, pdfY })
   }
 
   const handleRenderDownload = async () => {
@@ -466,20 +484,47 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                           </Select>
                         </Box>
                       </Stack>
+                      <Typography variant="caption" color={pin && pin.page === previewPage ? 'primary.main' : 'text.secondary'} fontWeight={pin && pin.page === previewPage ? 600 : 400}>
+                        {pin && pin.page === previewPage
+                          ? t('pdf.pinPlaced', { page: pin.page, x: pin.pdfX, y: pin.pdfY })
+                          : t('pdf.clickToPlaceHint')}
+                      </Typography>
                       <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                        <Box
-                          component="canvas"
-                          ref={canvasRef}
-                          id="pdf-preview-canvas"
-                          sx={{
-                            display: 'block',
-                            maxHeight: { xs: 320, lg: 'clamp(200px, calc(100dvh - 470px), 420px)' },
-                            maxWidth: '100%',
-                            borderRadius: 1,
-                            border: 1,
-                            borderColor: 'divider',
-                          }}
-                        />
+                        <Box sx={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+                          <Box
+                            component="canvas"
+                            ref={canvasRef}
+                            id="pdf-preview-canvas"
+                            onClick={handleCanvasClick}
+                            sx={{
+                              display: 'block',
+                              maxHeight: { xs: 320, lg: 'clamp(200px, calc(100dvh - 470px), 420px)' },
+                              maxWidth: '100%',
+                              borderRadius: 1,
+                              border: 1,
+                              borderColor: 'divider',
+                              cursor: 'crosshair',
+                            }}
+                          />
+                          {pin && pin.page === previewPage && (
+                            <Box
+                              aria-hidden="true"
+                              sx={{
+                                position: 'absolute',
+                                left: `${pin.relX * 100}%`,
+                                top: `${pin.relY * 100}%`,
+                                transform: 'translate(-50%, -50%)',
+                                width: 14,
+                                height: 14,
+                                borderRadius: '50%',
+                                bgcolor: 'primary.main',
+                                border: '2px solid #ffffff',
+                                boxShadow: '0 1px 6px rgba(0,0,0,0.45)',
+                                pointerEvents: 'none',
+                              }}
+                            />
+                          )}
+                        </Box>
                       </Box>
                       {previewDims && (
                         <Typography variant="body2" color="text.secondary" id="pdf-preview-dims">
@@ -542,30 +587,63 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                     <Typography variant="overline" color="text.secondary">
                       {t('pdf.editAddContent')}
                     </Typography>
-                    <Stack spacing={2} sx={{ mt: 1 }}>
+                    <Stack spacing={3} sx={{ mt: 1 }}>
                       <Typography variant="body2" color="text.secondary">
                         {t('pdf.editOverlayNote')}
                       </Typography>
                       <Box>
-                        <Typography variant="subtitle2">{t('pdf.editAddText')}</Typography>
-                        <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap" sx={{ mt: 0.5 }}>
-                          <TextField id="pdf-edit-text" size="small" label={t('pdf.editText')} value={editText} onChange={(e) => setEditText(e.target.value)} sx={{ width: 220 }} />
-                          <TextField id="pdf-edit-page" size="small" label={t('pdf.redactPage')} type="number" value={editPage} onChange={(e) => setEditPage(e.target.value)} sx={{ width: 90 }} />
-                          <TextField id="pdf-edit-x" size="small" label="X (pt)" type="number" value={editX} onChange={(e) => setEditX(e.target.value)} sx={{ width: 90 }} />
-                          <TextField id="pdf-edit-y" size="small" label="Y (pt)" type="number" value={editY} onChange={(e) => setEditY(e.target.value)} sx={{ width: 90 }} />
-                          <TextField id="pdf-edit-size" size="small" label={t('pdf.editSizePt')} type="number" value={editSize} onChange={(e) => setEditSize(e.target.value)} sx={{ width: 90 }} />
-                          <TextField id="pdf-edit-color" size="small" label={t('pdf.editColour')} type="color" value={editColor} onChange={(e) => setEditColor(e.target.value)} sx={{ width: 70 }} />
-                          <Button type="button" variant="outlined" id="pdf-edit-text-button" onClick={handleEditText} disabled={pdf.busy !== null || pdf.wasmReady === false}>
-                            {editing ? t('pdf.editAdding') : t('pdf.editAddText')}
-                          </Button>
+                        <Typography variant="subtitle2" sx={{ mb: 1.25 }}>{t('pdf.editAddText')}</Typography>
+                        <Stack spacing={1.5}>
+                          <TextField id="pdf-edit-text" size="small" fullWidth label={t('pdf.editText')} value={editText} onChange={(e) => setEditText(e.target.value)} />
+                          <Box>
+                            <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.75 }}>
+                              {t('pdf.editPosPreset')}
+                            </Typography>
+                            <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                              {[
+                                { label: t('pdf.editPosTopLeft'), x: '72', y: '740' },
+                                { label: t('pdf.editPosTopRightPreset'), x: '420', y: '740' },
+                                { label: t('pdf.editPosCenter'), x: '240', y: '400' },
+                                { label: t('pdf.editPosBottomLeft'), x: '72', y: '54' },
+                                { label: t('pdf.editPosBottomRightPreset'), x: '420', y: '54' },
+                              ].map((preset) => (
+                                <Button
+                                  key={preset.label}
+                                  type="button"
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => {
+                                    setEditX(preset.x)
+                                    setEditY(preset.y)
+                                  }}
+                                  sx={{ py: 0.25, px: 1, fontSize: '0.75rem' }}
+                                >
+                                  {preset.label}
+                                </Button>
+                              ))}
+                            </Stack>
+                          </Box>
+                          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1.5 }}>
+                            <TextField id="pdf-edit-page" size="small" label={t('pdf.redactPage')} type="number" value={editPage} onChange={(e) => setEditPage(e.target.value)} />
+                            <TextField id="pdf-edit-size" size="small" label={t('pdf.editSizePt')} type="number" value={editSize} onChange={(e) => setEditSize(e.target.value)} />
+                            <TextField id="pdf-edit-x" size="small" label="X (pt)" type="number" value={editX} onChange={(e) => setEditX(e.target.value)} />
+                            <TextField id="pdf-edit-y" size="small" label="Y (pt)" type="number" value={editY} onChange={(e) => setEditY(e.target.value)} />
+                          </Box>
+                          <Stack direction="row" spacing={1.5} alignItems="center">
+                            <TextField id="pdf-edit-color" size="small" label={t('pdf.editColour')} type="color" value={editColor} onChange={(e) => setEditColor(e.target.value)} sx={{ width: 88 }} />
+                            <Button type="button" variant="contained" id="pdf-edit-text-button" onClick={handleEditText} disabled={pdf.busy !== null || pdf.wasmReady === false} sx={{ flex: 1 }}>
+                              {editing ? t('pdf.editAdding') : t('pdf.editAddText')}
+                            </Button>
+                          </Stack>
                         </Stack>
                       </Box>
-                      <Box>
-                        <Typography variant="subtitle2">{t('pdf.editPageNumHeader')}</Typography>
-                        <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap" sx={{ mt: 0.5 }}>
-                          <TextField id="pdf-edit-pagenum-format" size="small" label={t('pdf.editPageNumFormat')} value={pageNumFormat} onChange={(e) => setPageNumFormat(e.target.value)} sx={{ width: 220 }} />
+                      <Box sx={{ pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1.25 }}>{t('pdf.editPageNumHeader')}</Typography>
+                        <Stack spacing={1.5}>
+                          <TextField id="pdf-edit-pagenum-format" size="small" fullWidth label={t('pdf.editPageNumFormat')} value={pageNumFormat} onChange={(e) => setPageNumFormat(e.target.value)} />
                           <Select
                             native
+                            fullWidth
                             id="pdf-edit-pagenum-position"
                             value={pageNumPosition}
                             onChange={(e) => setPageNumPosition(e.target.value as typeof pageNumPosition)}
@@ -576,28 +654,28 @@ export function EditTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps)
                             <option value="top_center">{t('pdf.editPosTopCentre')}</option>
                             <option value="top_right">{t('pdf.editPosTopRight')}</option>
                           </Select>
-                          <Button type="button" variant="outlined" id="pdf-edit-pagenum-button" onClick={handlePageNumbers} disabled={pdf.busy !== null || pdf.wasmReady === false}>
+                          <Button type="button" variant="outlined" fullWidth id="pdf-edit-pagenum-button" onClick={handlePageNumbers} disabled={pdf.busy !== null || pdf.wasmReady === false}>
                             {editing ? t('pdf.editAdding') : t('pdf.editAddPageNumbers')}
                           </Button>
-                        </Stack>
-                        <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap" sx={{ mt: 1.5 }}>
-                          <TextField id="pdf-edit-header" size="small" label={t('pdf.editHeader')} value={headerText} onChange={(e) => setHeaderText(e.target.value)} sx={{ width: 220 }} />
-                          <TextField id="pdf-edit-footer" size="small" label={t('pdf.editFooter')} value={footerText} onChange={(e) => setFooterText(e.target.value)} sx={{ width: 220 }} />
-                          <Button type="button" variant="outlined" id="pdf-edit-header-footer-button" onClick={handleHeaderFooter} disabled={pdf.busy !== null || pdf.wasmReady === false}>
+                          <TextField id="pdf-edit-header" size="small" fullWidth label={t('pdf.editHeader')} value={headerText} onChange={(e) => setHeaderText(e.target.value)} />
+                          <TextField id="pdf-edit-footer" size="small" fullWidth label={t('pdf.editFooter')} value={footerText} onChange={(e) => setFooterText(e.target.value)} />
+                          <Button type="button" variant="outlined" fullWidth id="pdf-edit-header-footer-button" onClick={handleHeaderFooter} disabled={pdf.busy !== null || pdf.wasmReady === false}>
                             {editing ? t('pdf.editAdding') : t('pdf.editAddHeaderFooter')}
                           </Button>
                         </Stack>
                       </Box>
-                      <Box>
-                        <Typography variant="subtitle2">{t('pdf.editHighlight')}</Typography>
-                        <Stack direction="row" spacing={1.5} alignItems="flex-end" flexWrap="wrap" sx={{ mt: 0.5 }}>
-                          <TextField id="pdf-highlight-page" size="small" label={t('pdf.redactPage')} type="number" value={highlightPage} onChange={(e) => setHighlightPage(e.target.value)} sx={{ width: 90 }} />
-                          <TextField id="pdf-highlight-x" size="small" label="X (pt)" type="number" value={highlightX} onChange={(e) => setHighlightX(e.target.value)} sx={{ width: 90 }} />
-                          <TextField id="pdf-highlight-y" size="small" label="Y (pt)" type="number" value={highlightY} onChange={(e) => setHighlightY(e.target.value)} sx={{ width: 90 }} />
-                          <TextField id="pdf-highlight-w" size="small" label="Width (pt)" type="number" value={highlightW} onChange={(e) => setHighlightW(e.target.value)} sx={{ width: 90 }} />
-                          <TextField id="pdf-highlight-h" size="small" label="Height (pt)" type="number" value={highlightH} onChange={(e) => setHighlightH(e.target.value)} sx={{ width: 90 }} />
-                          <TextField id="pdf-highlight-color" size="small" label={t('pdf.editColour')} type="color" value={highlightColor} onChange={(e) => setHighlightColor(e.target.value)} sx={{ width: 70 }} />
-                          <Button type="button" variant="outlined" id="pdf-highlight-button" onClick={handleHighlight} disabled={pdf.busy !== null || pdf.wasmReady === false}>
+                      <Box sx={{ pt: 1.5, borderTop: 1, borderColor: 'divider' }}>
+                        <Typography variant="subtitle2" sx={{ mb: 1.25 }}>{t('pdf.editHighlight')}</Typography>
+                        <Stack spacing={1.5}>
+                          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 1.5 }}>
+                            <TextField id="pdf-highlight-page" size="small" label={t('pdf.redactPage')} type="number" value={highlightPage} onChange={(e) => setHighlightPage(e.target.value)} />
+                            <TextField id="pdf-highlight-color" size="small" label={t('pdf.editColour')} type="color" value={highlightColor} onChange={(e) => setHighlightColor(e.target.value)} />
+                            <TextField id="pdf-highlight-x" size="small" label="X (pt)" type="number" value={highlightX} onChange={(e) => setHighlightX(e.target.value)} />
+                            <TextField id="pdf-highlight-y" size="small" label="Y (pt)" type="number" value={highlightY} onChange={(e) => setHighlightY(e.target.value)} />
+                            <TextField id="pdf-highlight-w" size="small" label="Width (pt)" type="number" value={highlightW} onChange={(e) => setHighlightW(e.target.value)} />
+                            <TextField id="pdf-highlight-h" size="small" label="Height (pt)" type="number" value={highlightH} onChange={(e) => setHighlightH(e.target.value)} />
+                          </Box>
+                          <Button type="button" variant="outlined" fullWidth id="pdf-highlight-button" onClick={handleHighlight} disabled={pdf.busy !== null || pdf.wasmReady === false}>
                             {editing ? t('pdf.editHighlighting') : t('pdf.editHighlightBtn')}
                           </Button>
                         </Stack>

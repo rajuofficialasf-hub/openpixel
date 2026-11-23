@@ -1,54 +1,32 @@
 /**
- * Homepage (prompt §9): hero, main upload area, popular tools,
- * categories, how it works, benefits, privacy.
+ * Homepage: designed to fit 100% inside a single desktop screen
+ * (1280×720 / 1366×768 / 1440×900) with ZERO vertical scroll on PC,
+ * while stacking cleanly on phones/tablets.
  *
- * The upload area is real: a dropped file is sniffed (PDF magic
- * bytes, then the image signature detector) and routed to the
- * workspace that can handle it — with the file handed over, not
- * just a navigation. Office documents and unknown files get an
- * honest notice instead of a dead end.
- *
- * Hero (unslop): an asymmetric split — the headline on the left,
- * a coded conversion preview on the right. The primary action is
- * the real work (choosing a file), not a scroll to the dropzone.
+ * 1. Hero + integrated smart DropZone side-by-side
+ * 2. Quick Start — 4 primary workflows in one crisp row
+ * 3. Popular Tools — 6 compact cards in a 3×2 grid
+ * 4. Compact 1-row "How it works + 100% Local" footer strip
  */
 import { useState } from 'react'
-import { Box, Button, Card, CardContent, Grid, Stack, Typography } from '@mui/material'
-import UploadFileIcon from '@mui/icons-material/UploadFile'
-import MouseIcon from '@mui/icons-material/Mouse'
-import DownloadIcon from '@mui/icons-material/Download'
-import ShieldIcon from '@mui/icons-material/Shield'
-import SpeedIcon from '@mui/icons-material/Speed'
-import DevicesIcon from '@mui/icons-material/Devices'
-import FolderZipIcon from '@mui/icons-material/FolderZip'
-import FormatShapesIcon from '@mui/icons-material/FormatShapes'
-import NoAccountsIcon from '@mui/icons-material/NoAccounts'
-import { CATEGORIES, POPULAR_TOOLS, type RouteId, type ToolCategory } from '../lib/routes'
-import { translate } from '../lib/i18n'
+import { Alert, Box, Button, Card, CardActionArea, CardContent, Grid, Stack, Typography } from '@mui/material'
+import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import { POPULAR_TOOLS, toolDescription, type RouteId, type ToolCategory } from '../lib/routes'
 import { useI18n } from '../lib/use-i18n'
 import { detectFileFormat } from '../lib/detect'
 import { DropZone } from './DropZone'
-import { ToolCard } from './ToolCard'
-import { ConversionPreview } from './ConversionPreview'
-import { CategoryIcon } from './CategoryIcon'
+import { ToolIcon } from './CategoryIcon'
 
 interface HomePageProps {
   onNavigate: (route: RouteId, opts?: { toolsCategory?: ToolCategory; files?: File[] }) => void
 }
 
-const HOW_IT_WORKS = [
-  { icon: <UploadFileIcon color="primary" />, key: 'how1' },
-  { icon: <MouseIcon color="primary" />, key: 'how2' },
-  { icon: <DownloadIcon color="primary" />, key: 'how3' },
-]
-
-const BENEFITS = [
-  { icon: <FormatShapesIcon color="primary" />, key: 'benefit1' },
-  { icon: <SpeedIcon color="primary" />, key: 'benefit2' },
-  { icon: <ShieldIcon color="primary" />, key: 'benefit3' },
-  { icon: <FolderZipIcon color="primary" />, key: 'benefit4' },
-  { icon: <DevicesIcon color="primary" />, key: 'benefit5' },
-  { icon: <NoAccountsIcon color="primary" />, key: 'benefit6' },
+const QUICK_ACTIONS: { route: RouteId; toolId: string; category: ToolCategory; titleKey: string; descKey: string }[] = [
+  { route: 'convert', toolId: 'convert', category: 'image', titleKey: 'nav.convert', descKey: 'home.qaConvertDesc' },
+  { route: 'resize', toolId: 'resize', category: 'image', titleKey: 'nav.resize', descKey: 'home.qaResizeDesc' },
+  { route: 'pdf', toolId: 'pdf-merge', category: 'pdf', titleKey: 'nav.pdf', descKey: 'home.qaPdfDesc' },
+  { route: 'ocr', toolId: 'ocr', category: 'ocr', titleKey: 'nav.ocr', descKey: 'home.qaOcrDesc' },
 ]
 
 export function HomePage({ onNavigate }: HomePageProps) {
@@ -86,200 +64,228 @@ export function HomePage({ onNavigate }: HomePageProps) {
     }
   }
 
+  // Show 6 popular tools so they form an exact 3×2 desktop grid with
+  // zero orphan row and fit cleanly in a single viewport.
+  const featuredTools = POPULAR_TOOLS.slice(0, 6)
+
   return (
-    <Stack spacing={4}>
-      {/* 1. Hero — split: headline left, conversion preview right. */}
-      <Box component="section" aria-labelledby="home-hero-heading" sx={{ py: { xs: 4, md: 6 } }}>
-        <Grid container spacing={6} alignItems="center">
+    <Stack
+      spacing={{ xs: 3, lg: 2 }}
+      sx={{
+        flex: { lg: 1 },
+        justifyContent: { lg: 'space-between' },
+        minHeight: { lg: 0 },
+      }}
+    >
+      {/* 1. Hero + integrated smart DropZone */}
+      <Box component="section" aria-labelledby="home-hero-heading">
+        <Grid container spacing={2.5} alignItems="center">
           <Grid size={{ xs: 12, md: 6 }}>
             <Typography
               variant="h1"
               component="h1"
               id="home-hero-heading"
               sx={{
-                fontSize: { xs: '2.25rem', md: '3.5rem' },
-                lineHeight: { xs: 1.1, md: 1.05 },
-                fontWeight: 500,
+                fontSize: { xs: '1.75rem', md: '2.15rem', xl: '2.4rem' },
+                lineHeight: 1.12,
+                fontWeight: 600,
                 letterSpacing: '-0.02em',
               }}
             >
               {t('home.heroTitle')}
             </Typography>
             <Typography
-              variant="body1"
+              variant="body2"
               color="text.secondary"
-              sx={{ mt: 2, fontSize: '1.125rem', lineHeight: 1.6, maxWidth: '36rem' }}
+              sx={{ mt: 1, fontSize: '0.95rem', lineHeight: 1.5, maxWidth: '34rem' }}
             >
               {t('home.heroSub')}
             </Typography>
-            <Stack direction="row" spacing={2} sx={{ mt: 3, flexWrap: 'wrap' }}>
+            <Stack direction="row" spacing={1.5} sx={{ mt: 2, flexWrap: 'wrap' }}>
               <Button
                 variant="contained"
-                size="large"
                 onClick={() => document.getElementById('home-file')?.click()}
               >
                 {t('home.chooseFile')}
               </Button>
-              <Button variant="outlined" size="large" onClick={() => onNavigate('tools')}>
+              <Button
+                variant="outlined"
+                endIcon={<ArrowForwardIcon />}
+                onClick={() => onNavigate('tools')}
+              >
                 {t('home.exploreTools')}
               </Button>
             </Stack>
           </Grid>
           <Grid size={{ xs: 12, md: 6 }}>
-            <ConversionPreview />
+            <DropZone
+              onFiles={(files) => void routeFiles(files)}
+              label={routing ? t('home.readingFile') : t('home.dropLabel')}
+              hint={t('home.dropHint')}
+              inputId="home-file"
+              radius={1.5}
+              compact
+            />
+            {notice && (
+              <Alert severity="info" role="status" sx={{ mt: 1 }}>
+                {notice}
+              </Alert>
+            )}
           </Grid>
         </Grid>
       </Box>
 
-      {/* 2. Main upload area */}
-      <Box component="section" aria-labelledby="home-upload-heading">
-        <Typography variant="h5" component="h2" id="home-upload-heading" sx={{ mb: 2 }}>
-          {t('home.startWithFile')}
-        </Typography>
-        <DropZone
-          onFiles={(files) => void routeFiles(files)}
-          label={routing ? t('home.readingFile') : t('home.dropLabel')}
-          hint={t('home.dropHint')}
-          inputId="home-file"
-          radius={1.5}
-        />
-        {notice && (
-          <Typography role="status" variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-            {notice}
+      {/* 2. Quick start — 4 core destinations in one crisp row */}
+      <Box component="section" aria-labelledby="home-quick-heading">
+        <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 1 }}>
+          <Typography variant="subtitle1" component="h2" id="home-quick-heading" fontWeight={600}>
+            {t('home.quickActions')}
           </Typography>
-        )}
-      </Box>
-
-      {/* 3. {t('home.popularTitle')} */}
-      <Box component="section" aria-labelledby="home-popular-heading">
-        <Typography variant="h5" component="h2" id="home-popular-heading" sx={{ mb: 1 }}>
-          {t('home.popularTitle')}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {t('home.popularSub')}
-        </Typography>
-        <Grid container spacing={2}>
-          {POPULAR_TOOLS.map((tool) => (
-            <Grid key={tool.id} size={{ xs: 12, sm: 4, lg: 4 }}>
-              <ToolCard tool={tool} onNavigate={(route) => onNavigate(route)} />
+          <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+            {t('home.quickActionsSub')}
+          </Typography>
+        </Box>
+        <Grid container spacing={1.5}>
+          {QUICK_ACTIONS.map((qa) => (
+            <Grid key={qa.route} size={{ xs: 12, sm: 6, lg: 3 }}>
+              <Card
+                sx={{
+                  height: '100%',
+                  transition: (theme) => theme.transitions.create(['border-color', 'transform'], { duration: theme.transitions.duration.short }),
+                  '&:hover': { borderColor: 'primary.main', transform: 'translateY(-1px)' },
+                }}
+              >
+                <CardActionArea onClick={() => onNavigate(qa.route)} sx={{ height: '100%' }}>
+                  <CardContent sx={{ p: 1.75, '&:last-child': { pb: 1.75 } }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25 }}>
+                      <ToolIcon toolId={qa.toolId} category={qa.category} />
+                      <Typography variant="subtitle2" component="h3" fontWeight={600}>
+                        {t(qa.titleKey)}
+                      </Typography>
+                    </Box>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{
+                        display: '-webkit-box',
+                        WebkitLineClamp: 2,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        mt: 0.75,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {t(qa.descKey)}
+                    </Typography>
+                  </CardContent>
+                </CardActionArea>
+              </Card>
             </Grid>
           ))}
         </Grid>
       </Box>
 
-      {/* 4. Categories — the last card spans the full row, so no
-          single card is orphaned on its own row. */}
-      <Box component="section" aria-labelledby="home-categories-heading">
-        <Typography variant="h5" component="h2" id="home-categories-heading" sx={{ mb: 1 }}>
-          {t('home.categoriesTitle')}
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          {t('home.categoriesSub')}
-        </Typography>
-        <Grid container spacing={2}>
-          {CATEGORIES.map((cat, i) => {
-            const wide = i === CATEGORIES.length - 1
-            return (
-              <Grid key={cat.id} size={wide ? { xs: 12, sm: 12, lg: 12 } : { xs: 12, sm: 6, lg: 4 }}>
-                <Card sx={{ height: '100%' }}>
-                  <Button
-                    onClick={() => onNavigate('tools', { toolsCategory: cat.id })}
+      {/* 3. Popular tools — compact 3×2 grid */}
+      <Box component="section" aria-labelledby="home-popular-heading">
+        <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', mb: 1 }}>
+          <Typography variant="subtitle1" component="h2" id="home-popular-heading" fontWeight={600}>
+            {t('home.popularTitle')}
+          </Typography>
+          <Button size="small" endIcon={<ArrowForwardIcon />} onClick={() => onNavigate('tools')} sx={{ py: 0 }}>
+            {t('home.exploreTools')}
+          </Button>
+        </Box>
+        <Grid container spacing={1.5}>
+          {featuredTools.map((tool) => (
+            <Grid key={tool.id} size={{ xs: 12, sm: 6, lg: 4 }}>
+              <Card
+                sx={{
+                  height: '100%',
+                  transition: (theme) => theme.transitions.create(['border-color', 'transform'], { duration: theme.transitions.duration.short }),
+                  '&:hover': { borderColor: 'primary.main', transform: 'translateY(-1px)' },
+                }}
+              >
+                <CardActionArea
+                  onClick={() => tool.route && onNavigate(tool.route)}
+                  aria-label={t('tool.ariaOpen', { name: tool.name })}
+                  sx={{ height: '100%' }}
+                >
+                  <CardContent
                     sx={{
-                      display: 'block',
-                      width: '100%',
-                      height: '100%',
-                      textAlign: 'left',
-                      textTransform: 'none',
-                      color: 'text.primary',
-                      p: 0,
+                      p: 1.5,
+                      '&:last-child': { pb: 1.5 },
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1.5,
                     }}
                   >
-                    <CardContent
-                      sx={
-                        wide
-                          ? { display: 'flex', alignItems: 'center', gap: 2 }
-                          : { display: 'flex', flexDirection: 'column', gap: 1.5, alignItems: 'flex-start' }
-                      }
-                    >
-                      <CategoryIcon category={cat.id} />
-                      <Box>
-                        <Typography variant="subtitle1">{translate(lang, `cat.${cat.id}`)}</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {translate(lang, `cat.${cat.id}.blurb`)}
+                    <ToolIcon toolId={tool.id} category={tool.categories[0]} />
+                    <Box sx={{ minWidth: 0, flex: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+                        <Typography variant="subtitle2" component="h3" fontWeight={600} noWrap>
+                          {tool.name}
                         </Typography>
+                        {tool.formatChip && (
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ fontFamily: 'monospace', fontSize: '0.7rem', flexShrink: 0 }}
+                          >
+                            {tool.formatChip}
+                          </Typography>
+                        )}
                       </Box>
-                    </CardContent>
-                  </Button>
-                </Card>
-              </Grid>
-            )
-          })}
-        </Grid>
-      </Box>
-
-      {/* 5. {t('home.howTitle')} */}
-      <Box component="section" aria-labelledby="home-how-heading">
-        <Typography variant="h5" component="h2" id="home-how-heading" sx={{ mb: 2 }}>
-          {t('home.howTitle')}
-        </Typography>
-        <Grid container spacing={2}>
-          {HOW_IT_WORKS.map((step, i) => (
-            <Grid key={step.key} size={{ xs: 12, md: 4 }}>
-              <Card sx={{ height: '100%' }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                    {step.icon}
-                    <Typography variant="overline" color="text.secondary">
-                      {t('home.howStep', { n: i + 1 })}
-                    </Typography>
-                  </Box>
-                  <Typography variant="subtitle1">{t(`home.${step.key}Title`)}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {t(`home.${step.key}Text`)}
-                  </Typography>
-                </CardContent>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          display: 'block',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {toolDescription(lang, tool)}
+                      </Typography>
+                    </Box>
+                  </CardContent>
+                </CardActionArea>
               </Card>
             </Grid>
           ))}
         </Grid>
       </Box>
 
-      {/* 6. Benefits — two wider columns, a different rhythm from
-          the three-column grids above. */}
-      <Box component="section" aria-labelledby="home-benefits-heading">
-        <Typography variant="h5" component="h2" id="home-benefits-heading" sx={{ mb: 2 }}>
-          {t('home.whyTitle')}
-        </Typography>
-        <Grid container spacing={2}>
-          {BENEFITS.map((b) => (
-            <Grid key={b.key} size={{ xs: 12, sm: 6, lg: 6 }}>
-              <Card sx={{ height: '100%' }}>
-                <CardContent>
-                  <Box sx={{ mb: 1 }}>{b.icon}</Box>
-                  <Typography variant="subtitle1">{t(`home.${b.key}Title`)}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {t(`home.${b.key}Text`)}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      </Box>
-
-      {/* Privacy */}
-      <Box component="section" aria-labelledby="home-privacy-heading">
-        <Card>
-          <CardContent>
-            <Typography variant="h6" component="h2" id="home-privacy-heading">
-              {t('home.privacyTitle')}
+      {/* 4. Compact 1-row How it works + Privacy bar */}
+      <Card component="section" aria-labelledby="home-privacy-heading">
+        <CardContent
+          sx={{
+            py: 1.25,
+            px: 2,
+            '&:last-child': { pb: 1.25 },
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1.5,
+          }}
+        >
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1.5 }}>
+            <Typography variant="caption" fontWeight={600} color="primary.main">
+              {t('home.howTitle')}:
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              {t('home.privacyText')}
+            <Typography variant="caption" color="text.secondary">
+              {t('step.upload')} → {t('step.options')} → {t('step.download')}
             </Typography>
-          </CardContent>
-        </Card>
-      </Box>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <ShieldOutlinedIcon color="success" sx={{ fontSize: 16 }} />
+            <Typography variant="caption" color="text.secondary" id="home-privacy-heading">
+              {t('home.privacyTitle')} — {t('footer.localNote')}
+            </Typography>
+          </Box>
+        </CardContent>
+      </Card>
     </Stack>
   )
 }

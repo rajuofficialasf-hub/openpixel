@@ -2,7 +2,7 @@
  * Image to PDF — one focused page. One PDF page per image, in
  * order, at the image's own size or a named page size.
  */
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Box, Button, Select, Typography } from '@mui/material'
 import { getPdfInfo, pdfFromImages, PDF_PAGE_SIZES, type PdfPageSize } from '../../lib/pdf'
 import { recordActivity } from '../../lib/activity'
@@ -11,14 +11,26 @@ import { PdfToolPage } from './shared'
 import { useI18n } from '../../lib/use-i18n'
 import { usePdfFile, type PdfToolProps } from './usePdfFile'
 
-export function ImagesToPdfTool({ initialFiles: _initialFiles, onInitialFilesConsumed: _onConsumed }: PdfToolProps) {
+export function ImagesToPdfTool({ initialFiles, onInitialFilesConsumed }: PdfToolProps) {
   // The hook owns the shared result/status/busy state; the images
-  // themselves live here (no PDF file is loaded on this page, and
-  // no handed-over file is ever forwarded to it).
+  // themselves live here. Accept image files handed over via Smart
+  // Next-Step Chaining or Ctrl+V clipboard paste.
   const { t } = useI18n()
   const pdf = usePdfFile('pdf-images-to-pdf')
   const [imageFiles, setImageFiles] = useState<File[]>([])
   const [imagePageSize, setImagePageSize] = useState<PdfPageSize>('Original')
+
+  const lastInitialRef = useRef<File[] | null>(null)
+  useEffect(() => {
+    if (initialFiles && initialFiles.length > 0 && lastInitialRef.current !== initialFiles) {
+      lastInitialRef.current = initialFiles
+      const imagesOnly = initialFiles.filter((f) => f.type.startsWith('image/') || !f.name.toLowerCase().endsWith('.pdf'))
+      if (imagesOnly.length > 0) {
+        queueMicrotask(() => setImageFiles((prev) => [...prev, ...imagesOnly]))
+      }
+      onInitialFilesConsumed?.()
+    }
+  }, [initialFiles, onInitialFilesConsumed])
 
   const run = async () => {
     if (imageFiles.length === 0) return
