@@ -39,11 +39,14 @@ await shot('01-home.png');
 await page.locator('#tab-convert').click();
 
 // WASM module present? The intro text switches once wasmSupport loads.
-// (Marker is 'WASM engine’s BMP': BMP leads the WASM target list
-// since the 16 Nov 2026 polish — the canvas cannot encode BMP.)
+// (Marker is the descWasm intro line: 'Canvas targets, plus the WASM
+// engine’s extra formats'. The old marker 'WASM engine’s BMP' lives in
+// the targets caption, which only renders after a file is selected
+// (ConvertWorkspace `{file && (` output panel), so it could never
+// appear here — the check failed deterministically, not from timing.)
 try {
   await page.waitForFunction(
-    () => document.body.innerText.includes('WASM engine’s BMP'),
+    () => document.body.innerText.includes('Canvas targets, plus the WASM engine’s extra formats'),
     { timeout: 15000 },
   );
   check('WASM engine support detected by UI', true, 'intro lists WASM targets');
