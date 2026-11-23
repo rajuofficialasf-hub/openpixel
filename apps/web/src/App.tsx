@@ -18,6 +18,9 @@ const Background3D = lazy(() => import('./components/Background3D'))
 const ConvertWorkspace = lazy(() => import('./components/ConvertWorkspace').then((m) => ({ default: m.ConvertWorkspace })))
 const ResizeWorkspace = lazy(() => import('./components/ResizeWorkspace').then((m) => ({ default: m.ResizeWorkspace })))
 const CropWorkspace = lazy(() => import('./components/CropWorkspace').then((m) => ({ default: m.CropWorkspace })))
+const BackgroundRemovalWorkspace = lazy(() =>
+  import('./components/BackgroundRemovalWorkspace').then((m) => ({ default: m.BackgroundRemovalWorkspace })),
+)
 const BatchWorkspace = lazy(() => import('./components/BatchWorkspace').then((m) => ({ default: m.BatchWorkspace })))
 const OcrWorkspace = lazy(() => import('./components/OcrWorkspace').then((m) => ({ default: m.OcrWorkspace })))
 const ToolsDirectory = lazy(() => import('./components/ToolsDirectory').then((m) => ({ default: m.ToolsDirectory })))
@@ -177,6 +180,12 @@ function App() {
                   {route === 'crop' && (
                     <CropWorkspace
                       initialFiles={pendingFor('crop')}
+                      onInitialFilesConsumed={clearPending}
+                    />
+                  )}
+                  {route === 'bg-remove' && (
+                    <BackgroundRemovalWorkspace
+                      initialFiles={pendingFor('bg-remove')}
                       onInitialFilesConsumed={clearPending}
                     />
                   )}

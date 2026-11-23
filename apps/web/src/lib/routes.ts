@@ -16,6 +16,7 @@ export type RouteId =
   | 'convert'
   | 'resize'
   | 'crop'
+  | 'bg-remove'
   | 'pdf'
   | 'pdf-merge'
   | 'pdf-split'
@@ -59,6 +60,7 @@ export const ROUTE_PATHS: Record<RouteId, string> = {
   convert: '/convert',
   resize: '/resize',
   crop: '/crop',
+  'bg-remove': '/remove-background',
   pdf: '/pdf',
   'pdf-merge': '/pdf/merge',
   'pdf-split': '/pdf/split',
@@ -223,10 +225,13 @@ export const TOOLS: ToolEntry[] = [
   {
     id: 'bg-remove',
     name: 'Background Removal',
-    description: 'Remove the background from a photo. Not built yet — in any version.',
+    description: 'Remove backgrounds 100% locally in your browser — AI Auto for portraits/products, plus instant Magic Color Remove.',
     categories: ['image'],
-    status: 'coming-soon',
-    keywords: ['background', 'remove', 'transparent', 'cutout', 'image'],
+    status: 'web',
+    route: 'bg-remove',
+    keywords: ['background', 'remove', 'transparent', 'cutout', 'ai', 'eraser', 'png', 'passport', 'image'],
+    popular: true,
+    formatChip: 'Auto → PNG',
   },
   // ---- PDF (web) — one tool, one page, one route each.
   // The old "Organize PDF Pages" grouping is gone: rotate,
@@ -611,7 +616,7 @@ export const TOOL_DESCRIPTIONS_BN: Record<string, string> = {
   metadata: 'যেকোনো ছবির ফরম্যাট, মাপ, রং, alpha, EXIF, ICC আর XMP তথ্য দেখুন।',
   crop: 'ড্র্যাগ করে ফ্রি অথবা নির্দিষ্ট অনুপাতে (1:1, 16:9, 4:3, Passport) ছবি ক্রপ করুন — সরাসরি ব্রাউজারেই।',
   rotate: 'লাইভ প্রিভিউ দেখে ছবি ৯০/১৮০/২৭০° ঘোরান অথবা অনুভূমিক/উল্লম্বভাবে উল্টান — সরাসরি ব্রাউজারেই।',
-  'bg-remove': 'ছবি থেকে ব্যাকগ্রাউন্ড সরান। এখনো তৈরি হয়নি — কোনো সংস্করণেই নয়।',
+  'bg-remove': 'সম্পূর্ণ ব্রাউজারেই ছবির ব্যাকগ্রাউন্ড সরান — মানুষ/প্রোডাক্টের জন্য ফ্রি লোকাল AI অটো এবং সাথে সাথে ইনস্ট্যান্ট কালার রিমুভ।',
   'pdf-merge': 'একাধিক PDF একত্রে একটি করুন, আপনার বেছে নেওয়া ক্রমে।',
   'pdf-split': 'পেজের রেঞ্জ দিয়ে PDF ভাগ করুন — প্রতিটি রেঞ্জের জন্য একটি করে ডকুমেন্ট।',
   'pdf-rotate': 'পৃষ্ঠা ৯০°, ১৮০° বা ২৭০° ঘোরান — সব পৃষ্ঠা, অথবা শুধু বেছে নেওয়াগুলো।',
@@ -678,6 +683,7 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { route: 'convert', label: 'Convert Image', icon: 'image', tabId: 'tab-convert' },
       { route: 'resize', label: 'Resize Image', icon: 'resize', tabId: 'tab-resize' },
       { route: 'crop', label: 'Crop & Rotate', icon: 'crop', tabId: 'tab-crop' },
+      { route: 'bg-remove', label: 'Remove BG', icon: 'bgRemove', tabId: 'tab-bg-remove' },
       { route: 'pdf', label: 'PDF Tools', icon: 'pdf', tabId: 'tab-pdf' },
       { route: 'ocr', label: 'OCR', icon: 'ocr', tabId: 'tab-ocr' },
       { route: 'batch', label: 'Batch Convert', icon: 'batch', tabId: 'tab-batch' },
@@ -708,6 +714,7 @@ export const ROUTE_TITLES: Record<RouteId, { title: string; crumb: string }> = {
   convert: { title: 'Convert Image', crumb: 'Convert Image' },
   resize: { title: 'Resize Image', crumb: 'Resize Image' },
   crop: { title: 'Crop & Rotate', crumb: 'Crop & Rotate' },
+  'bg-remove': { title: 'Remove Background', crumb: 'Remove Background' },
   pdf: { title: 'PDF Tools', crumb: 'PDF Tools' },
   'pdf-merge': { title: 'Merge PDF', crumb: 'Merge PDF' },
   'pdf-split': { title: 'Split PDF', crumb: 'Split PDF' },
