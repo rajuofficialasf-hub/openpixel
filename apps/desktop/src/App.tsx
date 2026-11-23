@@ -143,7 +143,13 @@ function App() {
           sx={{
             width: sidebarWidth,
             flexShrink: 0,
-            '& .MuiDrawer-paper': { width: sidebarWidth, boxSizing: 'border-box' },
+            transition: (th) => th.transitions.create('width', { duration: th.transitions.duration.shorter }),
+            '& .MuiDrawer-paper': {
+              width: sidebarWidth,
+              boxSizing: 'border-box',
+              overflowX: 'hidden',
+              transition: (th) => th.transitions.create('width', { duration: th.transitions.duration.shorter }),
+            },
           }}
         >
           <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

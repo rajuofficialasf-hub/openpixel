@@ -35,6 +35,7 @@ import {
 } from '@mui/material'
 import { alpha, useTheme } from '@mui/material/styles'
 import MenuIcon from '@mui/icons-material/Menu'
+import CloseIcon from '@mui/icons-material/Close'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
@@ -319,7 +320,11 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
 
   const searchOptions = useMemo(() => searchTools(searchInput, lang), [searchInput, lang])
 
-  const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH
+  // On mobile/tablet, the slide-out temporary drawer must ALWAYS show
+  // full labels (never icon-only inside a 248px drawer) and carry a
+  // close button instead of a desktop collapse toggle.
+  const isCollapsed = isDesktop && collapsed
+  const sidebarWidth = isCollapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH
 
   // Desktop (lg+): lock the entire Studio shell to 100dvh so the
   // outer page NEVER scrolls on PC — header, sidebar, breadcrumbs and
@@ -329,32 +334,50 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
   const isPdfWorkspace = route.startsWith('pdf-')
 
   const sidebar = (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', overflowX: 'hidden' }}>
       <Box
         sx={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: collapsed ? 'center' : 'flex-end',
-          px: 1,
+          justifyContent: isDesktop ? (isCollapsed ? 'center' : 'flex-end') : 'space-between',
+          px: isDesktop ? 1 : 2,
           minHeight: 56,
         }}
       >
-        <IconButton
-          onClick={() => setCollapsedAndSave(!collapsed)}
-          aria-label={collapsed ? t('header.expandSidebar') : t('header.collapseSidebar')}
-          size="small"
-        >
-          {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
-        </IconButton>
+        {!isDesktop && (
+          <Typography variant="subtitle1" fontWeight={600} noWrap>
+            OpenPixel{' '}
+            <Box component="span" sx={{ color: 'primary.main' }}>
+              Studio
+            </Box>
+          </Typography>
+        )}
+        {isDesktop ? (
+          <IconButton
+            onClick={() => setCollapsedAndSave(!collapsed)}
+            aria-label={isCollapsed ? t('header.expandSidebar') : t('header.collapseSidebar')}
+            size="small"
+          >
+            {isCollapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
+          </IconButton>
+        ) : (
+          <IconButton
+            onClick={() => setMobileOpen(false)}
+            aria-label={t('tool.close')}
+            size="small"
+          >
+            <CloseIcon />
+          </IconButton>
+        )}
       </Box>
       <Divider />
-      <List sx={{ flex: 1, overflowY: 'auto', py: 0.5 }} aria-label={t('shell.navAria')}>
+      <List sx={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', py: 0.5 }} aria-label={t('shell.navAria')}>
         {NAV_GROUPS.map((group) => (
           <Box key={group.label}>
-            {!collapsed && (
+            {!isCollapsed && (
               <ListSubheader
                 component="div"
-                sx={{ bgcolor: 'transparent', lineHeight: '26px', fontSize: '0.72rem', mt: 0.5 }}
+                sx={{ bgcolor: 'transparent', lineHeight: '26px', fontSize: '0.72rem', mt: 0.5, whiteSpace: 'nowrap' }}
               >
                 {groupLabel(group.label)}
               </ListSubheader>
@@ -371,13 +394,18 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                   aria-current={selected ? 'page' : undefined}
                   selected={selected}
                   onClick={() => go(item.route)}
-                  sx={collapsed ? { justifyContent: 'center', px: 0 } : undefined}
+                  sx={isCollapsed ? { justifyContent: 'center', px: 0 } : undefined}
                 >
-                  <ListItemIcon sx={collapsed ? { minWidth: 0 } : undefined}>{ICONS[item.icon]}</ListItemIcon>
-                  {!collapsed && <ListItemText primary={navLabel(item.route)} primaryTypographyProps={{ fontSize: '0.875rem' }} />}
+                  <ListItemIcon sx={isCollapsed ? { minWidth: 0 } : undefined}>{ICONS[item.icon]}</ListItemIcon>
+                  {!isCollapsed && (
+                    <ListItemText
+                      primary={navLabel(item.route)}
+                      primaryTypographyProps={{ fontSize: '0.875rem', noWrap: true }}
+                    />
+                  )}
                 </ListItemButton>
               )
-              return collapsed ? (
+              return isCollapsed ? (
                 <Tooltip key={item.route} title={navLabel(item.route)} placement="right">
                   {button}
                 </Tooltip>
@@ -425,7 +453,13 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
             sx={{
               width: sidebarWidth,
               flexShrink: 0,
-              '& .MuiDrawer-paper': { width: sidebarWidth, boxSizing: 'border-box' },
+              transition: (th) => th.transitions.create('width', { duration: th.transitions.duration.shorter }),
+              '& .MuiDrawer-paper': {
+                width: sidebarWidth,
+                boxSizing: 'border-box',
+                overflowX: 'hidden',
+                transition: (th) => th.transitions.create('width', { duration: th.transitions.duration.shorter }),
+              },
             }}
           >
             {sidebar}
