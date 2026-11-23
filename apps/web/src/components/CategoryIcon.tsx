@@ -39,6 +39,7 @@ import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
 import BrandingWatermarkOutlinedIcon from '@mui/icons-material/BrandingWatermarkOutlined'
 import DrawOutlinedIcon from '@mui/icons-material/DrawOutlined'
+import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined'
 import type { ToolCategory } from '../lib/routes'
 
 const CATEGORY_ICONS: Record<ToolCategory, ReactNode> = {
@@ -60,6 +61,8 @@ const TOOL_ICONS: Record<string, ReactNode> = {
   crop: <CropIcon />,
   rotate: <RotateRightIcon />,
   'bg-remove': <AutoFixHighIcon />,
+  passport: <BadgeOutlinedIcon />,
+  watermark: <BrandingWatermarkOutlinedIcon />,
   'pdf-merge': <CallMergeIcon />,
   'pdf-split': <CallSplitIcon />,
   'pdf-rotate': <Rotate90DegreesCwIcon />,

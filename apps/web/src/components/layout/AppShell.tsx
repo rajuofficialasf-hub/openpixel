@@ -56,6 +56,8 @@ import ImageIcon from '@mui/icons-material/Image'
 import PhotoSizeSelectLargeIcon from '@mui/icons-material/PhotoSizeSelectLarge'
 import CropIcon from '@mui/icons-material/Crop'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
+import BadgeOutlinedIcon from '@mui/icons-material/BadgeOutlined'
+import BrandingWatermarkOutlinedIcon from '@mui/icons-material/BrandingWatermarkOutlined'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import DocumentScannerIcon from '@mui/icons-material/DocumentScanner'
 import LayersIcon from '@mui/icons-material/Layers'
@@ -84,6 +86,8 @@ const ICONS: Record<string, ReactNode> = {
   resize: <PhotoSizeSelectLargeIcon />,
   crop: <CropIcon />,
   bgRemove: <AutoFixHighIcon />,
+  passport: <BadgeOutlinedIcon />,
+  watermark: <BrandingWatermarkOutlinedIcon />,
   pdf: <PictureAsPdfIcon />,
   ocr: <DocumentScannerIcon />,
   batch: <LayersIcon />,
@@ -258,7 +262,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
 
         const detected = first.type.startsWith('image/') ? first.type : await detectFileFormat(first)
         if (detected !== 'unknown') {
-          const imageRoutes: RouteId[] = ['convert', 'resize', 'crop', 'bg-remove', 'batch', 'ocr', 'pdf-images-to-pdf']
+          const imageRoutes: RouteId[] = ['convert', 'resize', 'crop', 'bg-remove', 'passport', 'watermark', 'batch', 'ocr', 'pdf-images-to-pdf']
           const staysHere = imageRoutes.includes(route)
           const target: RouteId = staysHere ? route : files.length > 1 ? 'batch' : 'convert'
           onNavigate(target, { files })
@@ -432,7 +436,7 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
       ? []
       : [
           { label: t('nav.home'), route: 'home' as RouteId },
-          ...(route === 'convert' || route === 'resize' || route === 'crop' || route === 'bg-remove' || route === 'pdf' || route === 'ocr' || route === 'batch' || isPdfTool
+          ...(route === 'convert' || route === 'resize' || route === 'crop' || route === 'bg-remove' || route === 'passport' || route === 'watermark' || route === 'pdf' || route === 'ocr' || route === 'batch' || isPdfTool
             ? [{ label: t('crumb.tools'), route: 'tools' as RouteId }]
             : []),
           ...(isPdfTool ? [{ label: t('crumb.pdfTools'), route: 'pdf' as RouteId }] : []),

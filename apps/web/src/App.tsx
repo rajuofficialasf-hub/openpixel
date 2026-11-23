@@ -8,7 +8,7 @@ import { loadSettings, resolveTheme, saveSettings, type Settings } from './lib/s
 import { I18nProvider } from './lib/i18n-context'
 import { translate } from './lib/i18n'
 import { getTheme } from './theme/theme'
-import { ROUTE_PATHS, routeFromPath, type RouteId } from './lib/routes'
+import { ROUTE_PATHS, ROUTE_TITLES, routeFromPath, type RouteId } from './lib/routes'
 import type { ToolsCategoryFilter } from './components/ToolsDirectory'
 
 // Lazy-loaded workspaces & secondary pages: HomePage paints
@@ -20,6 +20,12 @@ const ResizeWorkspace = lazy(() => import('./components/ResizeWorkspace').then((
 const CropWorkspace = lazy(() => import('./components/CropWorkspace').then((m) => ({ default: m.CropWorkspace })))
 const BackgroundRemovalWorkspace = lazy(() =>
   import('./components/BackgroundRemovalWorkspace').then((m) => ({ default: m.BackgroundRemovalWorkspace })),
+)
+const PassportPhotoWorkspace = lazy(() =>
+  import('./components/PassportPhotoWorkspace').then((m) => ({ default: m.PassportPhotoWorkspace })),
+)
+const ImageStudioWorkspace = lazy(() =>
+  import('./components/ImageStudioWorkspace').then((m) => ({ default: m.ImageStudioWorkspace })),
 )
 const BatchWorkspace = lazy(() => import('./components/BatchWorkspace').then((m) => ({ default: m.BatchWorkspace })))
 const OcrWorkspace = lazy(() => import('./components/OcrWorkspace').then((m) => ({ default: m.OcrWorkspace })))
@@ -85,9 +91,22 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', mode === 'dark')
     document.documentElement.lang = settings.language === 'bn' ? 'bn' : 'en'
-    document.title = `OpenPixel Studio — ${translate(settings.language, 'home.heroTitle')}`
+    const pageTitle =
+      route === 'home'
+        ? `OpenPixel Studio — ${translate(settings.language, 'home.heroTitle')}`
+        : `${ROUTE_TITLES[route].title} — OpenPixel Studio`
+    document.title = pageTitle
+    const metaDesc = document.querySelector('meta[name="description"]')
+    if (metaDesc) {
+      metaDesc.setAttribute(
+        'content',
+        route === 'home'
+          ? translate(settings.language, 'home.heroSub')
+          : `${ROUTE_TITLES[route].title} — ${translate(settings.language, 'home.heroSub')}`,
+      )
+    }
     saveSettings(settings)
-  }, [settings, mode])
+  }, [settings, mode, route])
 
   useEffect(() => {
     const fixPath = () => {
@@ -186,6 +205,18 @@ function App() {
                   {route === 'bg-remove' && (
                     <BackgroundRemovalWorkspace
                       initialFiles={pendingFor('bg-remove')}
+                      onInitialFilesConsumed={clearPending}
+                    />
+                  )}
+                  {route === 'passport' && (
+                    <PassportPhotoWorkspace
+                      initialFiles={pendingFor('passport')}
+                      onInitialFilesConsumed={clearPending}
+                    />
+                  )}
+                  {route === 'watermark' && (
+                    <ImageStudioWorkspace
+                      initialFiles={pendingFor('watermark')}
                       onInitialFilesConsumed={clearPending}
                     />
                   )}

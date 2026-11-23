@@ -17,6 +17,8 @@ export type RouteId =
   | 'resize'
   | 'crop'
   | 'bg-remove'
+  | 'passport'
+  | 'watermark'
   | 'pdf'
   | 'pdf-merge'
   | 'pdf-split'
@@ -61,6 +63,8 @@ export const ROUTE_PATHS: Record<RouteId, string> = {
   resize: '/resize',
   crop: '/crop',
   'bg-remove': '/remove-background',
+  passport: '/passport-photo',
+  watermark: '/watermark',
   pdf: '/pdf',
   'pdf-merge': '/pdf/merge',
   'pdf-split': '/pdf/split',
@@ -195,12 +199,32 @@ export const TOOLS: ToolEntry[] = [
   },
   {
     id: 'metadata',
-    name: 'Image Metadata',
-    description: 'View format, dimensions, colour, alpha, EXIF, ICC and XMP info for any image.',
+    name: 'Image Metadata & EXIF',
+    description: 'Inspect camera Make/Model, DateTime, and GPS tags — and export a clean privacy-stripped copy.',
     categories: ['image'],
     status: 'web',
-    route: 'convert',
-    keywords: ['metadata', 'exif', 'icc', 'xmp', 'info', 'details', 'image'],
+    route: 'watermark',
+    keywords: ['metadata', 'exif', 'gps', 'privacy', 'strip', 'info', 'details', 'image'],
+  },
+  {
+    id: 'passport',
+    name: 'Passport & Job Photo',
+    description: 'Make Teletalk/BCS 300×300 (<100KB) photos, 300×80 signatures (<60KB), BD Passport & Visa photos + 4×6/A4 print sheets.',
+    categories: ['image'],
+    status: 'web',
+    route: 'passport',
+    keywords: ['passport', 'teletalk', 'bcs', 'job', 'nid', 'visa', 'signature', '300x300', 'print', 'image'],
+    popular: true,
+    formatChip: '300×300 · <100KB',
+  },
+  {
+    id: 'watermark',
+    name: 'Watermark & Filters',
+    description: 'Add text watermarks (corner, center, or tiled), tune brightness/contrast/grayscale, and strip EXIF metadata locally.',
+    categories: ['image'],
+    status: 'web',
+    route: 'watermark',
+    keywords: ['watermark', 'filter', 'brightness', 'contrast', 'grayscale', 'blur', 'exif', 'privacy', 'image'],
   },
   // ---- Image (web — visual crop & rotate) ----
   {
@@ -429,11 +453,12 @@ export const TOOLS: ToolEntry[] = [
   {
     id: 'pdf-ocr',
     name: 'OCR PDF',
-    description: 'Turn a scanned PDF into a searchable PDF with a real text layer. Runs in the CLI.',
+    description: 'Extract English and Bengali text from multi-page scanned PDFs right in your browser (searchable PDF export also runs in CLI).',
     categories: ['pdf', 'ocr'],
-    status: 'cli-only',
-    cliCommand: 'openpixel pdf ocr input.pdf output.pdf',
-    keywords: ['ocr', 'searchable', 'scanned', 'text', 'pdf'],
+    status: 'web',
+    route: 'ocr',
+    keywords: ['ocr', 'searchable', 'scanned', 'text', 'pdf', 'bengali'],
+    formatChip: 'PDF → TXT',
   },
   {
     id: 'pdf-protect',
@@ -456,11 +481,11 @@ export const TOOLS: ToolEntry[] = [
   {
     id: 'pdf-watermark',
     name: 'Add Watermark',
-    description: 'Add a diagonal text watermark to every page. Runs in the CLI.',
+    description: 'Add a text watermark, drawn signature, or image stamp to your PDF pages — live preview in the browser.',
     categories: ['pdf'],
-    status: 'cli-only',
-    cliCommand: 'openpixel pdf watermark --text <text> input.pdf output.pdf',
-    keywords: ['watermark', 'stamp', 'text', 'pdf'],
+    status: 'web',
+    route: 'pdf-edit',
+    keywords: ['watermark', 'stamp', 'signature', 'text', 'pdf'],
   },
   {
     id: 'pdf-sign',
@@ -613,7 +638,9 @@ export const TOOL_DESCRIPTIONS_BN: Record<string, string> = {
   resize: 'Fit, fill, pad বা ঠিক মাপে Resize করুন — প্রিসেট, অনুপাতের তালা আর কখনো বড় না করার সুরক্ষাসহ। আগে/পরে প্রিভিউ আছে।',
   'compress-image': 'লক্ষ্য সাইজ মোড দিয়ে ছবি ঠিক ফাইল সাইজে কমপ্রেস করুন, অথবা quality বেছে নিন। ব্যাচ + zip আছে।',
   batch: 'ছবির পুরো ফোল্ডার একসাথে কনভার্ট করুন — একসাথে সর্বোচ্চ ৪টি ফাইল, ফলাফলের zip-সহ।',
-  metadata: 'যেকোনো ছবির ফরম্যাট, মাপ, রং, alpha, EXIF, ICC আর XMP তথ্য দেখুন।',
+  metadata: 'ছবির ক্যামেরা মডেল, তারিখ ও GPS EXIF তথ্য দেখুন এবং ১ ক্লিকে প্রাইভেসি ক্লিন কপি ডাউনলোড করুন।',
+  passport: 'Teletalk/BCS 300×300 (<100KB) ফটো, 300×80 সিগনেচার (<60KB), পাসপোর্ট/ভিসা ছবি ও 4×6/A4 প্রিন্ট শিট বানান।',
+  watermark: 'ছবিতে টেক্সট ওয়াটারমার্ক, ব্রাইটনেস/কন্ট্রাস্ট/গ্রেস্কেল ফিল্টার এবং EXIF প্রাইভেসি রিমুভ করুন — ব্রাউজারেই।',
   crop: 'ড্র্যাগ করে ফ্রি অথবা নির্দিষ্ট অনুপাতে (1:1, 16:9, 4:3, Passport) ছবি ক্রপ করুন — সরাসরি ব্রাউজারেই।',
   rotate: 'লাইভ প্রিভিউ দেখে ছবি ৯০/১৮০/২৭০° ঘোরান অথবা অনুভূমিক/উল্লম্বভাবে উল্টান — সরাসরি ব্রাউজারেই।',
   'bg-remove': 'সম্পূর্ণ ব্রাউজারেই ছবির ব্যাকগ্রাউন্ড সরান — মানুষ/প্রোডাক্টের জন্য ফ্রি লোকাল AI অটো এবং সাথে সাথে ইনস্ট্যান্ট কালার রিমুভ।',
@@ -637,10 +664,10 @@ export const TOOL_DESCRIPTIONS_BN: Record<string, string> = {
   'pdf-to-image': 'PDF-এর পৃষ্ঠাগুলো PNG বা JPEG হিসেবে রেন্ডার করে ডাউনলোড করুন।',
   'image-to-pdf': 'এক বা একাধিক ছবি থেকে PDF ডকুমেন্ট বানান।',
   'pdf-text': 'PDF থেকে লেখা পড়ুন — পেজে দেখানো হয় আর TXT হিসেবে ডাউনলোড করা যায়। EPUB/DOCX এক্সপোর্ট CLI-তে চলে।',
-  'pdf-ocr': 'স্ক্যান করা PDF থেকে খোঁজার মতো PDF বানান, আসল টেক্সট লেয়ারসহ। CLI-তে চলে।',
+  'pdf-ocr': 'স্ক্যান করা মাল্টি-পেজ PDF থেকে সরাসরি ব্রাউজারেই বাংলা ও ইংরেজি টেক্সট বের করুন।',
   'pdf-protect': 'PDF পাসওয়ার্ড দিয়ে সুরক্ষিত করুন (RC4-128), প্রিন্ট/কপি/বদলানোর অনুমতিসহ। CLI-তে চলে।',
   'pdf-unlock': 'আপনার মালিকানাধীন PDF থেকে পাসওয়ার্ড সরান। CLI-তে চলে।',
-  'pdf-watermark': 'প্রতিটি পেজে তির্যক লেখার ওয়াটারমার্ক যোগ করুন। CLI-তে চলে।',
+  'pdf-watermark': 'ব্রাউজারেই লাইভ প্রিভিউসহ PDF-এর সব পৃষ্ঠায় ওয়াটারমার্ক, সিগনেচার বা ইমেজ স্ট্যাম্প যোগ করুন।',
   'pdf-sign': 'আসল CMS/PKCS#7 ডিজিটাল স্বাক্ষর যোগ করুন (RSA, SHA-256)। CLI-তে চলে — প্রাইভেট কি কখনো ব্রাউজারে আসবে না।',
   'pdf-to-word': 'ওয়েবে এক ক্লিকে DOCX এক্সপোর্ট এখনো তৈরি হয়নি। টেক্সট নিষ্কাশন (TXT/HTML) PDF ওয়ার্কস্পেসে চলে; সম্পূর্ণ DOCX এক্সপোর্ট CLI-তে চলে।',
   'docx-to-pdf': 'LibreOffice দিয়ে Word ডকুমেন্ট PDF-এ কনভার্ট করুন। CLI / ডেস্কটপ অ্যাপে চলে।',
@@ -684,6 +711,8 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
       { route: 'resize', label: 'Resize Image', icon: 'resize', tabId: 'tab-resize' },
       { route: 'crop', label: 'Crop & Rotate', icon: 'crop', tabId: 'tab-crop' },
       { route: 'bg-remove', label: 'Remove BG', icon: 'bgRemove', tabId: 'tab-bg-remove' },
+      { route: 'passport', label: 'Passport Photo', icon: 'passport', tabId: 'tab-passport' },
+      { route: 'watermark', label: 'Watermark & EXIF', icon: 'watermark', tabId: 'tab-watermark' },
       { route: 'pdf', label: 'PDF Tools', icon: 'pdf', tabId: 'tab-pdf' },
       { route: 'ocr', label: 'OCR', icon: 'ocr', tabId: 'tab-ocr' },
       { route: 'batch', label: 'Batch Convert', icon: 'batch', tabId: 'tab-batch' },
@@ -715,6 +744,8 @@ export const ROUTE_TITLES: Record<RouteId, { title: string; crumb: string }> = {
   resize: { title: 'Resize Image', crumb: 'Resize Image' },
   crop: { title: 'Crop & Rotate', crumb: 'Crop & Rotate' },
   'bg-remove': { title: 'Remove Background', crumb: 'Remove Background' },
+  passport: { title: 'Passport & Job Photo', crumb: 'Passport Photo' },
+  watermark: { title: 'Watermark, Filters & EXIF', crumb: 'Watermark & EXIF' },
   pdf: { title: 'PDF Tools', crumb: 'PDF Tools' },
   'pdf-merge': { title: 'Merge PDF', crumb: 'Merge PDF' },
   'pdf-split': { title: 'Split PDF', crumb: 'Split PDF' },

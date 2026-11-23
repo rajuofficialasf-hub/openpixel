@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>/</loc><priority>1.0</priority></url>
+  <url><loc>/tools</loc><priority>0.9</priority></url>
+  <url><loc>/convert</loc><priority>0.9</priority></url>
+  <url><loc>/resize</loc><priority>0.9</priority></url>
+  <url><loc>/crop</loc><priority>0.9</priority></url>
+  <url><loc>/remove-background</loc><priority>0.9</priority></url>
+  <url><loc>/passport-photo</loc><priority>0.9</priority></url>
+  <url><loc>/watermark</loc><priority>0.8</priority></url>
+  <url><loc>/batch</loc><priority>0.8</priority></url>
+  <url><loc>/ocr</loc><priority>0.9</priority></url>
+  <url><loc>/pdf</loc><priority>0.9</priority></url>
+  <url><loc>/pdf/merge</loc><priority>0.8</priority></url>
+  <url><loc>/pdf/split</loc><priority>0.8</priority></url>
+  <url><loc>/pdf/compress</loc><priority>0.8</priority></url>
+  <url><loc>/pdf/edit</loc><priority>0.8</priority></url>
+  <url><loc>/pdf/rotate</loc><priority>0.7</priority></url>
+  <url><loc>/pdf/reorder</loc><priority>0.7</priority></url>
+  <url><loc>/pdf/extract</loc><priority>0.7</priority></url>
+  <url><loc>/pdf/remove</loc><priority>0.7</priority></url>
+  <url><loc>/pdf/pdf-to-image</loc><priority>0.8</priority></url>
+  <url><loc>/pdf/images-to-pdf</loc><priority>0.8</priority></url>
+  <url><loc>/pdf/extract-text</loc><priority>0.8</priority></url>
+  <url><loc>/pdf/redact</loc><priority>0.7</priority></url>
+  <url><loc>/pdf/metadata</loc><priority>0.7</priority></url>
+  <url><loc>/pdf/sanitize</loc><priority>0.7</priority></url>
+  <url><loc>/pdf/flatten</loc><priority>0.7</priority></url>
+  <url><loc>/pdf/repair</loc><priority>0.7</priority></url>
+  <url><loc>/formats</loc><priority>0.6</priority></url>
+  <url><loc>/help</loc><priority>0.5</priority></url>
+</urlset>
