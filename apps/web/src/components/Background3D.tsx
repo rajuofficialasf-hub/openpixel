@@ -1,209 +1,173 @@
 /**
- * Background3D — a calm, quiet Three.js backdrop.
+ * Background3D — ultra-lightweight (~2 KB) HTML5 2D Canvas backdrop
+ * replacing the previous 533 KB Three.js WebGL bundle.
  *
- * Plain `three` (no react-three-fiber): slow-floating geometric
- * particles and wireframe shapes in the brand blue/teal palette,
- * at LOW opacity, rendered on a fixed transparent canvas behind
- * the app. It is decoration only — `pointer-events: none` so it
- * never intercepts clicks, and it is lazy-loaded from `App.tsx`
- * so it never blocks first paint.
- *
- * Design rule (docs/DESIGN_NOTES.md): the backdrop must never
- * compete with the workspace. Particles are sparse and dim,
- * shapes are small, few, and slow, and the whole scene sits
- * further back (camera z 9.5). If it is ever noticeable before
- * the content, it is too loud — turn it down, not up.
+ * Renders the same calm, quiet floating particles and slow-rotating
+ * geometric wireframes in the brand blue/teal palette at low opacity
+ * behind the workspace (`pointer-events: none`), with zero WebGL GPU
+ * overhead and dramatically faster load/offline caching.
  *
  * Motion behaviour:
- * - `prefers-reduced-motion`: one static frame is rendered, no
- *   animation loop runs.
- * - `document.hidden`: the loop pauses (visibilitychange) and
- *   resumes when the tab is visible again.
- * - Unmount disposes everything: animation frame, resize and
- *   visibility listeners, geometries, materials and the renderer.
- *
- * Performance: ~160 points + 4 wireframe meshes, device pixel
- * ratio capped at 1.5, alpha canvas so the theme background shows
- * through.
+ * - `prefers-reduced-motion`: renders one static frame, no loop.
+ * - `document.hidden`: pauses automatically when tab is hidden.
+ * - Unmount cancels animation frame and removes listeners cleanly.
  */
 import { useEffect, useRef } from 'react'
-import * as THREE from 'three'
 
-const PARTICLE_COUNT = 160
-const BRAND_BLUE = '#2563eb'
-const BRAND_TEAL = '#0d9488'
+interface Dot {
+  x: number
+  y: number
+  r: number
+  vx: number
+  vy: number
+  color: string
+  alpha: number
+}
+
+interface Poly {
+  x: number
+  y: number
+  radius: number
+  sides: number
+  angle: number
+  speed: number
+  phase: number
+  color: string
+}
 
 export default function Background3D() {
-  const hostRef = useRef<HTMLDivElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
-    const host = hostRef.current
-    if (!host) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
 
     const reducedMotion =
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
 
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5))
-    renderer.setSize(host.clientWidth, host.clientHeight)
-    renderer.setClearColor(0x000000, 0)
-    renderer.domElement.style.position = 'absolute'
-    renderer.domElement.style.inset = '0'
-    host.appendChild(renderer.domElement)
-
-    const scene = new THREE.Scene()
-    const camera = new THREE.PerspectiveCamera(
-      60,
-      host.clientWidth / Math.max(host.clientHeight, 1),
-      0.1,
-      100,
-    )
-    camera.position.z = 9.5
-
-    // --- particles: a sparse field of brand-coloured points ---
-    const positions = new Float32Array(PARTICLE_COUNT * 3)
-    const colours = new Float32Array(PARTICLE_COUNT * 3)
-    const blue = new THREE.Color(BRAND_BLUE)
-    const teal = new THREE.Color(BRAND_TEAL)
-    const tmp = new THREE.Color()
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      positions[i * 3] = (Math.random() - 0.5) * 18
-      positions[i * 3 + 1] = (Math.random() - 0.5) * 10
-      positions[i * 3 + 2] = (Math.random() - 0.5) * 5 - 1
-      tmp.copy(Math.random() > 0.5 ? blue : teal)
-      colours[i * 3] = tmp.r
-      colours[i * 3 + 1] = tmp.g
-      colours[i * 3 + 2] = tmp.b
+    let width = window.innerWidth
+    let height = window.innerHeight
+    const resize = () => {
+      width = window.innerWidth
+      height = window.innerHeight
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5)
+      canvas.width = Math.floor(width * dpr)
+      canvas.height = Math.floor(height * dpr)
+      canvas.style.width = `${width}px`
+      canvas.style.height = `${height}px`
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }
-    const pointsGeometry = new THREE.BufferGeometry()
-    pointsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-    pointsGeometry.setAttribute('color', new THREE.BufferAttribute(colours, 3))
-    const pointsMaterial = new THREE.PointsMaterial({
-      size: 0.06,
-      transparent: true,
-      opacity: 0.28,
-      vertexColors: true,
-      sizeAttenuation: true,
-      depthWrite: false,
-    })
-    const points = new THREE.Points(pointsGeometry, pointsMaterial)
-    scene.add(points)
+    resize()
 
-    // --- wireframe shapes: slow-turning icosahedrons ---
-    interface Floater {
-      mesh: THREE.Mesh
-      baseY: number
-      phase: number
-      rotSpeed: number
-      floatSpeed: number
-    }
-    const floaters: Floater[] = []
-    const shapeGeometry = new THREE.IcosahedronGeometry(1, 0)
-    for (let i = 0; i < 4; i++) {
-      const material = new THREE.MeshBasicMaterial({
-        color: i % 2 === 0 ? BRAND_BLUE : BRAND_TEAL,
-        wireframe: true,
-        transparent: true,
-        opacity: 0.07 + (i % 3) * 0.02,
-      })
-      const mesh = new THREE.Mesh(shapeGeometry, material)
-      const scale = 0.35 + Math.random() * 0.35
-      mesh.scale.setScalar(scale)
-      mesh.position.set((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 7, -1 - Math.random() * 2)
-      scene.add(mesh)
-      floaters.push({
-        mesh,
-        baseY: mesh.position.y,
-        phase: Math.random() * Math.PI * 2,
-        rotSpeed: 0.03 + Math.random() * 0.04,
-        floatSpeed: 0.12 + Math.random() * 0.13,
-      })
-    }
+    // Deterministic-feeling sparse particles
+    const dots: Dot[] = Array.from({ length: 64 }, (_, i) => ({
+      x: ((i * 197.3) % 1) * width,
+      y: ((i * 311.7) % 1) * height,
+      r: 1.4 + (i % 3) * 0.7,
+      vx: ((i % 2 === 0 ? 1 : -1) * (0.08 + (i % 5) * 0.03)),
+      vy: ((i % 3 === 0 ? -1 : 1) * (0.06 + (i % 4) * 0.025)),
+      color: i % 2 === 0 ? '#3157D5' : '#0d9488',
+      alpha: 0.14 + (i % 3) * 0.04,
+    }))
 
-    const onResize = () => {
-      const w = host.clientWidth
-      const h = Math.max(host.clientHeight, 1)
-      camera.aspect = w / h
-      camera.updateProjectionMatrix()
-      renderer.setSize(w, h)
-    }
-    window.addEventListener('resize', onResize)
+    const polys: Poly[] = [
+      { x: 0.14, y: 0.24, radius: 52, sides: 6, angle: 0.3, speed: 0.00018, phase: 0, color: '#3157D5' },
+      { x: 0.84, y: 0.2, radius: 44, sides: 5, angle: 1.1, speed: -0.00015, phase: 1.8, color: '#0d9488' },
+      { x: 0.78, y: 0.78, radius: 58, sides: 6, angle: 2.0, speed: 0.00014, phase: 3.1, color: '#3157D5' },
+      { x: 0.2, y: 0.8, radius: 40, sides: 5, angle: 0.7, speed: -0.0002, phase: 4.5, color: '#0d9488' },
+    ]
 
-    let raf = 0
-    let running = !reducedMotion
-    const clock = new THREE.Clock()
+    let rafId = 0
+    let lastTime = performance.now()
 
-    const renderFrame = () => {
-      const t = clock.getElapsedTime()
-      points.rotation.y = t * 0.02
-      for (const f of floaters) {
-        f.mesh.rotation.x = t * f.rotSpeed
-        f.mesh.rotation.y = t * f.rotSpeed * 0.7
-        f.mesh.position.y = f.baseY + Math.sin(t * f.floatSpeed + f.phase) * 0.2
+    const drawFrame = (now: number, animate: boolean) => {
+      const dt = Math.min(now - lastTime, 64)
+      lastTime = now
+      ctx.clearRect(0, 0, width, height)
+
+      // Subtle floating particles
+      for (const d of dots) {
+        if (animate) {
+          d.x += d.vx * (dt * 0.06)
+          d.y += d.vy * (dt * 0.06)
+          if (d.x < -10) d.x = width + 10
+          if (d.x > width + 10) d.x = -10
+          if (d.y < -10) d.y = height + 10
+          if (d.y > height + 10) d.y = -10
+        }
+        ctx.globalAlpha = d.alpha
+        ctx.fillStyle = d.color
+        ctx.beginPath()
+        ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2)
+        ctx.fill()
       }
-      renderer.render(scene, camera)
+
+      // Quiet wireframe polygons
+      ctx.lineWidth = 1
+      for (const p of polys) {
+        if (animate) p.angle += p.speed * dt
+        const cx = p.x * width
+        const cy = p.y * height + (animate ? Math.sin(now * 0.0004 + p.phase) * 8 : 0)
+        ctx.globalAlpha = 0.08
+        ctx.strokeStyle = p.color
+        ctx.beginPath()
+        for (let s = 0; s <= p.sides; s++) {
+          const theta = p.angle + (s * Math.PI * 2) / p.sides
+          const px = cx + Math.cos(theta) * p.radius
+          const py = cy + Math.sin(theta) * p.radius
+          if (s === 0) ctx.moveTo(px, py)
+          else ctx.lineTo(px, py)
+        }
+        ctx.closePath()
+        ctx.stroke()
+      }
+      ctx.globalAlpha = 1
     }
 
-    const loop = () => {
-      if (!running) return
-      renderFrame()
-      raf = requestAnimationFrame(loop)
+    const tick = (now: number) => {
+      drawFrame(now, true)
+      rafId = window.requestAnimationFrame(tick)
     }
 
     const onVisibility = () => {
+      if (reducedMotion) return
       if (document.hidden) {
-        running = false
-        cancelAnimationFrame(raf)
-      } else if (!reducedMotion) {
-        running = true
-        clock.getDelta()
-        raf = requestAnimationFrame(loop)
+        window.cancelAnimationFrame(rafId)
+        rafId = 0
+      } else if (!rafId) {
+        lastTime = performance.now()
+        rafId = window.requestAnimationFrame(tick)
       }
     }
+
+    window.addEventListener('resize', resize)
     document.addEventListener('visibilitychange', onVisibility)
 
     if (reducedMotion) {
-      // One static frame — the shapes are visible, nothing moves.
-      renderFrame()
+      drawFrame(performance.now(), false)
     } else {
-      raf = requestAnimationFrame(loop)
+      rafId = window.requestAnimationFrame(tick)
     }
 
     return () => {
-      running = false
-      cancelAnimationFrame(raf)
-      window.removeEventListener('resize', onResize)
+      window.cancelAnimationFrame(rafId)
+      window.removeEventListener('resize', resize)
       document.removeEventListener('visibilitychange', onVisibility)
-      scene.traverse((obj) => {
-        if (obj instanceof THREE.Mesh || obj instanceof THREE.Points) {
-          obj.geometry.dispose()
-          const mat = obj.material
-          if (Array.isArray(mat)) {
-            for (const m of mat) m.dispose()
-          } else {
-            mat.dispose()
-          }
-        }
-      })
-      shapeGeometry.dispose()
-      renderer.dispose()
-      if (renderer.domElement.parentElement === host) {
-        host.removeChild(renderer.domElement)
-      }
     }
   }, [])
 
   return (
-    <div
+    <canvas
+      ref={canvasRef}
       aria-hidden="true"
-      ref={hostRef}
       style={{
         position: 'fixed',
         inset: 0,
         zIndex: 0,
         pointerEvents: 'none',
-        overflow: 'hidden',
       }}
     />
   )

@@ -13,6 +13,7 @@
  */
 
 import { translate, type Language } from './i18n'
+import { clearStashedFiles, deleteStashedFile, saveStashedFile } from './file-stash'
 
 export interface ActivityEntry {
   id: string
@@ -80,19 +81,27 @@ export function activityStoreBytes(): number {
   }
 }
 
-export function recordActivity(entry: Omit<ActivityEntry, 'id' | 'at' | 'starred'>): void {
+export function recordActivity(
+  entry: Omit<ActivityEntry, 'id' | 'at' | 'starred'> & { outputBlob?: Blob; outputName?: string },
+): string | null {
   try {
-    if (localStorage.getItem('openpixel.activity.off') === '1') return
+    if (localStorage.getItem('openpixel.activity.off') === '1') return null
   } catch {
-    return
+    return null
   }
+  const { outputBlob, outputName, ...meta } = entry
+  const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
   const full: ActivityEntry = {
-    ...entry,
-    id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    ...meta,
+    id,
     at: Date.now(),
     starred: false,
   }
   save([full, ...loadActivity()])
+  if (outputBlob) {
+    void saveStashedFile(id, outputName || entry.fileName, outputBlob)
+  }
+  return id
 }
 
 export function isActivityRecordingOn(): boolean {
@@ -118,6 +127,7 @@ export function clearActivity(): void {
   } catch {
     // ignore
   }
+  void clearStashedFiles()
 }
 
 export function toggleStar(id: string): void {
@@ -126,6 +136,7 @@ export function toggleStar(id: string): void {
 
 export function removeActivity(id: string): void {
   save(loadActivity().filter((e) => e.id !== id))
+  void deleteStashedFile(id)
 }
 
 /** Human file size, e.g. 143.4 KB. */

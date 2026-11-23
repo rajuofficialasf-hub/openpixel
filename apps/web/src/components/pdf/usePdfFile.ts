@@ -197,6 +197,8 @@ export function usePdfFile(
         result: status,
         resultKey: statusRecordRef.current?.key,
         resultParams: statusRecordRef.current?.params,
+        outputBlob: results[0]?.blob,
+        outputName: results[0]?.filename,
       })
     }
   }, [results, status, file, tool])

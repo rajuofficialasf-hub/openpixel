@@ -8,12 +8,13 @@
  * are "open the tool again" and "remove from history". Empty
  * until the user processes something — never invented files.
  */
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Box,
   Button,
   Card,
   CardContent,
+  Chip,
   FormControl,
   Grid,
   IconButton,
@@ -35,12 +36,14 @@ import {
 import StarIcon from '@mui/icons-material/Star'
 import StarBorderIcon from '@mui/icons-material/StarBorder'
 import DeleteIcon from '@mui/icons-material/Delete'
+import DownloadIcon from '@mui/icons-material/Download'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
 import GridViewIcon from '@mui/icons-material/GridView'
 import ViewListIcon from '@mui/icons-material/ViewList'
 import FolderOpenIcon from '@mui/icons-material/FolderOpen'
 import {
   activityStoreBytes,
+  clearActivity,
   formatActivityResult,
   formatBytes,
   formatDate,
@@ -49,12 +52,25 @@ import {
   toggleStar,
   type ActivityEntry,
 } from '../lib/activity'
+import { clearStashedFiles, getStashedFile, listStashedSummary } from '../lib/file-stash'
 import { ROUTE_TITLES, type RouteId } from '../lib/routes'
 import { plural } from '../lib/i18n'
 import { useI18n } from '../lib/use-i18n'
+import { useNavigation } from './layout/navigation'
 
 interface WorkspaceProps {
   onNavigate: (route: RouteId) => void
+}
+
+function triggerFileDownload(file: File): void {
+  const url = URL.createObjectURL(file)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = file.name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 function typeLabel(fileType: string, lang: 'en' | 'bn' = 'en'): string {
@@ -74,19 +90,49 @@ function toolLabel(route: string): string {
 
 function useEntries() {
   const [entries, setEntries] = useState<ActivityEntry[]>(() => loadActivity())
-  const refresh = () => setEntries(loadActivity())
-  return { entries, refresh }
+  const [cachedIds, setCachedIds] = useState<Set<string>>(() => new Set())
+  const [cachedBytes, setCachedBytes] = useState(0)
+
+  const refreshCache = useCallback(() => {
+    void listStashedSummary().then(({ ids, totalBytes }) => {
+      setCachedIds(ids)
+      setCachedBytes(totalBytes)
+    })
+  }, [])
+
+  useEffect(() => {
+    refreshCache()
+  }, [refreshCache])
+
+  const refresh = useCallback(() => {
+    setEntries(loadActivity())
+    refreshCache()
+  }, [refreshCache])
+
+  return { entries, cachedIds, cachedBytes, refresh }
 }
 
 export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
   const { t, lang } = useI18n()
-  const { entries, refresh } = useEntries()
+  const { navigate } = useNavigation()
+  const { entries, cachedIds, cachedBytes, refresh } = useEntries()
   const totalFiles = entries.length
   const toolsUsed = new Set(entries.map((e) => e.tool)).size
   const last = entries[0]
   const storeBytes = activityStoreBytes()
 
   const recent = entries.slice(0, 8)
+
+  const handleRedownload = async (id: string) => {
+    const file = await getStashedFile(id)
+    if (file) triggerFileDownload(file)
+  }
+
+  const handleReuse = async (entry: ActivityEntry) => {
+    const file = await getStashedFile(entry.id)
+    if (file) navigate(entry.tool as RouteId, { files: [file] })
+    else onNavigate(entry.tool as RouteId)
+  }
 
   return (
     <Stack spacing={3}>
@@ -154,9 +200,16 @@ export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
                     <TableCell>{toolLabel(e.tool)}</TableCell>
                     <TableCell>{formatDate(e.at, lang)}</TableCell>
                     <TableCell align="right">
-                      <Button size="small" onClick={() => onNavigate(e.tool as RouteId)}>
-                        {t('common.openTool')}
-                      </Button>
+                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                        {cachedIds.has(e.id) && (
+                          <Button size="small" startIcon={<DownloadIcon sx={{ fontSize: 15 }} />} onClick={() => void handleRedownload(e.id)}>
+                            {t('ws.redownload')}
+                          </Button>
+                        )}
+                        <Button size="small" onClick={() => void handleReuse(e)}>
+                          {cachedIds.has(e.id) ? t('ws.openWithFile') : t('common.openTool')}
+                        </Button>
+                      </Stack>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -197,18 +250,33 @@ export function WorkspaceDashboard({ onNavigate }: WorkspaceProps) {
         <Typography variant="body2" color="text.secondary">
           {t('ws.storageText', { bytes: formatBytes(storeBytes) })}
         </Typography>
-        <Button
-          size="small"
-          sx={{ mt: 1 }}
-          onClick={() => {
-            if (window.confirm(t('ws.clearConfirm'))) {
-              localStorage.removeItem('openpixel.activity.v1')
-              refresh()
-            }
-          }}
-        >
-          {t('common.clearHistory')}
-        </Button>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          {t('ws.cachedStorage', { bytes: formatBytes(cachedBytes) })}
+        </Typography>
+        <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ mt: 1 }}>
+          {cachedBytes > 0 && (
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => {
+                void clearStashedFiles().then(refresh)
+              }}
+            >
+              {t('ws.clearCache')}
+            </Button>
+          )}
+          <Button
+            size="small"
+            onClick={() => {
+              if (window.confirm(t('ws.clearConfirm'))) {
+                clearActivity()
+                refresh()
+              }
+            }}
+          >
+            {t('common.clearHistory')}
+          </Button>
+        </Stack>
       </Box>
     </Stack>
   )
@@ -236,11 +304,23 @@ function EmptyHistory({ onNavigate }: { onNavigate: (route: RouteId) => void }) 
 
 export function MyFilesPage({ onNavigate }: WorkspaceProps) {
   const { t, lang } = useI18n()
-  const { entries, refresh } = useEntries()
+  const { navigate } = useNavigation()
+  const { entries, cachedIds, refresh } = useEntries()
   const [view, setView] = useState<'grid' | 'list'>('grid')
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState<'all' | 'image' | 'pdf' | 'other'>('all')
   const [sort, setSort] = useState<'date' | 'size' | 'name'>('date')
+
+  const handleRedownload = async (id: string) => {
+    const file = await getStashedFile(id)
+    if (file) triggerFileDownload(file)
+  }
+
+  const handleReuse = async (entry: ActivityEntry) => {
+    const file = await getStashedFile(entry.id)
+    if (file) navigate(entry.tool as RouteId, { files: [file] })
+    else onNavigate(entry.tool as RouteId)
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -337,6 +417,15 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
                         {toolLabel(e.tool)}: {formatActivityResult(lang, e)}
                       </Typography>
+                      {cachedIds.has(e.id) && (
+                        <Chip
+                          size="small"
+                          color="success"
+                          variant="outlined"
+                          label={t('ws.cachedBadge')}
+                          sx={{ mt: 0.75, height: 22, fontSize: '0.7rem' }}
+                        />
+                      )}
                     </Box>
                     <IconButton
                       size="small"
@@ -346,9 +435,14 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
                       {e.starred ? <StarIcon color="primary" /> : <StarBorderIcon />}
                     </IconButton>
                   </Box>
-                  <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-                    <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => onNavigate(e.tool as RouteId)}>
-                      {t('common.openTool')}
+                  <Box sx={{ display: 'flex', gap: 1, mt: 2, flexWrap: 'wrap' }}>
+                    {cachedIds.has(e.id) && (
+                      <Button size="small" variant="contained" startIcon={<DownloadIcon />} onClick={() => void handleRedownload(e.id)}>
+                        {t('ws.redownload')}
+                      </Button>
+                    )}
+                    <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => void handleReuse(e)}>
+                      {cachedIds.has(e.id) ? t('ws.openWithFile') : t('common.openTool')}
                     </Button>
                     <Button size="small" color="error" startIcon={<DeleteIcon />} onClick={() => remove(e.id)}>
                       {t('common.remove')}
@@ -381,6 +475,11 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
                   <TableCell>{toolLabel(e.tool)}</TableCell>
                   <TableCell>{formatDate(e.at, lang)}</TableCell>
                   <TableCell align="right">
+                    {cachedIds.has(e.id) && (
+                      <IconButton size="small" aria-label={t('ws.redownload')} onClick={() => void handleRedownload(e.id)}>
+                        <DownloadIcon fontSize="small" />
+                      </IconButton>
+                    )}
                     <IconButton
                       size="small"
                       aria-label={e.starred ? t('ws.ariaUnstar', { name: e.fileName }) : t('ws.ariaStar', { name: e.fileName })}
@@ -409,8 +508,20 @@ export function MyFilesPage({ onNavigate }: WorkspaceProps) {
 
 export function RecentFilesPage({ onNavigate }: WorkspaceProps) {
   const { t, lang } = useI18n()
-  const { entries } = useEntries()
+  const { navigate } = useNavigation()
+  const { entries, cachedIds } = useEntries()
   const [query, setQuery] = useState('')
+
+  const handleRedownload = async (id: string) => {
+    const file = await getStashedFile(id)
+    if (file) triggerFileDownload(file)
+  }
+
+  const handleReuse = async (entry: ActivityEntry) => {
+    const file = await getStashedFile(entry.id)
+    if (file) navigate(entry.tool as RouteId, { files: [file] })
+    else onNavigate(entry.tool as RouteId)
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -461,9 +572,16 @@ export function RecentFilesPage({ onNavigate }: WorkspaceProps) {
                   <TableCell>{formatActivityResult(lang, e)}</TableCell>
                   <TableCell>{formatDate(e.at, lang)}</TableCell>
                   <TableCell align="right">
-                    <Button size="small" onClick={() => onNavigate(e.tool as RouteId)}>
-                      {t('common.openTool')}
-                    </Button>
+                    <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                      {cachedIds.has(e.id) && (
+                        <Button size="small" startIcon={<DownloadIcon sx={{ fontSize: 15 }} />} onClick={() => void handleRedownload(e.id)}>
+                          {t('ws.redownload')}
+                        </Button>
+                      )}
+                      <Button size="small" onClick={() => void handleReuse(e)}>
+                        {cachedIds.has(e.id) ? t('ws.openWithFile') : t('common.openTool')}
+                      </Button>
+                    </Stack>
                   </TableCell>
                 </TableRow>
               ))}

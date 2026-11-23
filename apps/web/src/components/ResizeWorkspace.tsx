@@ -377,6 +377,8 @@ export function ResizeWorkspace({
             from: formatBytes(item.file.size),
             to: formatBytes(resized.bytes),
           },
+          outputBlob: resized.blob,
+          outputName: outputFileName(item.file.name, targetFormat),
         })
         setItems((prev) =>
           prev.map((p) =>

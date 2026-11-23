@@ -299,6 +299,8 @@ export function CropWorkspace({ initialFiles, onInitialFilesConsumed }: CropWork
         result: `Cropped to ${exported.width}×${exported.height} · ${formatBytes(exported.bytes)}`,
         resultKey: 'act.crop',
         resultParams: { w: exported.width, h: exported.height, bytes: formatBytes(exported.bytes) },
+        outputBlob: exported.blob,
+        outputName: filename,
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : t('crop.errExport'))

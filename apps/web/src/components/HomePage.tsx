@@ -12,9 +12,12 @@ import { useState } from 'react'
 import { Alert, Box, Button, Card, CardActionArea, CardContent, Grid, Stack, Typography } from '@mui/material'
 import ShieldOutlinedIcon from '@mui/icons-material/ShieldOutlined'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import { POPULAR_TOOLS, toolDescription, type RouteId, type ToolCategory } from '../lib/routes'
 import { useI18n } from '../lib/use-i18n'
 import { detectFileFormat } from '../lib/detect'
+import { createSampleImageFile, createSamplePdfFile } from '../lib/samples'
 import { DropZone } from './DropZone'
 import { ToolIcon } from './CategoryIcon'
 
@@ -126,6 +129,45 @@ export function HomePage({ onNavigate }: HomePageProps) {
               radius={1.5}
               compact
             />
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              justifyContent="center"
+              flexWrap="wrap"
+              useFlexGap
+              sx={{ mt: 0.75 }}
+            >
+              <Typography variant="caption" color="text.secondary">
+                {t('sample.tryLabel')}
+              </Typography>
+              <Button
+                type="button"
+                size="small"
+                variant="text"
+                id="sample-image-btn"
+                startIcon={<AutoAwesomeIcon sx={{ fontSize: 15 }} />}
+                onClick={() => {
+                  void createSampleImageFile().then((sample) => onNavigate('convert', { files: [sample] }))
+                }}
+                sx={{ py: 0.25, px: 1, fontSize: '0.78rem' }}
+              >
+                {t('sample.tryImage')}
+              </Button>
+              <Button
+                type="button"
+                size="small"
+                variant="text"
+                id="sample-pdf-btn"
+                startIcon={<PictureAsPdfIcon sx={{ fontSize: 15 }} />}
+                onClick={() => {
+                  onNavigate('pdf-edit', { files: [createSamplePdfFile()] })
+                }}
+                sx={{ py: 0.25, px: 1, fontSize: '0.78rem' }}
+              >
+                {t('sample.tryPdf')}
+              </Button>
+            </Stack>
             {notice && (
               <Alert severity="info" role="status" sx={{ mt: 1 }}>
                 {notice}

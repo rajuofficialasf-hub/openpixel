@@ -209,6 +209,8 @@ export function ConvertWorkspace({ settings, onSettingsChange, initialFiles, onI
           h: converted.height,
           bytes: formatBytes(converted.bytes),
         },
+        outputBlob: converted.blob,
+        outputName: outputFileName(file.name, targetFormat),
       })
       if (converted.engine === 'wasm') {
         setWarnings((prev) => [...prev, t('cv.warnWasm')])

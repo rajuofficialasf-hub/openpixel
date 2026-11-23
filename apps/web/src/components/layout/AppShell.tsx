@@ -12,6 +12,8 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   AppBar,
   Autocomplete,
+  BottomNavigation,
+  BottomNavigationAction,
   Box,
   Breadcrumbs,
   Button,
@@ -26,6 +28,7 @@ import {
   ListItemIcon,
   ListItemText,
   ListSubheader,
+  Paper,
   Snackbar,
   TextField,
   Toolbar,
@@ -688,7 +691,8 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
                 borderColor: 'divider',
                 bgcolor: 'background.paper',
                 px: { xs: 2, md: 3 },
-                py: 1,
+                pt: 1,
+                pb: !isDesktop ? 'calc(68px + env(safe-area-inset-bottom, 0px))' : 1,
               }}
             >
               <Box
@@ -734,6 +738,55 @@ export function AppShell({ route, onNavigate, settings, onSettingsChange, childr
           )}
         </Box>
       </Box>
+      {!isDesktop && (
+        <Paper
+          component="nav"
+          aria-label={t('mnav.aria')}
+          elevation={4}
+          square
+          sx={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: (th) => th.zIndex.appBar,
+            borderTop: 1,
+            borderColor: 'divider',
+            pb: 'env(safe-area-inset-bottom, 0px)',
+          }}
+        >
+          <BottomNavigation
+            showLabels
+            value={
+              route.startsWith('pdf')
+                ? 'pdf'
+                : route === 'home' || route === 'convert' || route === 'crop' || route === 'tools'
+                  ? route
+                  : false
+            }
+            onChange={(_, next: RouteId) => {
+              if (next) go(next)
+            }}
+            sx={{
+              height: 58,
+              '& .MuiBottomNavigationAction-root': {
+                minWidth: 0,
+                px: 0.5,
+              },
+              '& .MuiBottomNavigationAction-label': {
+                fontSize: '0.68rem',
+                '&.Mui-selected': { fontSize: '0.7rem', fontWeight: 600 },
+              },
+            }}
+          >
+            <BottomNavigationAction value="home" label={t('mnav.home')} icon={<HomeIcon fontSize="small" />} />
+            <BottomNavigationAction value="convert" label={t('mnav.convert')} icon={<ImageIcon fontSize="small" />} />
+            <BottomNavigationAction value="crop" label={t('mnav.crop')} icon={<CropIcon fontSize="small" />} />
+            <BottomNavigationAction value="pdf" label={t('mnav.pdf')} icon={<PictureAsPdfIcon fontSize="small" />} />
+            <BottomNavigationAction value="tools" label={t('mnav.tools')} icon={<GridViewIcon fontSize="small" />} />
+          </BottomNavigation>
+        </Paper>
+      )}
       <CommandPalette
         open={paletteOpen}
         onClose={() => setPaletteOpen(false)}
