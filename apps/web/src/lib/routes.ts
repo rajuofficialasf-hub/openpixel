@@ -37,6 +37,8 @@ export type RouteId =
   | 'pdf-sanitize'
   | 'pdf-flatten'
   | 'pdf-repair'
+  | 'pdf-protect'
+  | 'pdf-unlock'
   | 'pdf-to-image'
   | 'pdf-images-to-pdf'
   | 'pdf-extract-text'
@@ -83,6 +85,8 @@ export const ROUTE_PATHS: Record<RouteId, string> = {
   'pdf-sanitize': '/pdf/sanitize',
   'pdf-flatten': '/pdf/flatten',
   'pdf-repair': '/pdf/repair',
+  'pdf-protect': '/pdf/protect',
+  'pdf-unlock': '/pdf/unlock',
   'pdf-to-image': '/pdf/pdf-to-image',
   'pdf-images-to-pdf': '/pdf/images-to-pdf',
   'pdf-extract-text': '/pdf/extract-text',
@@ -463,20 +467,20 @@ export const TOOLS: ToolEntry[] = [
   {
     id: 'pdf-protect',
     name: 'Protect PDF',
-    description: 'Password-protect a PDF (RC4-128) with print/copy/modify permissions. Runs in the CLI.',
+    description: 'Password-protect a PDF with AES-256 encryption and print/copy/modify permissions — 100% locally in your browser.',
     categories: ['pdf'],
-    status: 'cli-only',
-    cliCommand: 'openpixel pdf protect --user-password <password> input.pdf output.pdf',
-    keywords: ['protect', 'password', 'encrypt', 'lock', 'pdf'],
+    status: 'web',
+    route: 'pdf-protect',
+    keywords: ['protect', 'password', 'encrypt', 'lock', 'aes', 'pdf'],
   },
   {
     id: 'pdf-unlock',
     name: 'Unlock PDF',
-    description: 'Remove the password from a PDF you own. Runs in the CLI.',
+    description: 'Remove password protection from a PDF you own right in your browser — 100% vector quality preserved.',
     categories: ['pdf'],
-    status: 'cli-only',
-    cliCommand: 'openpixel pdf unlock --password <password> input.pdf output.pdf',
-    keywords: ['unlock', 'password', 'decrypt', 'pdf'],
+    status: 'web',
+    route: 'pdf-unlock',
+    keywords: ['unlock', 'password', 'decrypt', 'remove password', 'pdf'],
   },
   {
     id: 'pdf-watermark',
@@ -665,8 +669,8 @@ export const TOOL_DESCRIPTIONS_BN: Record<string, string> = {
   'image-to-pdf': 'এক বা একাধিক ছবি থেকে PDF ডকুমেন্ট বানান।',
   'pdf-text': 'PDF থেকে লেখা পড়ুন — পেজে দেখানো হয় আর TXT হিসেবে ডাউনলোড করা যায়। EPUB/DOCX এক্সপোর্ট CLI-তে চলে।',
   'pdf-ocr': 'স্ক্যান করা মাল্টি-পেজ PDF থেকে সরাসরি ব্রাউজারেই বাংলা ও ইংরেজি টেক্সট বের করুন।',
-  'pdf-protect': 'PDF পাসওয়ার্ড দিয়ে সুরক্ষিত করুন (RC4-128), প্রিন্ট/কপি/বদলানোর অনুমতিসহ। CLI-তে চলে।',
-  'pdf-unlock': 'আপনার মালিকানাধীন PDF থেকে পাসওয়ার্ড সরান। CLI-তে চলে।',
+  'pdf-protect': 'AES-256 এনক্রিপশন ও প্রিন্ট/কপি/এডিট পারমিশনসহ PDF-এ পাসওয়ার্ড দিন — ১০০% আপনার ব্রাউজারেই।',
+  'pdf-unlock': 'আপনার মালিকানাধীন PDF থেকে পাসওয়ার্ড সরিয়ে আনলকড কপি তৈরি করুন — সরাসরি ব্রাউজারেই।',
   'pdf-watermark': 'ব্রাউজারেই লাইভ প্রিভিউসহ PDF-এর সব পৃষ্ঠায় ওয়াটারমার্ক, সিগনেচার বা ইমেজ স্ট্যাম্প যোগ করুন।',
   'pdf-sign': 'আসল CMS/PKCS#7 ডিজিটাল স্বাক্ষর যোগ করুন (RSA, SHA-256)। CLI-তে চলে — প্রাইভেট কি কখনো ব্রাউজারে আসবে না।',
   'pdf-to-word': 'ওয়েবে এক ক্লিকে DOCX এক্সপোর্ট এখনো তৈরি হয়নি। টেক্সট নিষ্কাশন (TXT/HTML) PDF ওয়ার্কস্পেসে চলে; সম্পূর্ণ DOCX এক্সপোর্ট CLI-তে চলে।',
@@ -741,6 +745,8 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
           { route: 'pdf-split', label: 'Split PDF', icon: 'pdfSplit' },
           { route: 'pdf-compress', label: 'Compress PDF', icon: 'pdfCompress' },
           { route: 'pdf-edit', label: 'Edit & Sign PDF', icon: 'pdfEdit' },
+          { route: 'pdf-protect', label: 'Protect PDF', icon: 'pdfProtect' },
+          { route: 'pdf-unlock', label: 'Unlock PDF', icon: 'pdfUnlock' },
           { route: 'pdf-to-image', label: 'PDF to Image', icon: 'pdfToImage' },
           { route: 'pdf-images-to-pdf', label: 'Image to PDF', icon: 'imagesToPdf' },
         ],
@@ -794,6 +800,8 @@ export const ROUTE_TITLES: Record<RouteId, { title: string; crumb: string }> = {
   'pdf-sanitize': { title: 'Clean up PDF', crumb: 'Clean up PDF' },
   'pdf-flatten': { title: 'Flatten PDF', crumb: 'Flatten PDF' },
   'pdf-repair': { title: 'Repair PDF', crumb: 'Repair PDF' },
+  'pdf-protect': { title: 'Protect PDF', crumb: 'Protect PDF' },
+  'pdf-unlock': { title: 'Unlock PDF', crumb: 'Unlock PDF' },
   'pdf-to-image': { title: 'PDF to Image', crumb: 'PDF to Image' },
   'pdf-images-to-pdf': { title: 'Image to PDF', crumb: 'Image to PDF' },
   'pdf-extract-text': { title: 'Extract PDF Text', crumb: 'Extract PDF Text' },

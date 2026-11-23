@@ -62,7 +62,7 @@ const PDF_GROUPS: PdfGroup[] = [
     id: 'clean',
     titleKey: 'pdf.groupClean',
     subKey: 'pdf.groupCleanSub',
-    toolIds: ['pdf-sanitize', 'pdf-flatten', 'pdf-repair'],
+    toolIds: ['pdf-protect', 'pdf-unlock', 'pdf-sanitize', 'pdf-flatten', 'pdf-repair'],
   },
 ]
 

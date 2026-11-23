@@ -15,6 +15,8 @@
   <url><loc>/pdf/split</loc><priority>0.8</priority></url>
   <url><loc>/pdf/compress</loc><priority>0.8</priority></url>
   <url><loc>/pdf/edit</loc><priority>0.8</priority></url>
+  <url><loc>/pdf/protect</loc><priority>0.8</priority></url>
+  <url><loc>/pdf/unlock</loc><priority>0.8</priority></url>
   <url><loc>/pdf/rotate</loc><priority>0.7</priority></url>
   <url><loc>/pdf/reorder</loc><priority>0.7</priority></url>
   <url><loc>/pdf/extract</loc><priority>0.7</priority></url>

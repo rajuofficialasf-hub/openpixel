@@ -67,6 +67,8 @@ import CallMergeIcon from '@mui/icons-material/CallMerge'
 import CallSplitIcon from '@mui/icons-material/CallSplit'
 import CompressIcon from '@mui/icons-material/Compress'
 import EditNoteIcon from '@mui/icons-material/EditNote'
+import LockOutlinedIcon from '@mui/icons-material/LockOutlined'
+import LockOpenIcon from '@mui/icons-material/LockOpen'
 import DocumentScannerIcon from '@mui/icons-material/DocumentScanner'
 import LayersIcon from '@mui/icons-material/Layers'
 import TableChartIcon from '@mui/icons-material/TableChart'
@@ -102,6 +104,8 @@ const ICONS: Record<string, ReactNode> = {
   pdfSplit: <CallSplitIcon fontSize="small" />,
   pdfCompress: <CompressIcon fontSize="small" />,
   pdfEdit: <EditNoteIcon fontSize="small" />,
+  pdfProtect: <LockOutlinedIcon fontSize="small" />,
+  pdfUnlock: <LockOpenIcon fontSize="small" />,
   pdfToImage: <ImageIcon fontSize="small" />,
   imagesToPdf: <PictureAsPdfIcon fontSize="small" />,
   ocr: <DocumentScannerIcon />,

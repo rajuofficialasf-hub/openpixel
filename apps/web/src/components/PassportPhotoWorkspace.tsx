@@ -15,6 +15,7 @@ import {
   Card,
   CardContent,
   Chip,
+  LinearProgress,
   Slider,
   Stack,
   Typography,
@@ -24,8 +25,16 @@ import DownloadIcon from '@mui/icons-material/Download'
 import PrintIcon from '@mui/icons-material/Print'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
+import ColorizeIcon from '@mui/icons-material/Colorize'
+import UndoIcon from '@mui/icons-material/Undo'
 import { formatBytes } from '../lib/capabilities'
 import { recordActivity } from '../lib/activity'
+import {
+  detectBackdropColor,
+  removeBackgroundByColor,
+  removeBackgroundWithAi,
+  type BgProgress,
+} from '../lib/bg-remove'
 import {
   buildPrintSheet,
   computeCoverCrop,
@@ -39,7 +48,6 @@ import { EditorShell } from './EditorShell'
 import { ImageOutputActions } from './ImageOutputActions'
 import { ToolPageHeader } from './ToolPage'
 import { WorkflowSteps } from './WorkflowSteps'
-import { useNavigation } from './layout/navigation'
 import { useI18n } from '../lib/use-i18n'
 
 interface PassportWorkspaceProps {
@@ -69,24 +77,43 @@ export function PassportPhotoWorkspace({
   onInitialFilesConsumed,
 }: PassportWorkspaceProps = {}) {
   const { t } = useI18n()
-  const { navigate } = useNavigation()
 
   const [file, setFile] = useState<File | null>(null)
-  const [loadedImg, setLoadedImg] = useState<HTMLImageElement | null>(null)
+  const [originalImg, setOriginalImg] = useState<HTMLImageElement | null>(null)
+  const [cutoutImg, setCutoutImg] = useState<HTMLImageElement | null>(null)
   const [presetId, setPresetId] = useState<string>(PASSPORT_PRESETS[0].id)
   const [zoom, setZoom] = useState(1)
   const [panX, setPanX] = useState(0)
   const [panY, setPanY] = useState(0)
   const [bgColor, setBgColor] = useState('#ffffff')
   const [busy, setBusy] = useState(false)
+  const [bgBusy, setBgBusy] = useState<'ai' | 'color' | null>(null)
+  const [bgProgress, setBgProgress] = useState<BgProgress | null>(null)
   const [sheetBusy, setSheetBusy] = useState<PrintSheetSize | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<(PassportExportResult & { filename: string }) | null>(null)
+
+  const loadedImg = cutoutImg ?? originalImg
 
   const previewCanvasRef = useRef<HTMLCanvasElement>(null)
   const dragRef = useRef<{ startX: number; startY: number; origPanX: number; origPanY: number } | null>(null)
 
   const preset = PASSPORT_PRESETS.find((p) => p.id === presetId) ?? PASSPORT_PRESETS[0]
+
+  const loadBlobAsImage = (blob: Blob): Promise<HTMLImageElement> =>
+    new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(blob)
+      const img = new Image()
+      img.onload = () => {
+        URL.revokeObjectURL(url)
+        resolve(img)
+      }
+      img.onerror = () => {
+        URL.revokeObjectURL(url)
+        reject(new Error(t('crop.errLoad')))
+      }
+      img.src = url
+    })
 
   const handleFiles = useCallback(
     (files: File[]) => {
@@ -98,12 +125,13 @@ export function PassportPhotoWorkspace({
       }
       setError(null)
       setResult(null)
+      setCutoutImg(null)
       const url = URL.createObjectURL(next)
       const img = new Image()
       img.onload = () => {
         URL.revokeObjectURL(url)
         setFile(next)
-        setLoadedImg(img)
+        setOriginalImg(img)
         setZoom(1)
         setPanX(0)
         setPanY(0)
@@ -193,9 +221,42 @@ export function PassportPhotoWorkspace({
 
   const clearFile = () => {
     setFile(null)
-    setLoadedImg(null)
+    setOriginalImg(null)
+    setCutoutImg(null)
     setResult(null)
     setError(null)
+    setBgProgress(null)
+  }
+
+  const handleInlineRemoveBg = async (kind: 'ai' | 'color') => {
+    if (!file || bgBusy) return
+    setBgBusy(kind)
+    setError(null)
+    setBgProgress(null)
+    setResult(null)
+    try {
+      let cutoutBlob: Blob
+      if (kind === 'ai') {
+        const res = await removeBackgroundWithAi(file, (p) => setBgProgress(p))
+        cutoutBlob = res.blob
+      } else {
+        const corner = await detectBackdropColor(file)
+        const res = await removeBackgroundByColor(file, {
+          targetColor: corner,
+          tolerance: 26,
+          feather: 8,
+          contiguous: true,
+        })
+        cutoutBlob = res.blob
+      }
+      const nextImg = await loadBlobAsImage(cutoutBlob)
+      setCutoutImg(nextImg)
+    } catch (err) {
+      setError(err instanceof Error ? t('bg.errFailed', { msg: err.message }) : t('bg.errFailedPlain'))
+    } finally {
+      setBgBusy(null)
+      setBgProgress(null)
+    }
   }
 
   const handleExport = async () => {
@@ -300,21 +361,29 @@ export function PassportPhotoWorkspace({
                         {t('pp.framePreview', { w: preset.width, h: preset.height })}
                         {preset.maxKb ? ` · ≤ ${preset.maxKb} KB` : ''}
                       </Typography>
-                      <Stack direction="row" spacing={1}>
-                        <Button
-                          type="button"
-                          variant="outlined"
-                          size="small"
-                          startIcon={<AutoFixHighIcon sx={{ fontSize: 15 }} />}
-                          onClick={() => navigate('bg-remove', { files: [file] })}
-                        >
-                          {t('pp.removeBgFirst')}
-                        </Button>
-                        <Button type="button" variant="outlined" size="small" onClick={clearFile}>
-                          {t('common.chooseDifferentFile')}
-                        </Button>
-                      </Stack>
+                      <Button type="button" variant="outlined" size="small" onClick={clearFile} disabled={bgBusy !== null}>
+                        {t('common.chooseDifferentFile')}
+                      </Button>
                     </Box>
+
+                    {bgBusy && bgProgress && (
+                      <Box sx={{ mb: 1.25 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {bgProgress.label} {Math.round(bgProgress.progress * 100)}%
+                        </Typography>
+                        <LinearProgress
+                          variant={bgProgress.progress > 0 ? 'determinate' : 'indeterminate'}
+                          value={Math.round(bgProgress.progress * 100)}
+                          sx={{ mt: 0.5 }}
+                        />
+                      </Box>
+                    )}
+
+                    {cutoutImg && (
+                      <Typography variant="caption" color="success.main" fontWeight={600} display="block" sx={{ mb: 0.5, textAlign: 'center' }}>
+                        {t('pp.bgRemovedBadge')}
+                      </Typography>
+                    )}
 
                     <Box sx={{ display: 'flex', justifyContent: 'center', py: 1 }}>
                       <Box
@@ -449,6 +518,51 @@ export function PassportPhotoWorkspace({
                           setResult(null)
                         }}
                       />
+                    </Box>
+
+                    <Box sx={{ pt: 1, borderTop: 1, borderColor: 'divider' }}>
+                      <Typography variant="caption" fontWeight={600} color="text.secondary" display="block" sx={{ mb: 0.75 }}>
+                        {t('pp.bgRemoveTitle')}
+                      </Typography>
+                      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+                        <Button
+                          type="button"
+                          size="small"
+                          variant="outlined"
+                          id="passport-ai-bg-btn"
+                          startIcon={<AutoFixHighIcon sx={{ fontSize: 15 }} />}
+                          disabled={bgBusy !== null}
+                          onClick={() => void handleInlineRemoveBg('ai')}
+                        >
+                          {bgBusy === 'ai' ? t('bg.running') : t('pp.aiRemoveBg')}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="small"
+                          variant="outlined"
+                          id="passport-color-bg-btn"
+                          startIcon={<ColorizeIcon sx={{ fontSize: 15 }} />}
+                          disabled={bgBusy !== null}
+                          onClick={() => void handleInlineRemoveBg('color')}
+                        >
+                          {t('pp.colorRemoveBg')}
+                        </Button>
+                        {cutoutImg && (
+                          <Button
+                            type="button"
+                            size="small"
+                            variant="text"
+                            id="passport-restore-bg-btn"
+                            startIcon={<UndoIcon sx={{ fontSize: 15 }} />}
+                            onClick={() => {
+                              setCutoutImg(null)
+                              setResult(null)
+                            }}
+                          >
+                            {t('pp.restoreOriginal')}
+                          </Button>
+                        )}
+                      </Stack>
                     </Box>
 
                     <Box>

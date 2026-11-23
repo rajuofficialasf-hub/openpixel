@@ -60,6 +60,8 @@ const MetadataTool = lazy(() => import('./components/pdf/CleanUpTools').then((m)
 const RedactTool = lazy(() => import('./components/pdf/CleanUpTools').then((m) => ({ default: m.RedactTool })))
 const RepairTool = lazy(() => import('./components/pdf/CleanUpTools').then((m) => ({ default: m.RepairTool })))
 const SanitizeTool = lazy(() => import('./components/pdf/CleanUpTools').then((m) => ({ default: m.SanitizeTool })))
+const ProtectTool = lazy(() => import('./components/pdf/SecurityTools').then((m) => ({ default: m.ProtectTool })))
+const UnlockTool = lazy(() => import('./components/pdf/SecurityTools').then((m) => ({ default: m.UnlockTool })))
 
 interface PendingFiles {
   files: File[]
@@ -244,6 +246,8 @@ function App() {
                   {route === 'pdf-sanitize' && <SanitizeTool {...pdfToolProps('pdf-sanitize')} />}
                   {route === 'pdf-flatten' && <FlattenTool {...pdfToolProps('pdf-flatten')} />}
                   {route === 'pdf-repair' && <RepairTool {...pdfToolProps('pdf-repair')} />}
+                  {route === 'pdf-protect' && <ProtectTool {...pdfToolProps('pdf-protect')} />}
+                  {route === 'pdf-unlock' && <UnlockTool {...pdfToolProps('pdf-unlock')} />}
                   {route === 'pdf-to-image' && <PdfToImageTool {...pdfToolProps('pdf-to-image')} />}
                   {route === 'pdf-images-to-pdf' && <ImagesToPdfTool {...pdfToolProps('pdf-images-to-pdf')} />}
                   {route === 'pdf-extract-text' && <ExtractTextTool {...pdfToolProps('pdf-extract-text')} />}
